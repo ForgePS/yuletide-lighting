@@ -104,29 +104,34 @@ function NavLinks({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, signOut, idToken, loading: authLoading } = useAuth();
+  const { user, signOut, loading: authLoading } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const { data: billing, isLoading: billingLoading } = trpc.billing.status.useQuery(undefined, {
-    enabled: !authLoading && !!idToken,
+    enabled: !authLoading && !!user,
     staleTime: 30_000,
   });
+  const [deferSecondaryQueries, setDeferSecondaryQueries] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDeferSecondaryQueries(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const { data: creatorAccess } = trpc.creator360.checkAccess.useQuery(undefined, {
-    enabled: !authLoading && !!idToken,
+    enabled: deferSecondaryQueries && !authLoading && !!user,
     staleTime: 60_000,
     retry: false,
   });
 
   const locked = billing?.isLocked ?? false;
   const onSubscriptionPage = pathname.startsWith('/app/settings/subscription');
-  const billingKnown = !billingLoading || billing !== undefined;
+  const subscriptionRedirectPending = !billingLoading && locked && !onSubscriptionPage;
 
   useEffect(() => {
-    if (!billingKnown || !locked || onSubscriptionPage) return;
+    if (!subscriptionRedirectPending) return;
     router.replace('/app/settings/subscription');
-  }, [billingKnown, locked, onSubscriptionPage, router]);
+  }, [subscriptionRedirectPending, router]);
 
-  const visibleNav = billingKnown && locked
+  const visibleNav = subscriptionRedirectPending
     ? [{ href: '/app/settings/subscription', label: 'Subscription', icon: CreditCard, exact: true }]
     : navItems;
 
@@ -213,7 +218,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <AnalyticsYearFilter />
           </div>
           <div className="p-4 sm:p-6 lg:p-8">
-          {billingKnown && locked && !onSubscriptionPage ? (
+          {subscriptionRedirectPending ? (
             <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
               Redirecting to subscription...
             </div>

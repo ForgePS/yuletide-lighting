@@ -1,5 +1,7 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import homeJson from '../../content/marketing/home.json';
+import pricingJson from '../../content/marketing/pricing.json';
+import { fetchTinaQuery, hasTinaCloudCredentials } from '@/lib/tina-cloud';
+import { HOME_QUERY, PRICING_QUERY } from '@/lib/tina-queries';
 
 type TinaPayload<T> = {
   data: T;
@@ -7,32 +9,42 @@ type TinaPayload<T> = {
   variables: { relativePath: string };
 };
 
-async function readJsonFallback<T>(filename: string, key: string): Promise<TinaPayload<T>> {
-  const relativePath = filename;
-  const filePath = path.join(process.cwd(), 'content/marketing', filename);
-  const raw = await fs.readFile(filePath, 'utf8');
-  const parsed = JSON.parse(raw) as T;
+function bundledHome(): TinaPayload<{ home: typeof homeJson }> {
   return {
-    data: { [key]: parsed } as T,
+    data: { home: homeJson },
     query: '',
-    variables: { relativePath },
+    variables: { relativePath: 'home.json' },
   };
 }
 
-export async function loadHomeContent() {
+function bundledPricing(): TinaPayload<{ pricing: typeof pricingJson }> {
+  return {
+    data: { pricing: pricingJson },
+    query: '',
+    variables: { relativePath: 'pricing.json' },
+  };
+}
+
+export async function loadHomeContent(): Promise<TinaPayload<{ home: typeof homeJson }>> {
+  if (!hasTinaCloudCredentials()) return bundledHome();
+
   try {
-    const { client } = await import('../../tina/__generated__/client');
-    return client.queries.home({ relativePath: 'home.json' });
+    const variables = { relativePath: 'home.json' };
+    const result = await fetchTinaQuery<{ home: typeof homeJson }>(HOME_QUERY, variables);
+    return { data: result.data, query: result.query, variables };
   } catch {
-    return readJsonFallback<{ home: Record<string, unknown> }>('home.json', 'home');
+    return bundledHome();
   }
 }
 
-export async function loadPricingContent() {
+export async function loadPricingContent(): Promise<TinaPayload<{ pricing: typeof pricingJson }>> {
+  if (!hasTinaCloudCredentials()) return bundledPricing();
+
   try {
-    const { client } = await import('../../tina/__generated__/client');
-    return client.queries.pricing({ relativePath: 'pricing.json' });
+    const variables = { relativePath: 'pricing.json' };
+    const result = await fetchTinaQuery<{ pricing: typeof pricingJson }>(PRICING_QUERY, variables);
+    return { data: result.data, query: result.query, variables };
   } catch {
-    return readJsonFallback<{ pricing: Record<string, unknown> }>('pricing.json', 'pricing');
+    return bundledPricing();
   }
 }

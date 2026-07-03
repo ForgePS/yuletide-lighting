@@ -4,6 +4,8 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "!local_deps/**"],
     "frameworksBackend": {
       "region": "us-central1",
+      "memory": "1GiB",
+      "timeoutSeconds": 120,
       "serviceAccount": "firebase-adminsdk-fbsvc@yuletide-lighting.iam.gserviceaccount.com"
     }
   },

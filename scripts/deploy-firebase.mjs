@@ -53,6 +53,38 @@ function prepareEnv() {
   console.log('Copied root .env to apps/web for Firebase build (server secrets filtered).');
 }
 
+function isValidTinaCredentials(lines) {
+  const clientId = parseEnvValue(lines, 'NEXT_PUBLIC_TINA_CLIENT_ID');
+  const token = parseEnvValue(lines, 'TINA_TOKEN');
+  return Boolean(
+    clientId &&
+      token &&
+      clientId !== 'local' &&
+      token !== 'local' &&
+      !clientId.startsWith('your_') &&
+      !token.startsWith('your_'),
+  );
+}
+
+function buildTinaAdmin() {
+  if (!fs.existsSync(rootEnvPath)) return;
+  const lines = fs.readFileSync(rootEnvPath, 'utf8').split(/\r?\n/);
+  if (!isValidTinaCredentials(lines)) {
+    console.log('Skipping Tina admin build — set NEXT_PUBLIC_TINA_CLIENT_ID and TINA_TOKEN in .env');
+    return;
+  }
+  console.log('Building Tina CMS admin for production...');
+  execSync('npx tinacms build --skip-cloud-checks --datalayer-port 9001', {
+    cwd: webRoot,
+    stdio: 'inherit',
+    env: { ...process.env, ...Object.fromEntries(
+      ['NEXT_PUBLIC_TINA_CLIENT_ID', 'TINA_TOKEN', 'NEXT_PUBLIC_TINA_BRANCH', 'GITHUB_BRANCH']
+        .map((key) => [key, parseEnvValue(lines, key)])
+        .filter(([, value]) => value),
+    ) },
+  });
+}
+
 function restoreEnv() {
   if (fs.existsSync(webEnvBackupPath)) {
     fs.copyFileSync(webEnvBackupPath, webEnvPath);
@@ -73,6 +105,7 @@ if (nodeMajor > 20) {
 
 try {
   prepareEnv();
+  buildTinaAdmin();
   execSync('node scripts/prepare-firebase-deps.mjs', { cwd: webRoot, stdio: 'inherit' });
   execSync(`firebase deploy ${only} --project yuletide-lighting`.trim(), {
     cwd: repoRoot,

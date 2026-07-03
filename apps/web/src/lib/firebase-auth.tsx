@@ -11,6 +11,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import { getCachedAuthToken, setCachedAuthToken, writeAuthCookie } from '@/lib/auth-token';
 
 type AuthState = {
   user: User | null;
@@ -20,10 +21,16 @@ type AuthState = {
   signUp: (email: string, password: string, companyName?: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
-  waitForSession: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+
+async function syncSession(user: User, forceRefresh = false) {
+  const token = await user.getIdToken(forceRefresh);
+  setCachedAuthToken(token);
+  writeAuthCookie(token);
+  return token;
+}
 
 export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -36,21 +43,23 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const unsub = onIdTokenChanged(auth, async (u) => {
-      setUser(u);
+    const unsub = onIdTokenChanged(auth, async (nextUser) => {
+      setUser(nextUser);
       try {
-        if (u) {
-          const token = await u.getIdToken();
+        if (nextUser) {
+          const token = await nextUser.getIdToken(!getCachedAuthToken());
           setIdToken(token);
-          const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-          document.cookie = `firebase-token=${token}; path=/; max-age=3600; SameSite=Lax${secure}`;
+          setCachedAuthToken(token);
+          writeAuthCookie(token);
         } else {
           setIdToken(null);
-          document.cookie = 'firebase-token=; path=/; max-age=0';
+          setCachedAuthToken(null);
+          writeAuthCookie(null);
         }
       } catch {
         setIdToken(null);
-        document.cookie = 'firebase-token=; path=/; max-age=0';
+        setCachedAuthToken(null);
+        writeAuthCookie(null);
       } finally {
         setLoading(false);
       }
@@ -58,20 +67,13 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
     return unsub;
   }, []);
 
-  async function waitForSession() {
-    if (!auth) throw new Error('Auth is not available');
-    const user = auth.currentUser;
-    if (!user) return;
-    const token = await user.getIdToken();
-    setIdToken(token);
-    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = `firebase-token=${token}; path=/; max-age=3600; SameSite=Lax${secure}`;
-  }
-
   async function signIn(email: string, password: string) {
     if (!auth) throw new Error('Auth is not available');
-    await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
-    await waitForSession();
+    const credential = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+    const token = await syncSession(credential.user, true);
+    setUser(credential.user);
+    setIdToken(token);
+    setLoading(false);
   }
 
   async function signUp(email: string, password: string, companyName?: string) {
@@ -80,7 +82,10 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
     if (companyName?.trim()) {
       await updateProfile(credential.user, { displayName: companyName.trim() });
     }
-    await waitForSession();
+    const token = await syncSession(credential.user, true);
+    setUser(credential.user);
+    setIdToken(token);
+    setLoading(false);
   }
 
   async function resetPassword(email: string) {
@@ -90,11 +95,13 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
 
   async function signOut() {
     if (!auth) return;
+    setCachedAuthToken(null);
+    writeAuthCookie(null);
     await firebaseSignOut(auth);
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, idToken, signIn, signUp, resetPassword, signOut, waitForSession }}>
+    <AuthContext.Provider value={{ user, loading, idToken, signIn, signUp, resetPassword, signOut }}>
       {children}
     </AuthContext.Provider>
   );

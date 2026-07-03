@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Yuletide Lighting Crew",
+    "slug": "yuletide-lighting-crew",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "scheme": "yuletidelighting",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "requireFullScreen": false,
+      "bundleIdentifier": "com.yuletidelighting.crew"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#1a3a4a"
+      },
+      "package": "com.yuletidelighting.crew"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Yuletide to access your photos for install documentation.",
+          "cameraPermission": "Allow Yuletide to use your camera for property and install photos."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1a3a4a"
+        }
+      ],
+      "expo-location"
+    ],
+    "extra": {
+      "apiUrl": "https://yuletide-lighting.web.app"
+    }
+  }
+}

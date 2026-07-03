@@ -1,0 +1,142 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+:root {
+  --background: 40 33% 98%;
+  --foreground: 224 32% 12%;
+  --surface: 0 0% 100%;
+  --muted: 220 16% 96%;
+  --muted-foreground: 220 9% 46%;
+  --border: 220 14% 90%;
+  --primary: 346 77% 48%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 38 92% 50%;
+  --accent-foreground: 224 32% 12%;
+  --sidebar: 224 32% 10%;
+  --sidebar-foreground: 220 14% 96%;
+  --sidebar-muted: 220 10% 65%;
+  --ring: 346 77% 48%;
+  --radius: 0.875rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/25 active:translate-y-0;
+  }
+
+  .btn-secondary {
+    @apply btn border border-border bg-surface text-foreground hover:border-primary/30 hover:bg-muted/80;
+  }
+
+  .btn-ghost {
+    @apply btn text-muted-foreground hover:bg-muted hover:text-foreground;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/15;
+  }
+
+  select.input {
+    background-color: hsl(var(--surface));
+    color: hsl(var(--foreground));
+  }
+
+  select.input option {
+    background-color: hsl(var(--surface));
+    color: hsl(var(--foreground));
+  }
+
+  .card {
+    @apply rounded-2xl border border-border/70 bg-surface shadow-sm shadow-black/[0.03];
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md hover:shadow-primary/5;
+  }
+
+  .page-header {
+    @apply mb-8;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold tracking-tight text-foreground sm:text-3xl;
+  }
+
+  .page-subtitle {
+    @apply mt-1 text-sm text-muted-foreground sm:text-base;
+  }
+
+  .mesh-bg {
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(at 0% 0%, hsl(346 77% 48% / 0.08) 0, transparent 50%),
+      radial-gradient(at 100% 0%, hsl(38 92% 50% / 0.1) 0, transparent 45%),
+      radial-gradient(at 50% 100%, hsl(160 40% 40% / 0.06) 0, transparent 50%);
+  }
+
+  .auth-panel-bg {
+    background:
+      linear-gradient(165deg, #2e2e38 0%, #26262f 42%, #32323c 100%);
+  }
+
+  .auth-form-bg {
+    background:
+      linear-gradient(180deg, hsl(40 33% 99%) 0%, hsl(40 20% 97%) 100%);
+  }
+
+  .glass-nav {
+    @apply border-b border-border/60 bg-surface/80 backdrop-blur-xl;
+  }
+
+  .data-table {
+    @apply w-full text-left text-sm;
+  }
+
+  .data-table thead {
+    @apply border-b border-border bg-muted/50;
+  }
+
+  .data-table th {
+    @apply px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground;
+  }
+
+  .data-table td {
+    @apply px-4 py-3.5;
+  }
+
+  .data-table tbody tr {
+    @apply border-b border-border/70 transition-colors last:border-0 hover:bg-muted/40;
+  }
+
+  .safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .safe-top {
+    padding-top: max(0rem, env(safe-area-inset-top));
+  }
+}

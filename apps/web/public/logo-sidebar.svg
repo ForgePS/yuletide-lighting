@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 899" role="img" aria-label="CRM">
+  <defs>
+    <filter id="remove-white-background" color-interpolation-filters="sRGB">
+      <!-- Key out near-white background pixels while preserving the saturated artwork. -->
+      <feColorMatrix
+        in="SourceGraphic"
+        type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+               -20 -20 -20 0 59"
+      />
+    </filter>
+  </defs>
+
+  <image
+    href="/logo.png"
+    width="1024"
+    height="899"
+    filter="url(#remove-white-background)"
+    preserveAspectRatio="xMidYMid meet"
+  />
+
+  <rect x="220" y="642" width="584" height="138" fill="#111827" />
+
+  <text
+    x="512"
+    y="730"
+    text-anchor="middle"
+    fill="#ffffff"
+    font-family="Arial Black, Montserrat, Arial, sans-serif"
+    font-size="72"
+    font-weight="900"
+    letter-spacing="18"
+  >CRM</text>
+</svg>

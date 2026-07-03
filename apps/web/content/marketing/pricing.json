@@ -1,0 +1,32 @@
+{
+  "title": "Simple pricing for growing installers",
+  "subtitle": "14-day free trial. No credit card required to start.",
+  "plans": [
+    {
+      "name": "Monthly",
+      "price": "$75",
+      "period": "per month",
+      "highlight": false,
+      "features": [
+        "10 users included",
+        "Additional users $7/mo each",
+        "Unlimited customers & proposals",
+        "Inventory & scheduling",
+        "Crew mobile app"
+      ]
+    },
+    {
+      "name": "Annual",
+      "price": "$750",
+      "period": "per year ($62.50/mo)",
+      "badge": "Save $150",
+      "highlight": true,
+      "features": [
+        "Everything in monthly",
+        "Priority support",
+        "Onboarding call",
+        "Best for full-season teams"
+      ]
+    }
+  ]
+}

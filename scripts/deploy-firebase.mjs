@@ -73,16 +73,28 @@ function buildTinaAdmin() {
     console.log('Skipping Tina admin build — set NEXT_PUBLIC_TINA_CLIENT_ID and TINA_TOKEN in .env');
     return;
   }
+  const tinaEnv = Object.fromEntries(
+    ['NEXT_PUBLIC_TINA_CLIENT_ID', 'TINA_TOKEN', 'NEXT_PUBLIC_TINA_BRANCH', 'GITHUB_BRANCH']
+      .map((key) => [key, parseEnvValue(lines, key)])
+      .filter(([, value]) => value),
+  );
   console.log('Building Tina CMS admin for production...');
   execSync('npx tinacms build --skip-cloud-checks --datalayer-port 9001', {
     cwd: webRoot,
     stdio: 'inherit',
-    env: { ...process.env, ...Object.fromEntries(
-      ['NEXT_PUBLIC_TINA_CLIENT_ID', 'TINA_TOKEN', 'NEXT_PUBLIC_TINA_BRANCH', 'GITHUB_BRANCH']
-        .map((key) => [key, parseEnvValue(lines, key)])
-        .filter(([, value]) => value),
-    ) },
+    env: { ...process.env, ...tinaEnv },
   });
+  const adminDir = path.join(webRoot, 'public/admin/assets');
+  const assets = fs.existsSync(adminDir)
+    ? fs.readdirSync(adminDir).filter((name) => name.endsWith('.js'))
+    : [];
+  for (const file of assets) {
+    const js = fs.readFileSync(path.join(adminDir, file), 'utf8');
+    if (js.includes('clientId:"local"') || js.includes("clientId:'local'")) {
+      throw new Error(`Tina admin bundle ${file} still uses clientId=local. Check .env credentials.`);
+    }
+  }
+  console.log('Tina admin verified — Cloud client ID embedded.');
 }
 
 function restoreEnv() {

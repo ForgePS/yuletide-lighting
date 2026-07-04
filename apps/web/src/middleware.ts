@@ -8,6 +8,7 @@ const publicPaths = [
   '/sign-up',
   '/admin',
   '/admin/',
+  '/exit-admin',
   '/p/',
   '/pay/',
   '/portal/',

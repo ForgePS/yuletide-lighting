@@ -19,7 +19,7 @@ const iconOptions = [
 
 export default defineConfig({
   branch,
-  clientId: process.env.NEXT_PUBLIC_TINA_CLIENT_ID ?? 'local',
+  clientId: process.env.NEXT_PUBLIC_TINA_CLIENT_ID ?? 'b17e495a-4dd4-4314-b4c8-7e816567433b',
   token: process.env.TINA_TOKEN ?? 'local',
   build: {
     outputFolder: 'admin',

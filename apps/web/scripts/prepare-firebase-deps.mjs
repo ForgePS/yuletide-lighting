@@ -218,10 +218,15 @@ function prepare() {
 
 
   if (fs.existsSync(webLockPath)) fs.rmSync(webLockPath);
-  execSync('npm install --package-lock-only --ignore-scripts --no-audit --no-fund', {
+  execSync('npm install --package-lock-only --ignore-scripts --no-audit --no-fund --workspaces=false', {
     cwd: webRoot,
     stdio: 'inherit',
+    env: { ...process.env, npm_config_workspaces: 'false' },
   });
+
+  if (!fs.existsSync(webLockPath)) {
+    throw new Error('Failed to generate apps/web/package-lock.json for Firebase deploy.');
+  }
 
 
 

@@ -8,6 +8,7 @@ const FOOTER_LINKS = [
   { href: '/services', label: 'Services' },
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
+  { href: '/for-installers', label: 'Yuletide CRM' },
   { href: '/sign-in', label: 'CRM login' },
 ] as const;
 
@@ -15,7 +16,7 @@ export function MarketingFooter({ tagline }: { tagline?: string }) {
   return (
     <footer className="border-t border-white/10 bg-[#0c1222] text-white">
       <div className="mx-auto max-w-6xl px-6 py-16">
-        <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-5">
           <div className="lg:col-span-2">
             <p className="font-display text-2xl font-bold tracking-tight">{COMPANY.name}</p>
             <p className="mt-2 max-w-sm text-sm leading-relaxed text-white/60">
@@ -47,6 +48,16 @@ export function MarketingFooter({ tagline }: { tagline?: string }) {
                   </Link>
                 </li>
               ))}
+            </ul>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-amber-400/80">Installers</p>
+            <ul className="mt-4 space-y-2 text-sm text-white/70">
+              <li><Link href="/for-installers" className="transition-colors hover:text-white">Yuletide CRM overview</Link></li>
+              <li><Link href="/for-installers/features" className="transition-colors hover:text-white">Features</Link></li>
+              <li><Link href="/for-installers/pricing" className="transition-colors hover:text-white">Pricing</Link></li>
+              <li><Link href="/sign-up" className="transition-colors hover:text-white">Start free trial</Link></li>
             </ul>
           </div>
 

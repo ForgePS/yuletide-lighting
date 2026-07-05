@@ -9,6 +9,7 @@ import { ServiceAreaSection } from '@/components/marketing/sections/service-area
 import { TestimonialsSection } from '@/components/marketing/sections/testimonials-section';
 import { FaqSection } from '@/components/marketing/sections/faq-section';
 import { CtaSection } from '@/components/marketing/sections/cta-section';
+import { CrmPromoStrip } from '@/components/crm-marketing';
 import type { HomeContent } from '@/lib/marketing-content-types';
 
 export function HomePageView({ home }: { home: HomeContent }) {
@@ -23,6 +24,7 @@ export function HomePageView({ home }: { home: HomeContent }) {
         <ServiceAreaSection />
         <TestimonialsSection />
         <FaqSection />
+        <CrmPromoStrip />
         <CtaSection title={home.ctaTitle ?? undefined} body={home.ctaBody ?? undefined} button={home.ctaButton ?? undefined} />
       </main>
       <MarketingFooter tagline={home.footerText ?? undefined} />

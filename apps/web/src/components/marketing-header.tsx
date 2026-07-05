@@ -13,6 +13,7 @@ const NAV = [
   { href: '/about', label: 'About' },
   { href: '/#service-area', label: 'Service Area' },
   { href: '/contact', label: 'Contact' },
+  { href: '/for-installers', label: 'For Installers' },
 ] as const;
 
 export function MarketingHeader({ dark = false }: { dark?: boolean }) {
@@ -33,7 +34,12 @@ export function MarketingHeader({ dark = false }: { dark?: boolean }) {
 
         <nav className="hidden items-center gap-1 md:flex">
           {NAV.map(({ href, label }) => {
-            const active = href === '/#service-area' ? pathname === '/' : pathname === href;
+            const active =
+              href === '/#service-area'
+                ? pathname === '/'
+                : href === '/for-installers'
+                  ? pathname.startsWith('/for-installers')
+                  : pathname === href;
             return (
               <Link
                 key={href}

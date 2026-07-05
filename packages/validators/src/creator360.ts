@@ -69,6 +69,8 @@ export const platformSettingsSchema = z.object({
   defaultTrialDays: z.number().int().min(0).max(90),
   supportEmail: z.string().email().max(200),
   announcementBanner: z.string().max(500).nullable().optional(),
+  platformCreatorEmails: z.array(z.string().email().max(200)).optional(),
+  platformCreatorUids: z.array(z.string().min(1).max(128)).optional(),
 });
 
 export const creatorProvisionOrgSchema = z.object({

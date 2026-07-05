@@ -28,6 +28,7 @@ jobs:
           FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
           TINA_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_TINA_CLIENT_ID }}
           TINA_TOKEN: ${{ secrets.TINA_TOKEN }}
+          PLATFORM_CREATOR_EMAILS: ${{ secrets.PLATFORM_CREATOR_EMAILS }}
         run: |
           cat > .env <<EOF
           NEXT_PUBLIC_FIREBASE_API_KEY=${FIREBASE_API_KEY}
@@ -38,6 +39,7 @@ jobs:
           NEXT_PUBLIC_FIREBASE_APP_ID=${FIREBASE_APP_ID}
           NEXT_PUBLIC_TINA_CLIENT_ID=${TINA_CLIENT_ID}
           TINA_TOKEN=${TINA_TOKEN}
+          PLATFORM_CREATOR_EMAILS=${PLATFORM_CREATOR_EMAILS}
           NEXT_PUBLIC_TINA_BRANCH=main
           NEXT_PUBLIC_APP_URL=https://yuletide-lighting.web.app
           EOF

@@ -22,6 +22,7 @@ import {
   type OrganizationRecord,
   type UserRecord,
 } from './firestore';
+import { inviteOrgUser } from './settings360';
 import {
   getOrgSubscriptionState,
   isSubscriptionLocked,
@@ -57,6 +58,23 @@ export function isPlatformCreator(email: string, firebaseUid?: string | null) {
   const uids = parseCreatorAllowList(process.env.PLATFORM_CREATOR_UIDS);
   if (emails.includes(email.trim().toLowerCase())) return true;
   if (firebaseUid && uids.includes(firebaseUid.trim().toLowerCase())) return true;
+  return false;
+}
+
+/** Env allowlist + Firestore platform/config operator list. */
+export async function resolvePlatformCreator(email: string, firebaseUid?: string | null): Promise<boolean> {
+  if (isPlatformCreator(email, firebaseUid)) return true;
+  try {
+    const settings = await getPlatformSettings();
+    const emails = (settings.platformCreatorEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean);
+    if (emails.includes(email.trim().toLowerCase())) return true;
+    if (firebaseUid) {
+      const uids = (settings.platformCreatorUids ?? []).map((u) => u.trim().toLowerCase()).filter(Boolean);
+      if (uids.includes(firebaseUid.trim().toLowerCase())) return true;
+    }
+  } catch {
+    // Firestore unavailable — env allowlist only
+  }
   return false;
 }
 
@@ -105,6 +123,8 @@ export async function updatePlatformSettings(
     hostingUrl: input.hostingUrl ?? null,
     docsUrl: input.docsUrl ?? null,
     announcementBanner: input.announcementBanner ?? null,
+    platformCreatorEmails: (input.platformCreatorEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean),
+    platformCreatorUids: (input.platformCreatorUids ?? []).map((u) => u.trim().toLowerCase()).filter(Boolean),
   };
   await db.collection('platform').doc('config').set({ ...payload, updatedAt: now }, { merge: true });
   await logPlatformAudit({
@@ -720,12 +740,48 @@ export async function provisionCreatorOrganization(
     details: { ownerEmail: input.ownerEmail ?? null, trialDays, note: input.note ?? null },
   });
 
-  return { organizationId: orgRef.id, companyName: input.companyName.trim(), trialEndsAt };
+  let ownerInviteSent = false;
+  if (input.ownerEmail?.trim()) {
+    try {
+      await inviteOrgUser(
+        orgRef.id,
+        { email: input.ownerEmail.trim(), role: 'owner' },
+        actor.userId,
+        actor.email,
+      );
+      ownerInviteSent = true;
+    } catch (err) {
+      await logPlatformAudit({
+        action: 'org_note',
+        actorEmail: actor.email,
+        actorUserId: actor.userId,
+        organizationId: orgRef.id,
+        organizationName: input.companyName.trim(),
+        details: {
+          note: 'Owner invite failed during provision',
+          ownerEmail: input.ownerEmail,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    }
+  }
+
+  return {
+    organizationId: orgRef.id,
+    companyName: input.companyName.trim(),
+    trialEndsAt,
+    ownerInviteSent,
+  };
 }
 
 export async function listPlatformCreatorAccounts(): Promise<Array<{ id: string; email: string; firstName: string | null; lastName: string | null }>> {
-  const emails = parseCreatorAllowList(process.env.PLATFORM_CREATOR_EMAILS);
-  const uids = parseCreatorAllowList(process.env.PLATFORM_CREATOR_UIDS);
+  const envEmails = parseCreatorAllowList(process.env.PLATFORM_CREATOR_EMAILS);
+  const envUids = parseCreatorAllowList(process.env.PLATFORM_CREATOR_UIDS);
+  const settings = await getPlatformSettings();
+  const configEmails = (settings.platformCreatorEmails ?? []).map((e) => e.trim().toLowerCase());
+  const configUids = (settings.platformCreatorUids ?? []).map((u) => u.trim().toLowerCase());
+  const emails = [...new Set([...envEmails, ...configEmails])];
+  const uids = [...new Set([...envUids, ...configUids])];
   if (emails.length === 0 && uids.length === 0) return [];
 
   const users = await loadAllUsers();

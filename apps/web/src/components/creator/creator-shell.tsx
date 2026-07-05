@@ -91,8 +91,10 @@ export function CreatorGate({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-100 p-6">
         <h1 className="text-xl font-bold text-slate-900">Creator access required</h1>
         <p className="max-w-md text-center text-sm text-muted-foreground">
-          The Creator Console is restricted to platform operator accounts listed in PLATFORM_CREATOR_EMAILS.
+          The Creator Console is for platform operators only. Ask an existing operator to add your email under
+          Platform → Platform operators, or set PLATFORM_CREATOR_EMAILS in deploy environment variables.
         </p>
+        <p className="text-xs text-muted-foreground">Signed in as {user?.email}</p>
         <Link href="/app" className="btn-primary">Back to app</Link>
       </div>
     );

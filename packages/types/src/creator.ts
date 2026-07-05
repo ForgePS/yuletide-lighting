@@ -91,6 +91,9 @@ export type PlatformSettings = {
   defaultTrialDays: number;
   supportEmail: string;
   announcementBanner?: string | null;
+  /** Additional platform operators (beyond PLATFORM_CREATOR_EMAILS env). */
+  platformCreatorEmails?: string[];
+  platformCreatorUids?: string[];
   updatedAt?: Date;
 };
 
@@ -112,6 +115,7 @@ export type CreatorProvisionResult = {
   organizationId: string;
   companyName: string;
   trialEndsAt: Date;
+  ownerInviteSent: boolean;
 };
 
 export type CreatorDashboardKpis = {
@@ -230,4 +234,6 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   defaultTrialDays: 14,
   supportEmail: 'support@yuletide.com',
   announcementBanner: null,
+  platformCreatorEmails: [],
+  platformCreatorUids: [],
 };

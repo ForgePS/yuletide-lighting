@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { DM_Sans } from 'next/font/google';
+import { DM_Sans, Playfair_Display } from 'next/font/google';
 import { FirebaseAuthProvider } from '@/lib/firebase-auth';
 import './globals.css';
 
@@ -9,23 +9,40 @@ const dmSans = DM_Sans({
   display: 'swap',
 });
 
+const playfair = Playfair_Display({
+  subsets: ['latin'],
+  variable: '--font-display',
+  display: 'swap',
+});
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
   viewportFit: 'cover',
-  themeColor: '#DC2626',
+  themeColor: '#0c1222',
 };
 
 export const metadata: Metadata = {
-  title: 'Yuletide Lighting Co. — Christmas Light Business Software',
+  title: {
+    default: 'Yuletide Lighting Co. — Christmas Light Installation in Arkansas',
+    template: '%s | Yuletide Lighting Co.',
+  },
   description:
-    'All-in-one CRM for Christmas light installers. Proposals, invoicing, inventory, scheduling, and crew management.',
+    'Professional Christmas light installation for homes and businesses in Eastern & Southeast Arkansas. Custom design, install, takedown, and storage. Call 870-588-7841.',
+  keywords: ['Christmas lights', 'holiday lighting', 'Arkansas', 'DeWitt', 'Stuttgart', 'Pine Bluff', 'light installation'],
   icons: {
     icon: '/logo.png',
     apple: '/logo.png',
   },
   manifest: '/manifest.webmanifest',
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    siteName: 'Yuletide Lighting Co.',
+    title: 'Yuletide Lighting Co. — Christmas Light Installation',
+    description: 'Custom holiday lighting across Eastern & Southeast Arkansas.',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -35,7 +52,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={dmSans.variable}>
+    <html lang="en" className={`${dmSans.variable} ${playfair.variable}`}>
       <body className="font-sans">
         <FirebaseAuthProvider>{children}</FirebaseAuthProvider>
       </body>

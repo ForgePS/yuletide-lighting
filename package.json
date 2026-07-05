@@ -51,5 +51,8 @@
       "expo-status-bar": "~3.0.9",
       "expo-constants": "~18.0.13"
     }
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.62.2"
   }
 }

@@ -3,16 +3,22 @@
 import Link from 'next/link';
 import { Check } from 'lucide-react';
 import { MarketingHeader } from '@/components/marketing-header';
+import { MarketingFooter } from '@/components/marketing-footer';
 import type { PricingContent } from '@/lib/marketing-content-types';
 
 export function PricingPageView({ pricing }: { pricing: PricingContent }) {
   return (
-    <div className="mesh-bg min-h-screen">
+    <div className="min-h-screen bg-background">
       <MarketingHeader />
       <main className="mx-auto max-w-5xl px-6 py-16 sm:py-24">
         <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{pricing.title}</h1>
+          <p className="text-sm font-semibold uppercase tracking-widest text-primary">For lighting professionals</p>
+          <h1 className="font-display mt-3 text-4xl font-bold tracking-tight sm:text-5xl">{pricing.title}</h1>
           <p className="mx-auto mt-4 max-w-xl text-lg text-muted-foreground">{pricing.subtitle}</p>
+          <p className="mx-auto mt-4 text-sm text-muted-foreground">
+            Looking for holiday light installation?{' '}
+            <Link href="/contact" className="text-primary hover:underline">Get a quote for your home or business</Link>.
+          </p>
         </div>
 
         <div className="mt-14 grid gap-6 md:grid-cols-2">
@@ -62,6 +68,7 @@ export function PricingPageView({ pricing }: { pricing: PricingContent }) {
           })}
         </div>
       </main>
+      <MarketingFooter tagline="Business software for professional Christmas light installers." />
     </div>
   );
 }

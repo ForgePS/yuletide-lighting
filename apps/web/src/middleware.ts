@@ -3,6 +3,9 @@ import type { NextRequest } from 'next/server';
 
 const publicPaths = [
   '/',
+  '/services',
+  '/about',
+  '/contact',
   '/pricing',
   '/sign-in',
   '/sign-up',

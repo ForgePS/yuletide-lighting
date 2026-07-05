@@ -20,6 +20,7 @@ import { cn } from '@clcrm/ui';
 import { useAuth } from '@/lib/firebase-auth';
 import { trpc } from '@/lib/trpc';
 import { SidebarLogo } from '@/components/sidebar-logo';
+import { CRM_LOGO_SRC } from '@/lib/brand-assets';
 import type { CreatorConsoleTab } from './creator-console';
 
 const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; tab: CreatorConsoleTab }> = [
@@ -116,7 +117,12 @@ export function CreatorShell({ children }: { children: React.ReactNode }) {
     <>
       <div className="border-b border-white/10 p-4">
         <div className="flex flex-col gap-1">
-          <SidebarLogo href="/creator" onClick={() => setMobileOpen(false)} imageClassName="h-9 w-full max-w-[160px]" />
+          <SidebarLogo
+            href="/creator"
+            src={CRM_LOGO_SRC}
+            onClick={() => setMobileOpen(false)}
+            imageClassName="h-9 w-full max-w-[160px]"
+          />
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Creator Console</p>
           <p className="text-[10px] text-slate-500">{settings?.productLabel ?? 'Platform Admin'}</p>
         </div>

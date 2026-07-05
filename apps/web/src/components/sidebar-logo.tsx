@@ -18,7 +18,7 @@ export function SidebarLogo({
     <img
       src="/logo.png"
       alt="Yuletide Lighting Co."
-      className={cn('h-auto w-auto object-contain object-left', imageClassName)}
+      className={cn('h-auto w-auto bg-transparent object-contain object-left', imageClassName)}
     />
   );
 

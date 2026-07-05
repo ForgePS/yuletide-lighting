@@ -37,7 +37,7 @@ export function Logo({
       width={width}
       height={imgHeight}
       priority={priority}
-      className={cn('h-auto w-auto object-contain object-left', imageClassName)}
+      className={cn('h-auto w-auto bg-transparent object-contain object-left', imageClassName)}
       style={{ height: imgHeight, width: 'auto', maxWidth: width }}
     />
   );

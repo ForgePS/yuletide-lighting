@@ -123,6 +123,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const { data: me } = trpc.settings360.me.useQuery(undefined, {
+    enabled: deferSecondaryQueries && !authLoading && !!user,
+    staleTime: 60_000,
+  });
   const { data: billing, isLoading: billingLoading } = trpc.billing.status.useQuery(undefined, {
     enabled: deferSecondaryQueries && !authLoading && !!user,
     staleTime: 30_000,
@@ -141,6 +145,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!subscriptionRedirectPending) return;
     router.replace('/app/settings/subscription');
   }, [subscriptionRedirectPending, router]);
+
+  useEffect(() => {
+    if (!me?.isFieldOnly || pathname.startsWith('/app/field')) return;
+    router.replace('/app/field');
+  }, [me?.isFieldOnly, pathname, router]);
 
   const visibleNav = subscriptionRedirectPending
     ? [{ href: '/app/settings/subscription', label: 'Subscription', icon: CreditCard, exact: true }]

@@ -1,7 +1,12 @@
 'use client';
 
 import { FirebaseAuthProvider } from '@/lib/firebase-auth';
+import { TRPCProvider } from '@/lib/trpc';
 
 export default function AuthPagesLayout({ children }: { children: React.ReactNode }) {
-  return <FirebaseAuthProvider>{children}</FirebaseAuthProvider>;
+  return (
+    <FirebaseAuthProvider>
+      <TRPCProvider>{children}</TRPCProvider>
+    </FirebaseAuthProvider>
+  );
 }

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/firebase-auth';
 import { AuthLayout } from '@/components/auth-layout';
 import { authErrorMessage } from '@/lib/auth-errors';
+import { trpc } from '@/lib/trpc';
+import { defaultAppHome } from '@/lib/field-utils';
 
 export default function SignInPage() {
   const { signIn, user, loading } = useAuth();
@@ -15,13 +17,17 @@ export default function SignInPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!loading && user) {
-      router.replace('/app');
-    }
-  }, [loading, user, router]);
+  const { data: me, isLoading: meLoading } = trpc.settings360.me.useQuery(undefined, {
+    enabled: !!user && !loading,
+    staleTime: 60_000,
+  });
 
-  if (loading) {
+  useEffect(() => {
+    if (!user || loading || meLoading) return;
+    router.replace(defaultAppHome(me));
+  }, [user, loading, meLoading, me, router]);
+
+  if (loading || (user && meLoading)) {
     return (
       <AuthLayout title="Welcome back" subtitle="Sign in to your installer account">
         <p className="mt-6 text-center text-sm text-muted-foreground">Loading...</p>
@@ -43,10 +49,8 @@ export default function SignInPage() {
     setBusy(true);
     try {
       await signIn(email, password);
-      router.replace('/app');
     } catch (err) {
       setError(authErrorMessage(err, 'Invalid email or password'));
-    } finally {
       setBusy(false);
     }
   }

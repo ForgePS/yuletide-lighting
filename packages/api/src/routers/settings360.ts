@@ -68,7 +68,7 @@ import {
   auditLogFilterSchema,
   settingsRoleSchema,
 } from '@clcrm/validators';
-import { router, adminProcedure, officeProcedure } from '../trpc';
+import { router, adminProcedure, officeProcedure, protectedProcedure } from '../trpc';
 
 export const settings360Router = router({
   dashboard: officeProcedure.query(({ ctx }) => getSettingsDashboard(ctx.auth.organizationId)),
@@ -186,4 +186,35 @@ export const settings360Router = router({
   createBackup: adminProcedure.mutation(({ ctx }) =>
     createBackup(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email),
   ),
+
+  me: protectedProcedure.query(async ({ ctx }) => {
+    const users = await listOrgUsers(ctx.auth.organizationId);
+    const profile =
+      users.find((u) => u.firebaseUid === ctx.auth.firebaseUid || u.id === ctx.auth.userId) ?? null;
+    const role = profile?.role ?? 'installer';
+    const fieldRoles = new Set(['installer', 'crew_leader', 'warehouse_staff']);
+    const officeRoles = new Set([
+      'owner',
+      'administrator',
+      'sales_manager',
+      'sales_rep',
+      'operations_manager',
+      'dispatcher',
+      'office_staff',
+    ]);
+    return {
+      id: profile?.id ?? ctx.auth.userId,
+      email: profile?.email ?? ctx.auth.email,
+      firstName: profile?.firstName ?? null,
+      lastName: profile?.lastName ?? null,
+      role,
+      legacyRole: ctx.auth.role,
+      isFieldUser: fieldRoles.has(role) || ctx.auth.role === 'crew',
+      isFieldOnly: fieldRoles.has(role) && !officeRoles.has(role) && !['owner', 'admin', 'office'].includes(ctx.auth.role),
+      canAccessOfficeCrm:
+        ['owner', 'admin', 'office'].includes(ctx.auth.role) ||
+        officeRoles.has(role) ||
+        role === 'crew_leader',
+    };
+  }),
 });

@@ -37,6 +37,7 @@ import {
 import { useState, useEffect } from 'react';
 import { SidebarLogo } from '@/components/sidebar-logo';
 import { AnalyticsYearBadge, AnalyticsYearFilter } from '@/lib/analytics-year-context';
+import { CRM_LOGO_SRC } from '@/lib/brand-assets';
 
 const navItems = [
   { href: '/app', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -165,6 +166,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="border-b border-white/10 p-4">
         <SidebarLogo
           href="/app"
+          src={CRM_LOGO_SRC}
           onClick={() => setMobileOpen(false)}
           imageClassName="h-11 w-full max-w-[200px] object-contain object-left"
         />
@@ -222,7 +224,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <SidebarLogo href="/app" imageClassName="h-9" />
+          <SidebarLogo href="/app" src={CRM_LOGO_SRC} imageClassName="h-9" />
           {mobileOpen && (
             <button onClick={() => setMobileOpen(false)} className="ml-auto btn-ghost rounded-lg p-2">
               <X className="h-5 w-5" />

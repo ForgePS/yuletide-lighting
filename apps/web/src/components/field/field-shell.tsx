@@ -6,6 +6,7 @@ import { cn } from '@clcrm/ui';
 import { useAuth } from '@/lib/firebase-auth';
 import { trpc } from '@/lib/trpc';
 import { FIELD_NAV } from '@/lib/field-utils';
+import { CRM_LOGO_SRC } from '@/lib/brand-assets';
 import { SidebarLogo } from '@/components/sidebar-logo';
 import { Calendar, Clock, LogOut, MapPin, Megaphone, Monitor } from 'lucide-react';
 
@@ -31,7 +32,7 @@ export function FieldShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen flex-col bg-muted/30">
       <header className="sticky top-0 z-40 border-b border-border bg-surface/95 px-4 py-3 backdrop-blur safe-top">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
-          <SidebarLogo href="/app/field" imageClassName="h-9" />
+          <SidebarLogo href="/app/field" src={CRM_LOGO_SRC} imageClassName="h-9" />
           <div className="flex items-center gap-2">
             {me?.canAccessOfficeCrm && (
               <Link href="/app" className="btn-secondary hidden text-xs sm:inline-flex">

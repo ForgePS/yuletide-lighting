@@ -9,7 +9,7 @@
   "theme_color": "#0c1222",
   "icons": [
     {
-      "src": "/logo.png",
+      "src": "/logo-crm.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

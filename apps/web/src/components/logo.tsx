@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@clcrm/ui';
+import { CRM_LOGO_SRC } from '@/lib/brand-assets';
 
 type LogoProps = {
   href?: string;
@@ -22,7 +23,7 @@ export function Logo({
   href = '/',
   className,
   imageClassName,
-  src = '/logo.png',
+  src = CRM_LOGO_SRC,
   variant = 'full',
   priority = false,
   onClick,

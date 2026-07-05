@@ -32,6 +32,7 @@ import {
   Wrench,
   Star,
   Zap,
+  Megaphone,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { SidebarLogo } from '@/components/sidebar-logo';
@@ -52,6 +53,7 @@ const navItems = [
   { href: '/app/crew', label: 'Crew', icon: HardHat },
   { href: '/app/service-issues', label: 'Service Issues', icon: Wrench },
   { href: '/app/messages', label: 'Messages', icon: MessageSquare },
+  { href: '/app/marketing/sign-tracker', label: 'Sign Tracker', icon: Megaphone },
   { href: '/app/automation', label: 'Automation', icon: Zap },
   { href: '/app/reviews', label: 'Reviews', icon: Star },
   { href: '/app/schedule', label: 'Schedule', icon: Calendar },

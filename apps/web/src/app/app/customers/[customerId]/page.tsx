@@ -8,6 +8,7 @@ import {
   CustomerPortalCard,
   FollowUpRulesTable,
 } from '@/components/customers';
+import { CustomerSignMarketingCard } from '@/components/sign-tracker';
 import { formatServiceAddress, formatBillingAddress } from '@/components/customer-address-fields';
 import { LoadingState } from '@/components/ui/states';
 
@@ -26,6 +27,7 @@ export default function CustomerOverviewPage() {
         <CustomerInsightsCard insights={data.insights} />
         <CustomerPortalCard customerId={customerId} portal={data.portal} />
       </div>
+      <CustomerSignMarketingCard customerId={customerId} />
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="card p-6">
           <h2 className="font-semibold">Service address</h2>

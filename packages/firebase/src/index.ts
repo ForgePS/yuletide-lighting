@@ -28,3 +28,4 @@ export * from './reviews360';
 export * from './automation360';
 export * from './creator360';
 export * from './csv-import';
+export * from './signTracker360';

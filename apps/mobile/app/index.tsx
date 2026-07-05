@@ -83,9 +83,49 @@ export default function CrewHomeScreen() {
   }
 
   async function completeJob(jobId: string) {
-    await trpcMutation('crew.completeJob', { jobId });
-    Alert.alert('Complete', 'Job marked as installed.');
-    loadSchedule();
+    Alert.alert(
+      'Marketing sign',
+      'Did crew place a marketing sign at this job?',
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+          onPress: async () => {
+            await trpcMutation('crew.completeJob', { jobId });
+            Alert.alert('Complete', 'Job marked as installed.');
+            loadSchedule();
+          },
+        },
+        {
+          text: 'Yes',
+          onPress: async () => {
+            try {
+              const { status } = await Location.requestForegroundPermissionsAsync();
+              let latitude: number | undefined;
+              let longitude: number | undefined;
+              if (status === 'granted') {
+                const loc = await Location.getCurrentPositionAsync({});
+                latitude = loc.coords.latitude;
+                longitude = loc.coords.longitude;
+              }
+              await trpcMutation('crew.completeJob', { jobId });
+              await trpcMutation('signTracker360.createFromJob', {
+                jobId,
+                quantityPlaced: 1,
+                placementType: 'customer_yard',
+                latitude,
+                longitude,
+              });
+              Alert.alert('Complete', 'Job completed and sign location recorded.');
+              loadSchedule();
+            } catch {
+              Alert.alert('Error', 'Job completed but sign location could not be saved.');
+              loadSchedule();
+            }
+          },
+        },
+      ],
+    );
   }
 
   if (loading) {

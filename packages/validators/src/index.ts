@@ -274,3 +274,4 @@ export * from './crew360';
 export * from './reviews360';
 export * from './automation360';
 export * from './creator360';
+export * from './signTracker360';

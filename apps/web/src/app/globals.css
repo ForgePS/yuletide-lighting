@@ -1,6 +1,7 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
+@import 'mapbox-gl/dist/mapbox-gl.css';
 
 :root {
   --background: 40 33% 98%;

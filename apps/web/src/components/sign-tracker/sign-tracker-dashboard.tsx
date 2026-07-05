@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { SignCityBreakdown, SignLocation } from '@clcrm/types';
+import dynamic from 'next/dynamic';
+import type { SignCityBreakdown, SignLocationListItem, SignTrackerDashboard } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
-import { LoadingState } from '@/components/ui/states';
-import { SignTrackerMap } from './sign-tracker-map';
+import { useAuth } from '@/lib/firebase-auth';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 import { SignTrackerFiltersBar, type SignTrackerFilters } from './sign-tracker-filters';
 import { SignLocationDetail } from './sign-location-detail';
 import {
@@ -15,23 +16,25 @@ import {
   PLACEMENT_TYPE_LABELS,
 } from '@/lib/sign-tracker-utils';
 
-export function SignTrackerDashboardCards({ seasonYear }: { seasonYear: number }) {
-  const { data, isLoading } = trpc.signTracker360.dashboard.useQuery({ seasonYear });
-  if (isLoading || !data) return <LoadingState message="Loading sign stats..." />;
+const SignTrackerMap = dynamic(
+  () => import('./sign-tracker-map').then((m) => m.SignTrackerMap),
+  { ssr: false, loading: () => <LoadingState message="Loading map..." /> },
+);
 
+function DashboardCards({ dashboard }: { dashboard: SignTrackerDashboard }) {
   const cards = [
-    { label: 'Total Signs Placed', value: data.totalPlaced.toLocaleString() },
-    { label: 'Active Signs', value: data.activeSigns.toLocaleString() },
-    { label: 'Recovered Signs', value: data.recoveredSigns.toLocaleString() },
-    { label: 'Missing Signs', value: data.missingSigns.toLocaleString() },
-    { label: 'Loss %', value: `${data.lossPercentage}%` },
-    { label: 'Recovery Rate', value: `${data.recoveryRate}%` },
-    { label: 'Active Cities', value: String(data.activeCities) },
+    { label: 'Total Signs Placed', value: dashboard.totalPlaced.toLocaleString() },
+    { label: 'Active Signs', value: dashboard.activeSigns.toLocaleString() },
+    { label: 'Recovered Signs', value: dashboard.recoveredSigns.toLocaleString() },
+    { label: 'Missing Signs', value: dashboard.missingSigns.toLocaleString() },
+    { label: 'Loss %', value: `${dashboard.lossPercentage}%` },
+    { label: 'Recovery Rate', value: `${dashboard.recoveryRate}%` },
+    { label: 'Active Cities', value: String(dashboard.activeCities) },
   ];
 
   return (
     <div>
-      <p className="mb-3 text-sm font-medium text-muted-foreground">{seasonYear} Season</p>
+      <p className="mb-3 text-sm font-medium text-muted-foreground">{dashboard.seasonYear} Season</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {cards.map((c) => (
           <div key={c.label} className="card p-4">
@@ -86,8 +89,10 @@ function CityBreakdownList({
 }
 
 export function SignTrackerDashboard() {
+  const { idToken, loading: authLoading } = useAuth();
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState<SignLocation | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<SignLocationListItem | null>(null);
+  const [showMap, setShowMap] = useState(false);
   const [filters, setFilters] = useState<SignTrackerFilters>({
     seasonYear: currentSeasonYear(),
     city: '',
@@ -108,11 +113,30 @@ export function SignTrackerDashboard() {
     crewUserId: filters.crewUserId || undefined,
   };
 
-  const { data: locations, isLoading } = trpc.signTracker360.list.useQuery(queryFilters);
-  const { data: cities } = trpc.signTracker360.cities.useQuery({ seasonYear: filters.seasonYear });
+  const ready = !authLoading && !!idToken;
+  const { data, isLoading, isError, error, refetch } = trpc.signTracker360.pageData.useQuery(queryFilters, {
+    enabled: ready,
+    staleTime: 30_000,
+  });
   const utils = trpc.useUtils();
 
-  const cityList = [...new Set((locations ?? []).map((l) => l.location.city).filter(Boolean))];
+  const cityList = [...new Set((data?.locations ?? []).map((l) => l.location.city).filter(Boolean))];
+
+  if (!ready || isLoading) {
+    return <LoadingState message="Loading sign tracker..." />;
+  }
+
+  if (isError) {
+    return (
+      <ErrorState
+        title="Could not load sign tracker"
+        message={error.message.includes('UNAUTHORIZED') ? 'Please sign in again to continue.' : error.message}
+        onRetry={() => refetch()}
+      />
+    );
+  }
+
+  if (!data) return <LoadingState message="Loading sign tracker..." />;
 
   return (
     <div className="space-y-6">
@@ -124,19 +148,27 @@ export function SignTrackerDashboard() {
         </div>
       </div>
 
-      <SignTrackerDashboardCards seasonYear={filters.seasonYear} />
+      <DashboardCards dashboard={data.dashboard} />
       <SignTrackerFiltersBar filters={filters} cities={cityList} onChange={setFilters} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          {isLoading ? (
-            <LoadingState message="Loading map..." />
-          ) : (
+          {showMap ? (
             <SignTrackerMap
-              locations={locations ?? []}
+              locations={data.locations}
               selectedCity={selectedCity}
               onSelectLocation={setSelectedLocation}
             />
+          ) : (
+            <button
+              type="button"
+              className="card flex h-[400px] w-full flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+              onClick={() => setShowMap(true)}
+            >
+              <span className="text-4xl">🗺️</span>
+              <span className="font-medium">Load map</span>
+              <span className="text-xs">Tap to show {data.locations.length} locations</span>
+            </button>
           )}
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-full bg-green-500" /> Active</span>
@@ -146,13 +178,13 @@ export function SignTrackerDashboard() {
           </div>
         </div>
         <CityBreakdownList
-          cities={cities ?? []}
+          cities={data.cities}
           selectedCity={selectedCity}
           onSelectCity={setSelectedCity}
         />
       </div>
 
-      {locations && locations.length > 0 && (
+      {data.locations.length > 0 && (
         <div className="card overflow-x-auto p-4">
           <h3 className="mb-3 font-semibold">All Locations</h3>
           <table className="data-table w-full text-sm">
@@ -167,7 +199,7 @@ export function SignTrackerDashboard() {
               </tr>
             </thead>
             <tbody>
-              {locations.map((loc) => (
+              {data.locations.map((loc) => (
                 <tr key={loc.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedLocation(loc)}>
                   <td className="font-medium">{loc.location.address || '—'}</td>
                   <td>{loc.location.city}</td>
@@ -191,7 +223,7 @@ export function SignTrackerDashboard() {
           location={selectedLocation}
           onClose={() => setSelectedLocation(null)}
           onUpdated={() => {
-            utils.signTracker360.invalidate();
+            utils.signTracker360.pageData.invalidate();
             setSelectedLocation(null);
           }}
         />

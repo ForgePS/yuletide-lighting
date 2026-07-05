@@ -59,7 +59,7 @@ function createTrpcLinks() {
 }
 
 function TRPCInner({ children }: { children: ReactNode }) {
-  const { loading } = useAuth();
+  const { user, loading, idToken } = useAuth();
 
   const [queryClient] = useState(
     () =>
@@ -81,7 +81,7 @@ function TRPCInner({ children }: { children: ReactNode }) {
     }),
   );
 
-  if (loading) {
+  if (loading || (user && !idToken)) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
         Loading...

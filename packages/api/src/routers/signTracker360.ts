@@ -7,6 +7,7 @@ import {
   updateSignLocation,
   recoverSignLocation,
   reverseGeocodeSignLocation,
+  getSignTrackerPageData,
   getSignTrackerDashboard,
   getSignCityBreakdown,
   getSignPickupRoute,
@@ -37,6 +38,18 @@ function canManageSigns(role: string) {
 const crewOrOfficeProcedure = protectedProcedure.use(({ ctx, next }) => next({ ctx }));
 
 export const signTracker360Router = router({
+  pageData: protectedProcedure.input(signLocationFilterSchema.optional()).query(({ ctx, input }) =>
+    getSignTrackerPageData(ctx.auth.organizationId, {
+      seasonYear: input?.seasonYear,
+      city: input?.city,
+      status: input?.status,
+      placementType: input?.placementType,
+      dateFrom: input?.dateFrom ? new Date(input.dateFrom) : undefined,
+      dateTo: input?.dateTo ? new Date(input.dateTo) : undefined,
+      crewUserId: input?.crewUserId,
+    }),
+  ),
+
   dashboard: protectedProcedure
     .input(z.object({ seasonYear: z.number().int().optional() }).optional())
     .query(({ ctx, input }) => getSignTrackerDashboard(ctx.auth.organizationId, input?.seasonYear)),

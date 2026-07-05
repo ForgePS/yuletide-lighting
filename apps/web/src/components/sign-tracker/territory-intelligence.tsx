@@ -1,6 +1,7 @@
 'use client';
 
 import { trpc } from '@/lib/trpc';
+import { useAuth } from '@/lib/firebase-auth';
 import { LoadingState } from '@/components/ui/states';
 
 const FLAG_STYLES: Record<string, string> = {
@@ -18,7 +19,9 @@ const FLAG_LABELS: Record<string, string> = {
 };
 
 export function TerritoryIntelligence({ seasonYear }: { seasonYear: number }) {
-  const { data, isLoading } = trpc.signTracker360.territory.useQuery({ seasonYear });
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = !authLoading && !!idToken;
+  const { data, isLoading } = trpc.signTracker360.territory.useQuery({ seasonYear }, { enabled: ready });
 
   if (isLoading) return <LoadingState message="Analyzing territories..." />;
   if (!data?.length) {

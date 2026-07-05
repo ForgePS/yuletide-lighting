@@ -118,3 +118,14 @@ export type SignCampaignReport = {
 export type SignTrackerSettings = {
   costPerSignCents: number;
 };
+
+/** Lightweight list item — omits history for faster dashboard loads */
+export type SignLocationListItem = Omit<SignLocation, 'history'> & {
+  history?: SignLocationHistoryEntry[];
+};
+
+export type SignTrackerPageData = {
+  dashboard: SignTrackerDashboard;
+  cities: SignCityBreakdown[];
+  locations: SignLocationListItem[];
+};

@@ -2,11 +2,14 @@
 
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
+import { useAuth } from '@/lib/firebase-auth';
 import { STATUS_BADGE_CLASSES, STATUS_LABELS } from '@/lib/sign-tracker-utils';
 import { MapPin } from 'lucide-react';
 
 export function CustomerSignMarketingCard({ customerId }: { customerId: string }) {
-  const { data: signs } = trpc.signTracker360.byCustomer.useQuery({ customerId });
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = !authLoading && !!idToken;
+  const { data: signs } = trpc.signTracker360.byCustomer.useQuery({ customerId }, { enabled: ready });
   const hasSign = (signs?.length ?? 0) > 0;
   const latest = signs?.[0];
 

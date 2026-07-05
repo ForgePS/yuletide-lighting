@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { trpc } from '@/lib/trpc';
+import { useAuth } from '@/lib/firebase-auth';
 import { useToast } from '@/lib/toast';
 import { currentSeasonYear, PLACEMENT_TYPE_LABELS } from '@/lib/sign-tracker-utils';
 import type { SignPlacementType } from '@clcrm/types';
@@ -10,7 +11,9 @@ import { MapPin, Camera } from 'lucide-react';
 
 export function AddSignLocationForm() {
   const router = useRouter();
+  const { idToken, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const ready = !authLoading && !!idToken;
   const [step, setStep] = useState(1);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -31,7 +34,7 @@ export function AddSignLocationForm() {
 
   const reverseGeocode = trpc.signTracker360.reverseGeocode.useQuery(
     { latitude: form.latitude, longitude: form.longitude },
-    { enabled: form.latitude !== 0 && form.longitude !== 0 },
+    { enabled: ready && form.latitude !== 0 && form.longitude !== 0 },
   );
 
   const create = trpc.signTracker360.create.useMutation({

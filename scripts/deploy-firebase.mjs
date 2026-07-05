@@ -106,6 +106,43 @@ function restoreEnv() {
   }
 }
 
+function configureFirebaseAuth() {
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    console.log('Using GOOGLE_APPLICATION_CREDENTIALS for Firebase deploy.');
+    return;
+  }
+
+  const serviceAccountJson =
+    process.env.FIREBASE_SERVICE_ACCOUNT_YULETIDE_LIGHTING ??
+    process.env.FIREBASE_SERVICE_ACCOUNT ??
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+
+  if (serviceAccountJson?.trim()) {
+    const credPath = path.join(repoRoot, '.firebase-deploy-sa.json');
+    fs.writeFileSync(credPath, serviceAccountJson.trim());
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = credPath;
+    console.log('Using service account JSON for Firebase deploy (no FIREBASE_TOKEN needed).');
+    return;
+  }
+
+  if (process.env.FIREBASE_TOKEN) {
+    console.log('Using FIREBASE_TOKEN for Firebase deploy.');
+    return;
+  }
+
+  throw new Error(
+    'No Firebase deploy credentials found.\n' +
+      'Option A (recommended): run `firebase login` then `firebase init hosting:github` — Firebase uploads the GitHub secret for you.\n' +
+      'Option B (local only): run `firebase login` then `npm run deploy:hosting`.\n' +
+      'Option C: add FIREBASE_TOKEN or FIREBASE_SERVICE_ACCOUNT_YULETIDE_LIGHTING to GitHub secrets.',
+  );
+}
+
+function cleanupFirebaseAuth() {
+  const credPath = path.join(repoRoot, '.firebase-deploy-sa.json');
+  if (fs.existsSync(credPath)) fs.rmSync(credPath);
+}
+
 const nodeMajor = Number(process.version.slice(1).split('.')[0]);
 if (nodeMajor > 20) {
   console.warn(
@@ -118,12 +155,15 @@ if (nodeMajor > 20) {
 try {
   prepareEnv();
   buildTinaAdmin();
+  configureFirebaseAuth();
   execSync('node scripts/prepare-firebase-deps.mjs', { cwd: webRoot, stdio: 'inherit' });
-  execSync(`firebase deploy ${only} --project yuletide-lighting`.trim(), {
+  execSync(`npx firebase-tools deploy ${only} --project yuletide-lighting`.trim(), {
     cwd: repoRoot,
     stdio: 'inherit',
+    env: process.env,
   });
 } finally {
   execSync('node scripts/prepare-firebase-deps.mjs --restore', { cwd: webRoot, stdio: 'inherit' });
+  cleanupFirebaseAuth();
   restoreEnv();
 }

@@ -143,6 +143,19 @@ function cleanupFirebaseAuth() {
   if (fs.existsSync(credPath)) fs.rmSync(credPath);
 }
 
+function ensureWebFrameworksExperiment() {
+  console.log('Enabling Firebase webframeworks experiment (required for Next.js hosting)...');
+  try {
+    execSync('npx firebase-tools experiments:enable webframeworks --project yuletide-lighting', {
+      cwd: repoRoot,
+      stdio: 'inherit',
+      env: process.env,
+    });
+  } catch {
+    console.log('webframeworks experiment already enabled or enable skipped.');
+  }
+}
+
 const nodeMajor = Number(process.version.slice(1).split('.')[0]);
 if (nodeMajor > 20) {
   console.warn(
@@ -156,6 +169,7 @@ try {
   prepareEnv();
   buildTinaAdmin();
   configureFirebaseAuth();
+  ensureWebFrameworksExperiment();
   execSync('node scripts/prepare-firebase-deps.mjs', { cwd: webRoot, stdio: 'inherit' });
   execSync(`npx firebase-tools deploy ${only} --project yuletide-lighting`.trim(), {
     cwd: repoRoot,

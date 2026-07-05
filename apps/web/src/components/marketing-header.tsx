@@ -65,6 +65,15 @@ export function MarketingHeader({ dark = false }: { dark?: boolean }) {
           <Link href="/contact" className="btn-primary hidden sm:inline-flex">
             Get free quote
           </Link>
+          <Link
+            href="/sign-in"
+            className={cn(
+              'hidden rounded-lg px-3 py-2 text-sm font-medium transition-colors sm:inline-flex',
+              dark ? 'text-white/70 hover:text-white' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            CRM login
+          </Link>
           <button
             type="button"
             className={cn('btn-ghost p-2 md:hidden', dark && 'text-white')}
@@ -95,6 +104,13 @@ export function MarketingHeader({ dark = false }: { dark?: boolean }) {
             </a>
             <Link href="/contact" className="btn-primary mt-2 w-full" onClick={() => setOpen(false)}>
               Get free quote
+            </Link>
+            <Link
+              href="/sign-in"
+              className={cn('mt-2 rounded-lg px-3 py-3 text-sm font-medium', dark ? 'text-white/80' : 'text-foreground')}
+              onClick={() => setOpen(false)}
+            >
+              CRM login
             </Link>
           </nav>
         </div>

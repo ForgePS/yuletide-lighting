@@ -8,7 +8,7 @@ const FOOTER_LINKS = [
   { href: '/services', label: 'Services' },
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
-  { href: '/sign-in', label: 'Client portal' },
+  { href: '/sign-in', label: 'CRM login' },
 ] as const;
 
 export function MarketingFooter({ tagline }: { tagline?: string }) {

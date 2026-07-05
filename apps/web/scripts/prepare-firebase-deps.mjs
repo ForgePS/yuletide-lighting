@@ -213,7 +213,12 @@ function prepare() {
 
   }
 
+  // firebase-frameworks@0.11.x peer-optional sharp ^0.32 || ^0.33; Cloud Build runs npm ci strictly.
+  webPkg.dependencies.sharp = '0.33.5';
+
   fs.writeFileSync(webPkgPath, `${JSON.stringify(webPkg, null, 2)}\n`);
+
+  fs.writeFileSync(path.join(webRoot, '.npmrc'), 'legacy-peer-deps=true\n');
 
 
 

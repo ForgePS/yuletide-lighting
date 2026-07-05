@@ -29,7 +29,7 @@ export function MarketingHeader({ dark = false }: { dark?: boolean }) {
       )}
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <SidebarLogo href="/" imageClassName="h-10 sm:h-12" />
+        <SidebarLogo href="/" imageClassName="h-14 w-auto max-w-[220px] sm:h-16 sm:max-w-[260px]" />
 
         <nav className="hidden items-center gap-1 md:flex">
           {NAV.map(({ href, label }) => {

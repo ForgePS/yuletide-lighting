@@ -16,8 +16,8 @@ export function SidebarLogo({
 }: SidebarLogoProps) {
   const image = (
     <img
-      src="/logo-sidebar.svg"
-      alt="CRM"
+      src="/logo.png"
+      alt="Yuletide Lighting Co."
       className={cn('h-auto w-auto object-contain object-left', imageClassName)}
     />
   );

@@ -14,8 +14,8 @@ type LogoProps = {
 };
 
 const sizes = {
-  full: { width: 180, height: 72, markHeight: 48 },
-  mark: { width: 48, height: 48, markHeight: 48 },
+  full: { width: 280, height: 186, markHeight: 56 },
+  mark: { width: 56, height: 56, markHeight: 56 },
 };
 
 export function Logo({

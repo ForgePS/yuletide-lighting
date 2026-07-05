@@ -232,6 +232,23 @@ export async function crewClockOut(orgId: string, userId: string, userName: stri
   return { success: true };
 }
 
+export async function getCrewActiveClockIn(orgId: string, userId: string) {
+  const timeEntries = await colList<{
+    id: string;
+    userId: string;
+    jobId?: string;
+    clockIn: Date;
+    clockOut?: Date | null;
+  }>(orgId, 'timeEntries');
+  const active = timeEntries.find((e) => e.userId === userId && !e.clockOut);
+  if (!active) return null;
+  return {
+    id: active.id,
+    jobId: active.jobId ?? null,
+    clockInAt: active.clockIn,
+  };
+}
+
 export async function crewStartJob(orgId: string, userId: string, userName: string | null | undefined, jobId: string) {
   await colUpdate(orgId, 'jobs', jobId, { stage: 'installed', installedAt: new Date() });
   await logJobActivity(orgId, { jobId, userId, userName, action: 'job_started' });

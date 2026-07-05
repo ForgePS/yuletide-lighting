@@ -7,13 +7,14 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { Link } from 'expo-router';
 import * as Location from 'expo-location';
 
 import { ScreenContainer } from '@/components/screen-container';
 import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
-import { trpcQuery, trpcMutation } from '../lib/api';
+import { trpcQuery, trpcMutation } from '@/lib/api';
 
 type ScheduleItem = {
   job: {
@@ -42,7 +43,17 @@ export default function CrewHomeScreen() {
 
   useEffect(() => {
     loadSchedule();
+    loadActiveClock();
   }, []);
+
+  async function loadActiveClock() {
+    try {
+      const active = await trpcQuery('crew.getActiveClockIn');
+      setActiveEntryId(active?.id ?? null);
+    } catch {
+      // Non-fatal if clock status cannot load
+    }
+  }
 
   async function loadSchedule() {
     try {
@@ -138,7 +149,6 @@ export default function CrewHomeScreen() {
 
   return (
     <ScreenContainer>
-      <Text style={[styles.heading, isTablet && styles.headingTablet]}>Today&apos;s schedule</Text>
       <FlatList
         data={schedule}
         key={scheduleColumns}
@@ -197,8 +207,6 @@ export default function CrewHomeScreen() {
 const styles = StyleSheet.create({
   center: { justifyContent: 'center', alignItems: 'center' },
   listContent: { paddingBottom: 24 },
-  heading: { fontSize: 22, fontWeight: '700', marginBottom: 16, color: '#0F172A' },
-  headingTablet: { fontSize: 28, marginBottom: 24 },
   empty: { textAlign: 'center', color: '#64748B', marginTop: 40, fontSize: 16 },
   columnWrapper: { gap: 16 },
   card: {

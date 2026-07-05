@@ -38,7 +38,8 @@
       "expo-location"
     ],
     "extra": {
-      "apiUrl": "https://yuletide-lighting.web.app"
+      "apiUrl": "https://yuletide-lighting.web.app",
+      "firebaseApiKey": "AIzaSyD9jk7wARDfxpaYxigLKTJ13gK7eCBhCEY"
     }
   }
 }

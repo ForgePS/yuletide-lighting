@@ -15,6 +15,10 @@ export async function setAuthToken(token: string) {
   await SecureStore.setItemAsync(TOKEN_KEY, token);
 }
 
+export async function clearAuthToken() {
+  await SecureStore.deleteItemAsync(TOKEN_KEY);
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}) {
   const token = await getAuthToken();
   const headers = new Headers(init.headers);
@@ -35,10 +39,12 @@ export async function trpcMutation(procedure: string, input: unknown) {
   return data.result?.data?.json;
 }
 
-export async function trpcQuery(procedure: string, input: unknown) {
-  const res = await apiFetch(
-    `/api/trpc/${procedure}?input=${encodeURIComponent(JSON.stringify({ json: input }))}`,
-  );
+export async function trpcQuery(procedure: string, input?: unknown) {
+  const query =
+    input === undefined
+      ? ''
+      : `?input=${encodeURIComponent(JSON.stringify({ json: input }))}`;
+  const res = await apiFetch(`/api/trpc/${procedure}${query}`);
   const data = await res.json();
   if (data.error) throw new Error(data.error.message ?? 'Request failed');
   return data.result?.data?.json;

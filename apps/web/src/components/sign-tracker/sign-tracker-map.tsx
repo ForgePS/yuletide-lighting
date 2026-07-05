@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import type { SignLocationListItem } from '@clcrm/types';
 import { STATUS_COLORS } from '@/lib/sign-tracker-utils';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 type SignTrackerMapProps = {
   locations: SignLocationListItem[];

@@ -6,9 +6,8 @@ import { createTRPCReact } from '@trpc/react-query';
 import superjson from 'superjson';
 import { useState, type ReactNode } from 'react';
 import type { AppRouter } from '@clcrm/api';
-import { useAuth } from '@/lib/firebase-auth';
-import { getCachedAuthToken } from '@/lib/auth-token';
-import { auth } from '@/lib/firebase';
+import { getCachedAuthToken, readAuthCookie } from '@/lib/auth-token';
+import { getClientAuth } from '@/lib/firebase';
 
 export const trpc = createTRPCReact<AppRouter>();
 
@@ -25,11 +24,11 @@ const HEAVY_TRPC_PATHS = new Set([
 ]);
 
 async function authHeaders() {
-  const cached = getCachedAuthToken();
+  const cached = getCachedAuthToken() ?? readAuthCookie();
   if (cached) {
     return { authorization: `Bearer ${cached}` };
   }
-  const user = auth?.currentUser;
+  const user = getClientAuth()?.currentUser;
   if (!user) return {};
   try {
     const token = await user.getIdToken(false);
@@ -59,8 +58,6 @@ function createTrpcLinks() {
 }
 
 function TRPCInner({ children }: { children: ReactNode }) {
-  const { user, loading, idToken } = useAuth();
-
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -80,14 +77,6 @@ function TRPCInner({ children }: { children: ReactNode }) {
       links: [createTrpcLinks()],
     }),
   );
-
-  if (loading || (user && !idToken)) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
-        Loading...
-      </div>
-    );
-  }
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>

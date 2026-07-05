@@ -30,6 +30,10 @@ const nextConfig = {
   },
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],
+    formats: ['image/avif', 'image/webp'],
+  },
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
   },
   webpack: (config) => {
     config.resolve.alias = {

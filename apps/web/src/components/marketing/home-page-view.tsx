@@ -1,5 +1,3 @@
-'use client';
-
 import { MarketingHeader } from '@/components/marketing-header';
 import { MarketingFooter } from '@/components/marketing-footer';
 import { MobileCallBar } from '@/components/marketing/mobile-call-bar';

@@ -44,6 +44,19 @@ jobs:
           NEXT_PUBLIC_APP_URL=https://yuletide-lighting.web.app
           EOF
 
+      - name: Verify deploy credentials
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_ADMIN_KEY: ${{ secrets.CLCRM_FIREBASE_ADMIN_KEY }}
+        run: |
+          if [ -z "$FIREBASE_TOKEN" ]; then
+            echo "::error::Missing GitHub secret FIREBASE_TOKEN. Generate one with: firebase login:ci"
+            exit 1
+          fi
+          if [ -z "$FIREBASE_ADMIN_KEY" ]; then
+            echo "::warning::Missing CLCRM_FIREBASE_ADMIN_KEY — CRM API routes may fail at runtime."
+          fi
+
       - name: Deploy to Firebase Hosting
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

@@ -26,7 +26,6 @@ jobs:
           FIREBASE_STORAGE_BUCKET: ${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
           FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
           FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
-          FIREBASE_ADMIN_KEY: ${{ secrets.CLCRM_FIREBASE_ADMIN_KEY }}
           TINA_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_TINA_CLIENT_ID }}
           TINA_TOKEN: ${{ secrets.TINA_TOKEN }}
         run: |
@@ -37,7 +36,6 @@ jobs:
           NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET}
           NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
           NEXT_PUBLIC_FIREBASE_APP_ID=${FIREBASE_APP_ID}
-          CLCRM_FIREBASE_ADMIN_KEY=${FIREBASE_ADMIN_KEY}
           NEXT_PUBLIC_TINA_CLIENT_ID=${TINA_CLIENT_ID}
           TINA_TOKEN=${TINA_TOKEN}
           NEXT_PUBLIC_TINA_BRANCH=main
@@ -47,17 +45,25 @@ jobs:
       - name: Verify deploy credentials
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-          FIREBASE_ADMIN_KEY: ${{ secrets.CLCRM_FIREBASE_ADMIN_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YULETIDE_LIGHTING }}
+          FIREBASE_SERVICE_ACCOUNT_FALLBACK: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          if [ -z "$FIREBASE_TOKEN" ]; then
-            echo "::error::Missing GitHub secret FIREBASE_TOKEN. Generate one with: firebase login:ci"
+          if [ -z "$FIREBASE_TOKEN" ] && [ -z "$FIREBASE_SERVICE_ACCOUNT" ] && [ -z "$FIREBASE_SERVICE_ACCOUNT_FALLBACK" ]; then
+            echo "::error::No Firebase deploy credentials in GitHub secrets."
+            echo ""
+            echo "You do NOT need to download keys from the Firebase console."
+            echo "Run this once on your computer (Owner on Firebase + Admin on this repo):"
+            echo "  npx firebase-tools login"
+            echo "  npx firebase-tools init hosting:github"
+            echo ""
+            echo "Firebase will create the GitHub secret automatically."
+            echo "Or deploy locally: firebase login && npm run deploy:hosting"
             exit 1
-          fi
-          if [ -z "$FIREBASE_ADMIN_KEY" ]; then
-            echo "::warning::Missing CLCRM_FIREBASE_ADMIN_KEY — CRM API routes may fail at runtime."
           fi
 
       - name: Deploy to Firebase Hosting
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT_YULETIDE_LIGHTING: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_YULETIDE_LIGHTING }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: npm run deploy:hosting

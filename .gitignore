@@ -5,6 +5,7 @@ dist
 .env
 .env.local
 .env.*.local
+.firebase-deploy-sa.json
 *.log
 .DS_Store
 .expo

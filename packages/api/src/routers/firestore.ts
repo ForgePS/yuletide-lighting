@@ -66,6 +66,7 @@ import { crew360Router, crewMobileRouter } from './crew360';
 import { reviews360Router } from './reviews360';
 import { automation360Router } from './automation360';
 import { creator360Router } from './creator360';
+import { signTracker360Router } from './signTracker360';
 import { router, protectedProcedure, officeProcedure, adminProcedure, publicProcedure } from '../trpc';
 
 type InvoiceRow = {
@@ -761,6 +762,7 @@ export const appRouter = router({
   reviews360: reviews360Router,
   automation360: automation360Router,
   creator360: creator360Router,
+  signTracker360: signTracker360Router,
   reports: reportsRouter,
   settings: settingsRouter,
   reviews: reviewsRouter,

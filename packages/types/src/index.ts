@@ -21,3 +21,4 @@ export * from './reviews360';
 export * from './automation360';
 export * from './creator';
 export * from './logo-url';
+export * from './sign-tracker';

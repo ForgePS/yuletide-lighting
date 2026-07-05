@@ -281,6 +281,15 @@ service cloud.firestore {
         allow read: if hasRole(orgId, ['owner', 'admin']);
         allow write: if false;
       }
+      match /signLocations/{docId} {
+        allow read: if belongsToOrg(orgId);
+        allow create, update: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+        allow delete: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /signTrackerSettings/{docId} {
+        allow read: if belongsToOrg(orgId);
+        allow write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
     }
 
     // Public proposal/invoice tokens validated server-side via Admin SDK

@@ -7,7 +7,7 @@ import {
   ensureOrganization,
   ensureUser,
   isSubscriptionLocked,
-  isPlatformCreator,
+  resolvePlatformCreator,
 } from '@yuletide/firebase';
 import { cookies, headers } from 'next/headers';
 
@@ -77,7 +77,7 @@ export async function createAuthContext(): Promise<AuthContext | null> {
       role: resolveAccessRole(user),
       email: user.email,
       subscriptionLocked: isSubscriptionLocked(org),
-      isPlatformCreator: isPlatformCreator(user.email, decoded.uid),
+      isPlatformCreator: await resolvePlatformCreator(user.email, decoded.uid),
     };
   } catch (err) {
     console.error('[createAuthContext] failed', err);

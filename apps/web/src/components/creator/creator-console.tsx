@@ -251,6 +251,7 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
     defaultTrialDays: 14,
     supportEmail: '',
     announcementBanner: '',
+    platformCreatorEmails: [] as string[],
   });
 
   useEffect(() => {
@@ -272,6 +273,7 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
         defaultTrialDays: data.defaultTrialDays,
         supportEmail: data.supportEmail,
         announcementBanner: data.announcementBanner ?? '',
+        platformCreatorEmails: data.platformCreatorEmails ?? [],
       });
     }
   }, [data]);
@@ -301,6 +303,7 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
             docsUrl: form.docsUrl || null,
             announcementBanner: form.announcementBanner || null,
             availableModules: form.availableModules.length ? form.availableModules : CRM_PLATFORM_MODULES.map((m) => m.key),
+            platformCreatorEmails: form.platformCreatorEmails,
           });
         }}
       >
@@ -337,6 +340,28 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
               </label>
             ))}
           </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+          <p className="text-sm font-medium">Platform operators</p>
+          <p className="text-xs text-muted-foreground">
+            Emails with Creator Console access (multi-tenant admin). One per line. Env var PLATFORM_CREATOR_EMAILS also grants access.
+          </p>
+          <textarea
+            className="input w-full font-mono text-sm"
+            rows={4}
+            placeholder="you@company.com&#10;ops@company.com"
+            value={form.platformCreatorEmails.join('\n')}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                platformCreatorEmails: e.target.value
+                  .split(/[\n,;]+/)
+                  .map((v) => v.trim().toLowerCase())
+                  .filter(Boolean),
+              })
+            }
+          />
         </div>
 
         <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
@@ -538,8 +563,9 @@ function OrganizationsTab({
   const { data, isLoading, refetch } = trpc.creator360.organizations.list.useQuery({ search: search || undefined, status });
   const provision = trpc.creator360.provision.useMutation({
     onSuccess: (result) => {
+      const inviteNote = result.ownerInviteSent ? ' Owner invite sent.' : '';
       toast(`Provisioned ${result.companyName}`, 'success');
-      onMessage(`Created tenant ${result.companyName}. Trial ends ${result.trialEndsAt.toLocaleDateString()}.`);
+      onMessage(`Created tenant ${result.companyName}. Trial ends ${result.trialEndsAt.toLocaleDateString()}.${inviteNote}`);
       setProvisionForm({ companyName: '', ownerEmail: '', trialDays: 14, note: '' });
       refetch();
     },
@@ -602,7 +628,7 @@ function OrganizationsTab({
 
       <CreatorPanel title="Provision new organization" icon={CirclePlus}>
         <p className="mb-4 text-sm text-muted-foreground">
-          Creates a new tenant in Firestore with a trial subscription. The owner can sign up separately or be invited later.
+          Creates a new tenant with trial subscription. If you enter an owner email, they receive an invite to join as owner.
         </p>
         <form
           className="grid gap-4 md:grid-cols-2"
@@ -617,7 +643,7 @@ function OrganizationsTab({
           }}
         >
           <label className="block text-sm">Company name<input required className="input mt-1 w-full" value={provisionForm.companyName} onChange={(e) => setProvisionForm({ ...provisionForm, companyName: e.target.value })} /></label>
-          <label className="block text-sm">Owner email (optional)<input className="input mt-1 w-full" type="email" value={provisionForm.ownerEmail} onChange={(e) => setProvisionForm({ ...provisionForm, ownerEmail: e.target.value })} /></label>
+          <label className="block text-sm">Owner email<input className="input mt-1 w-full" type="email" placeholder="owner@their-company.com" value={provisionForm.ownerEmail} onChange={(e) => setProvisionForm({ ...provisionForm, ownerEmail: e.target.value })} /></label>
           <label className="block text-sm">Trial days<input className="input mt-1 w-32" type="number" min={0} max={365} value={provisionForm.trialDays} onChange={(e) => setProvisionForm({ ...provisionForm, trialDays: Number(e.target.value) })} /></label>
           <label className="block text-sm md:col-span-2">Note<textarea className="input mt-1 w-full" rows={2} value={provisionForm.note} onChange={(e) => setProvisionForm({ ...provisionForm, note: e.target.value })} /></label>
           <div className="flex gap-2 md:col-span-2">

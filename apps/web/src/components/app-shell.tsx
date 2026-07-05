@@ -109,15 +109,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, signOut, loading: authLoading } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const { data: billing, isLoading: billingLoading } = trpc.billing.status.useQuery(undefined, {
-    enabled: !authLoading && !!user,
-    staleTime: 30_000,
-  });
   const [deferSecondaryQueries, setDeferSecondaryQueries] = useState(false);
   useEffect(() => {
-    const timer = window.setTimeout(() => setDeferSecondaryQueries(true), 0);
-    return () => window.clearTimeout(timer);
+    const schedule =
+      typeof requestIdleCallback !== 'undefined'
+        ? requestIdleCallback
+        : (cb: () => void) => window.setTimeout(cb, 1);
+    const id = schedule(() => setDeferSecondaryQueries(true));
+    return () => {
+      if (typeof cancelIdleCallback !== 'undefined' && typeof id === 'number') {
+        cancelIdleCallback(id);
+      }
+    };
   }, []);
+
+  const { data: billing, isLoading: billingLoading } = trpc.billing.status.useQuery(undefined, {
+    enabled: deferSecondaryQueries && !authLoading && !!user,
+    staleTime: 30_000,
+  });
   const { data: creatorAccess } = trpc.creator360.checkAccess.useQuery(undefined, {
     enabled: deferSecondaryQueries && !authLoading && !!user,
     staleTime: 60_000,
@@ -220,13 +229,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <AnalyticsYearFilter />
           </div>
           <div className="p-4 sm:p-6 lg:p-8">
-          {subscriptionRedirectPending ? (
-            <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
-              Redirecting to subscription...
-            </div>
-          ) : (
-            children
-          )}
+            {children}
           </div>
         </main>
       </div>

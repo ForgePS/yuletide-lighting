@@ -1,9 +1,7 @@
 'use client';
 
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
 
 function getFirebaseConfig() {
   return {
@@ -16,29 +14,23 @@ function getFirebaseConfig() {
   };
 }
 
+let firebaseApp: FirebaseApp | undefined;
+let firebaseAuth: Auth | undefined;
+
 export function getFirebaseApp() {
-  return getApps().length ? getApps()[0]! : initializeApp(getFirebaseConfig());
+  if (typeof window === 'undefined') {
+    throw new Error('Firebase client is only available in the browser');
+  }
+  if (!firebaseApp) {
+    firebaseApp = getApps().length ? getApps()[0]! : initializeApp(getFirebaseConfig());
+  }
+  return firebaseApp;
 }
 
-function clientAuth() {
-  return getAuth(getFirebaseApp());
+export function getClientAuth(): Auth | null {
+  if (typeof window === 'undefined') return null;
+  if (!firebaseAuth) {
+    firebaseAuth = getAuth(getFirebaseApp());
+  }
+  return firebaseAuth;
 }
-
-function clientFirestore() {
-  return getFirestore(getFirebaseApp());
-}
-
-function clientStorage() {
-  return getStorage(getFirebaseApp());
-}
-
-export const auth =
-  typeof window !== 'undefined' ? clientAuth() : (null as unknown as ReturnType<typeof getAuth>);
-export const firestore =
-  typeof window !== 'undefined'
-    ? clientFirestore()
-    : (null as unknown as ReturnType<typeof getFirestore>);
-export const storage =
-  typeof window !== 'undefined'
-    ? clientStorage()
-    : (null as unknown as ReturnType<typeof getStorage>);

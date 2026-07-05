@@ -10,8 +10,8 @@ import {
   type User,
   updateProfile,
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { getCachedAuthToken, setCachedAuthToken, writeAuthCookie } from '@/lib/auth-token';
+import { getClientAuth } from '@/lib/firebase';
+import { getCachedAuthToken, setCachedAuthToken, writeAuthCookie, readAuthCookie } from '@/lib/auth-token';
 
 type AuthState = {
   user: User | null;
@@ -34,10 +34,19 @@ async function syncSession(user: User, forceRefresh = false) {
 
 export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [idToken, setIdToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [idToken, setIdToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const cached = getCachedAuthToken() ?? readAuthCookie();
+    if (cached) setCachedAuthToken(cached);
+    return cached;
+  });
+  const [loading, setLoading] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return !getCachedAuthToken() && !readAuthCookie();
+  });
 
   useEffect(() => {
+    const auth = getClientAuth();
     if (!auth) {
       setLoading(false);
       return;
@@ -68,6 +77,7 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function signIn(email: string, password: string) {
+    const auth = getClientAuth();
     if (!auth) throw new Error('Auth is not available');
     const credential = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
     const token = await syncSession(credential.user, true);
@@ -77,6 +87,7 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signUp(email: string, password: string, companyName?: string) {
+    const auth = getClientAuth();
     if (!auth) throw new Error('Auth is not available');
     const credential = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
     if (companyName?.trim()) {
@@ -89,11 +100,13 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function resetPassword(email: string) {
+    const auth = getClientAuth();
     if (!auth) throw new Error('Auth is not available');
     await sendPasswordResetEmail(auth, email.trim().toLowerCase());
   }
 
   async function signOut() {
+    const auth = getClientAuth();
     if (!auth) return;
     setCachedAuthToken(null);
     writeAuthCookie(null);

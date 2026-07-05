@@ -12,9 +12,12 @@ import { CustomerSignMarketingCard } from '@/components/sign-tracker';
 import { formatServiceAddress, formatBillingAddress } from '@/components/customer-address-fields';
 import { LoadingState } from '@/components/ui/states';
 
+import { useAnalyticsYear } from '@/lib/analytics-year-context';
+
 export default function CustomerOverviewPage() {
   const customerId = useParams().customerId as string;
-  const { data, isLoading } = trpc.customer360.getById.useQuery({ customerId });
+  const { year } = useAnalyticsYear();
+  const { data, isLoading } = trpc.customer360.getById.useQuery({ customerId, year });
 
   if (isLoading || !data) return <LoadingState />;
 

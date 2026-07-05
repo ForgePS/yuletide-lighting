@@ -6,6 +6,7 @@ import { DISPATCH_STATUS_COLORS, formatCurrency } from '@/lib/schedule-utils';
 import { formatDate } from '@clcrm/ui';
 import { useToast } from '@/lib/toast';
 import { LoadingState, EmptyState } from '@/components/ui/states';
+import { CrewManager } from './crew-manager';
 
 export function DispatchBoard() {
   const { toast } = useToast();
@@ -47,27 +48,7 @@ export function DispatchBoard() {
 }
 
 export function CrewScheduler() {
-  const { data, isLoading } = trpc.schedule360.crews.list.useQuery();
-  if (isLoading) return <LoadingState />;
-  return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {data?.map((crew) => (
-        <div key={crew.id} className="card p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold">{crew.name}</h3>
-            <span className="text-xs capitalize text-muted-foreground">{crew.availabilityStatus.replace(/_/g, ' ')}</span>
-          </div>
-          <p className="text-sm text-muted-foreground">{crew.position} · {crew.skillLevel}</p>
-          <div className="mt-3">
-            <div className="flex justify-between text-xs"><span>Utilization</span><span>{crew.utilizationPercent}%</span></div>
-            <div className="mt-1 h-2 rounded-full bg-muted"><div className={`h-2 rounded-full ${crew.utilizationPercent > 90 ? 'bg-red-500' : 'bg-primary'}`} style={{ width: `${crew.utilizationPercent}%` }} /></div>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">{crew.scheduledHoursWeek}h scheduled / {crew.availableHoursWeek}h available</p>
-          {crew.utilizationPercent > 90 && <p className="mt-1 text-xs text-red-600">Overtime risk</p>}
-        </div>
-      ))}
-    </div>
-  );
+  return <CrewManager />;
 }
 
 export function RoutePlanner() {

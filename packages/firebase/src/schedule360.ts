@@ -9,6 +9,7 @@ import type {
   ScheduleConflict,
   ScheduleDashboardKpis,
   ScheduleTemplate,
+  SettingsRole,
   VehicleSchedule,
   WeatherForecast,
 } from '@clcrm/types';
@@ -40,6 +41,43 @@ function orgPath(orgId: string, collection: string) {
 
 function mapDoc<T>(data: Record<string, unknown>): T {
   return mapTimestampsFromData(data) as unknown as T;
+}
+
+const FIELD_CREW_ROLES = new Set<SettingsRole>(['installer', 'crew_leader', 'warehouse_staff']);
+
+function normalizeCrewProfile(data: Record<string, unknown>): CrewProfile {
+  const crew = mapDoc<CrewProfile>(data);
+  return {
+    ...crew,
+    memberUserIds: Array.isArray(data.memberUserIds) ? (data.memberUserIds as string[]) : [],
+    leaderUserId: (data.leaderUserId as string) ?? null,
+    isActive: data.isActive !== false,
+  };
+}
+
+async function getCrewDoc(orgId: string, crewId: string) {
+  const db = getAdminFirestore();
+  const ref = db.collection(orgPath(orgId, 'crewSchedules')).doc(crewId);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  return { ref, data: normalizeCrewProfile({ id: snap.id, ...snap.data()! }) };
+}
+
+async function assertFieldCrewUser(orgId: string, userId: string) {
+  const db = getAdminFirestore();
+  const snap = await db.collection('users').doc(userId).get();
+  if (!snap.exists) throw new Error('User not found');
+  const data = snap.data()!;
+  if (data.organizationId !== orgId) throw new Error('User is not in this organization');
+  const settingsRole = (data.settingsRole as SettingsRole) ?? null;
+  const legacyRole = String(data.role ?? '');
+  const isField =
+    (settingsRole && FIELD_CREW_ROLES.has(settingsRole)) || legacyRole === 'crew';
+  if (!isField) throw new Error('Only field crew roles (installer, crew leader, warehouse) can be assigned to crews');
+  if (data.status === 'suspended' || data.status === 'archived') {
+    throw new Error('Cannot assign inactive users to a crew');
+  }
+  return { id: userId, ...data };
 }
 
 function startOfDay(d = new Date()) {
@@ -358,11 +396,13 @@ export async function listCrewProfiles(orgId: string): Promise<CrewProfile[]> {
   const db = getAdminFirestore();
   const snap = await db.collection(orgPath(orgId, 'crewSchedules')).get();
   if (!snap.empty) {
-    return snap.docs.map((d) => mapDoc<CrewProfile>({ id: d.id, ...d.data()! }));
+    return snap.docs
+      .map((d) => normalizeCrewProfile({ id: d.id, ...d.data()! }))
+      .filter((c) => c.isActive);
   }
 
   return DEFAULT_CREWS.map((c, idx) =>
-    mapDoc<CrewProfile>({
+    normalizeCrewProfile({
       id: `default-${idx}`,
       organizationId: orgId,
       ...c,
@@ -375,11 +415,149 @@ export async function listCrewProfiles(orgId: string): Promise<CrewProfile[]> {
   );
 }
 
+export async function getCrewProfile(orgId: string, crewId: string): Promise<CrewProfile | null> {
+  const doc = await getCrewDoc(orgId, crewId);
+  return doc?.data ?? null;
+}
+
+export async function createCrewProfile(
+  orgId: string,
+  input: {
+    name: string;
+    position: string;
+    skillLevel: CrewProfile['skillLevel'];
+    availabilityStatus: CrewProfile['availabilityStatus'];
+    certifications?: string[];
+    assignedVehicleId?: string | null;
+  },
+  actorId?: string | null,
+): Promise<CrewProfile> {
+  await ensureCrews(orgId);
+  const db = getAdminFirestore();
+  const now = ts();
+  const ref = db.collection(orgPath(orgId, 'crewSchedules')).doc();
+  const data = {
+    organizationId: orgId,
+    name: input.name.trim(),
+    position: input.position.trim(),
+    skillLevel: input.skillLevel,
+    availabilityStatus: input.availabilityStatus,
+    certifications: input.certifications ?? [],
+    assignedVehicleId: input.assignedVehicleId ?? null,
+    leaderUserId: null,
+    memberUserIds: [],
+    isActive: true,
+    scheduledHoursWeek: 0,
+    availableHoursWeek: 40,
+    utilizationPercent: 0,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: actorId ?? null,
+    updatedBy: actorId ?? null,
+  };
+  await ref.set(data);
+  return normalizeCrewProfile({ id: ref.id, ...data });
+}
+
+export async function updateCrewProfile(
+  orgId: string,
+  crewId: string,
+  input: Partial<{
+    name: string;
+    position: string;
+    skillLevel: CrewProfile['skillLevel'];
+    availabilityStatus: CrewProfile['availabilityStatus'];
+    certifications: string[];
+    assignedVehicleId: string | null;
+    leaderUserId: string | null;
+    isActive: boolean;
+  }>,
+  actorId?: string | null,
+): Promise<CrewProfile> {
+  const doc = await getCrewDoc(orgId, crewId);
+  if (!doc) throw new Error('Crew not found');
+
+  const update: Record<string, unknown> = { updatedAt: ts(), updatedBy: actorId ?? null };
+  if (input.name !== undefined) update.name = input.name.trim();
+  if (input.position !== undefined) update.position = input.position.trim();
+  if (input.skillLevel !== undefined) update.skillLevel = input.skillLevel;
+  if (input.availabilityStatus !== undefined) update.availabilityStatus = input.availabilityStatus;
+  if (input.certifications !== undefined) update.certifications = input.certifications;
+  if (input.assignedVehicleId !== undefined) update.assignedVehicleId = input.assignedVehicleId;
+  if (input.isActive !== undefined) update.isActive = input.isActive;
+  if (input.leaderUserId !== undefined) {
+    if (input.leaderUserId) {
+      await assertFieldCrewUser(orgId, input.leaderUserId);
+      const members = doc.data.memberUserIds;
+      if (!members.includes(input.leaderUserId)) {
+        update.memberUserIds = [...members, input.leaderUserId];
+      }
+    }
+    update.leaderUserId = input.leaderUserId;
+  }
+
+  await doc.ref.update(update);
+  const snap = await doc.ref.get();
+  return normalizeCrewProfile({ id: snap.id, ...snap.data()! });
+}
+
+export async function archiveCrewProfile(orgId: string, crewId: string, actorId?: string | null): Promise<CrewProfile> {
+  return updateCrewProfile(orgId, crewId, { isActive: false }, actorId);
+}
+
+export async function addCrewMember(
+  orgId: string,
+  crewId: string,
+  userId: string,
+  actorId?: string | null,
+): Promise<CrewProfile> {
+  await assertFieldCrewUser(orgId, userId);
+  const doc = await getCrewDoc(orgId, crewId);
+  if (!doc) throw new Error('Crew not found');
+  if (!doc.data.isActive) throw new Error('Cannot add members to an archived crew');
+
+  const memberUserIds = doc.data.memberUserIds.includes(userId)
+    ? doc.data.memberUserIds
+    : [...doc.data.memberUserIds, userId];
+
+  await doc.ref.update({
+    memberUserIds,
+    updatedAt: ts(),
+    updatedBy: actorId ?? null,
+  });
+  const snap = await doc.ref.get();
+  return normalizeCrewProfile({ id: snap.id, ...snap.data()! });
+}
+
+export async function removeCrewMember(
+  orgId: string,
+  crewId: string,
+  userId: string,
+  actorId?: string | null,
+): Promise<CrewProfile> {
+  const doc = await getCrewDoc(orgId, crewId);
+  if (!doc) throw new Error('Crew not found');
+
+  const memberUserIds = doc.data.memberUserIds.filter((id) => id !== userId);
+  const update: Record<string, unknown> = {
+    memberUserIds,
+    updatedAt: ts(),
+    updatedBy: actorId ?? null,
+  };
+  if (doc.data.leaderUserId === userId) update.leaderUserId = null;
+
+  await doc.ref.update(update);
+  const snap = await doc.ref.get();
+  return normalizeCrewProfile({ id: snap.id, ...snap.data()! });
+}
+
 export async function ensureCrews(orgId: string): Promise<CrewProfile[]> {
   const db = getAdminFirestore();
   const snap = await db.collection(orgPath(orgId, 'crewSchedules')).get();
   if (!snap.empty) {
-    const crews = snap.docs.map((d) => mapDoc<CrewProfile>({ id: d.id, ...d.data()! }));
+    const crews = snap.docs
+      .map((d) => normalizeCrewProfile({ id: d.id, ...d.data()! }))
+      .filter((c) => c.isActive);
     return recalcCrewUtilization(orgId, crews);
   }
 
@@ -387,9 +565,17 @@ export async function ensureCrews(orgId: string): Promise<CrewProfile[]> {
   const crews: CrewProfile[] = [];
   for (const c of DEFAULT_CREWS) {
     const ref = db.collection(orgPath(orgId, 'crewSchedules')).doc();
-    const data = { organizationId: orgId, ...c, scheduledHoursWeek: 0, availableHoursWeek: 40, utilizationPercent: 0, createdAt: now, updatedAt: now };
+    const data = {
+      organizationId: orgId,
+      ...c,
+      scheduledHoursWeek: 0,
+      availableHoursWeek: 40,
+      utilizationPercent: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
     await ref.set(data);
-    crews.push(mapDoc<CrewProfile>({ id: ref.id, ...data }));
+    crews.push(normalizeCrewProfile({ id: ref.id, ...data }));
   }
   return crews;
 }

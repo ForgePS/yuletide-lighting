@@ -99,6 +99,9 @@ export type CrewProfile = ScheduleAuditFields & {
   skillLevel: 'junior' | 'mid' | 'senior' | 'lead';
   availabilityStatus: CrewAvailabilityStatus;
   assignedVehicleId?: string | null;
+  leaderUserId?: string | null;
+  memberUserIds: string[];
+  isActive: boolean;
   scheduledHoursWeek: number;
   availableHoursWeek: number;
   utilizationPercent: number;
@@ -261,9 +264,9 @@ export const DEFAULT_SCHEDULE_TEMPLATES: Array<Omit<ScheduleTemplate, keyof Sche
 ];
 
 export const DEFAULT_CREWS: Array<Omit<CrewProfile, keyof ScheduleAuditFields | 'id' | 'organizationId' | 'scheduledHoursWeek' | 'availableHoursWeek' | 'utilizationPercent'>> = [
-  { name: 'Install Crew A', position: 'Installer', certifications: ['Ladder Safety'], skillLevel: 'senior', availabilityStatus: 'available', assignedVehicleId: null },
-  { name: 'Install Crew B', position: 'Installer', certifications: ['Ladder Safety'], skillLevel: 'mid', availabilityStatus: 'available', assignedVehicleId: null },
-  { name: 'Service Crew', position: 'Technician', certifications: ['Electrical Basics'], skillLevel: 'mid', availabilityStatus: 'available', assignedVehicleId: null },
+  { name: 'Install Crew A', position: 'Installer', certifications: ['Ladder Safety'], skillLevel: 'senior', availabilityStatus: 'available', assignedVehicleId: null, leaderUserId: null, memberUserIds: [], isActive: true },
+  { name: 'Install Crew B', position: 'Installer', certifications: ['Ladder Safety'], skillLevel: 'mid', availabilityStatus: 'available', assignedVehicleId: null, leaderUserId: null, memberUserIds: [], isActive: true },
+  { name: 'Service Crew', position: 'Technician', certifications: ['Electrical Basics'], skillLevel: 'mid', availabilityStatus: 'available', assignedVehicleId: null, leaderUserId: null, memberUserIds: [], isActive: true },
 ];
 
 export const DEFAULT_VEHICLES: Array<Omit<VehicleSchedule, keyof ScheduleAuditFields | 'id' | 'organizationId'>> = [

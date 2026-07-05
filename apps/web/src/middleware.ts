@@ -7,6 +7,7 @@ const publicPaths = [
   '/about',
   '/contact',
   '/pricing',
+  '/for-installers',
   '/sign-in',
   '/sign-up',
   '/admin',

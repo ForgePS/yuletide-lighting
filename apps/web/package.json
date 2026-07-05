@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "node ../../scripts/sync-web-env.mjs && tinacms dev -c \"next dev --port 3000\"",
-    "build": "node ../../scripts/sync-web-env.mjs && tinacms build --skip-cloud-checks --datalayer-port 9001 && next build",
+    "dev:web": "next dev --port 3000",
+    "build": "node ../../scripts/build-web.mjs",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

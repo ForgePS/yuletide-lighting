@@ -2,10 +2,12 @@ import type {
   SignCampaignReport,
   SignCityBreakdown,
   SignLocation,
+  SignLocationListItem,
   SignLocationStatus,
   SignPickupLocation,
   SignTerritoryFlag,
   SignTrackerDashboard,
+  SignTrackerPageData,
   SignTrackerSettings,
 } from '@clcrm/types';
 import { colCreate, colGet, colList, colUpdate } from './firestore';
@@ -416,6 +418,44 @@ function aggregateLocations(locations: SignLocation[]) {
   const recoveryRate = totalPlaced > 0 ? Math.round(((recoveredSigns / totalPlaced) * 1000)) / 10 : 0;
 
   return { totalPlaced, activeSigns, recoveredSigns, missingSigns, lossPercentage, recoveryRate, activeCities, topPerformingCities, byCity };
+}
+
+function toListItem(loc: SignLocation): SignLocationListItem {
+  const { history: _history, ...rest } = loc;
+  return rest;
+}
+
+export async function getSignTrackerPageData(
+  orgId: string,
+  filters?: {
+    seasonYear?: number;
+    city?: string;
+    status?: SignLocationStatus;
+    placementType?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    crewUserId?: string;
+  },
+): Promise<SignTrackerPageData> {
+  const locations = await listSignLocations(orgId, filters);
+  const year = filters?.seasonYear ?? currentSeasonYear();
+  const agg = aggregateLocations(locations);
+
+  return {
+    dashboard: {
+      seasonYear: year,
+      totalPlaced: agg.totalPlaced,
+      activeSigns: agg.activeSigns,
+      recoveredSigns: agg.recoveredSigns,
+      missingSigns: agg.missingSigns,
+      lossPercentage: agg.lossPercentage,
+      recoveryRate: agg.recoveryRate,
+      activeCities: agg.activeCities,
+      topPerformingCities: agg.topPerformingCities,
+    },
+    cities: agg.byCity,
+    locations: locations.map(toListItem),
+  };
 }
 
 export async function getSignTrackerDashboard(orgId: string, seasonYear?: number): Promise<SignTrackerDashboard> {

@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import type { SignLocation } from '@clcrm/types';
+import type { SignLocation, SignLocationListItem } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { PLACEMENT_TYPE_LABELS, STATUS_BADGE_CLASSES, STATUS_LABELS } from '@/lib/sign-tracker-utils';
 import { Navigation, X } from 'lucide-react';
 
 type SignLocationDetailProps = {
-  location: SignLocation;
+  location: SignLocation | SignLocationListItem;
   onClose: () => void;
   onUpdated: () => void;
 };

@@ -3,15 +3,18 @@
 import { useEffect, useState } from 'react';
 import type { SignPickupLocation } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
-import { LoadingState } from '@/components/ui/states';
+import { useAuth } from '@/lib/firebase-auth';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 import { SignLocationDetail } from './sign-location-detail';
 import { currentSeasonYear } from '@/lib/sign-tracker-utils';
 import { Navigation, MapPin } from 'lucide-react';
 
 export function SignPickupMode() {
+  const { idToken, loading: authLoading } = useAuth();
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [selected, setSelected] = useState<SignPickupLocation | null>(null);
   const seasonYear = currentSeasonYear();
+  const ready = !authLoading && !!idToken;
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -21,13 +24,23 @@ export function SignPickupMode() {
     );
   }, []);
 
-  const { data, isLoading, refetch } = trpc.signTracker360.pickupRoute.useQuery(
+  const { data, isLoading, isError, error, refetch } = trpc.signTracker360.pickupRoute.useQuery(
     { latitude: coords?.lat ?? 0, longitude: coords?.lng ?? 0, seasonYear },
-    { enabled: !!coords },
+    { enabled: ready && !!coords, staleTime: 15_000 },
   );
   const utils = trpc.useUtils();
 
-  if (!coords || isLoading) return <LoadingState message="Finding active signs near you..." />;
+  if (!ready || !coords || isLoading) return <LoadingState message="Finding active signs near you..." />;
+
+  if (isError) {
+    return (
+      <ErrorState
+        title="Could not load pickup route"
+        message={error.message.includes('UNAUTHORIZED') ? 'Please sign in again to continue.' : error.message}
+        onRetry={() => refetch()}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -80,7 +93,7 @@ export function SignPickupMode() {
           onClose={() => setSelected(null)}
           onUpdated={() => {
             refetch();
-            utils.signTracker360.dashboard.invalidate();
+            utils.signTracker360.pageData.invalidate();
             setSelected(null);
           }}
         />

@@ -3,22 +3,38 @@
 import { useState } from 'react';
 import { formatCurrency } from '@clcrm/ui';
 import { trpc } from '@/lib/trpc';
-import { LoadingState } from '@/components/ui/states';
+import { useAuth } from '@/lib/firebase-auth';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 import { currentSeasonYear, SEASON_OPTIONS } from '@/lib/sign-tracker-utils';
 import { TerritoryIntelligence } from './territory-intelligence';
 
 export function SignCampaignReport() {
+  const { idToken, loading: authLoading } = useAuth();
   const [seasonYear, setSeasonYear] = useState(currentSeasonYear());
   const [costInput, setCostInput] = useState('');
+  const ready = !authLoading && !!idToken;
 
-  const { data: report, isLoading } = trpc.signTracker360.report.useQuery({ seasonYear });
-  const { data: settings } = trpc.signTracker360.settings.get.useQuery();
+  const { data: report, isLoading, isError, error, refetch } = trpc.signTracker360.report.useQuery(
+    { seasonYear },
+    { enabled: ready },
+  );
+  const { data: settings } = trpc.signTracker360.settings.get.useQuery(undefined, { enabled: ready });
   const utils = trpc.useUtils();
   const updateSettings = trpc.signTracker360.settings.update.useMutation({
     onSuccess: () => utils.signTracker360.report.invalidate(),
   });
 
-  if (isLoading || !report) return <LoadingState message="Loading campaign report..." />;
+  if (!ready || isLoading || !report) return <LoadingState message="Loading campaign report..." />;
+
+  if (isError) {
+    return (
+      <ErrorState
+        title="Could not load campaign report"
+        message={error.message.includes('UNAUTHORIZED') ? 'Please sign in again to continue.' : error.message}
+        onRetry={() => refetch()}
+      />
+    );
+  }
 
   function saveCost() {
     const cents = Math.round(parseFloat(costInput) * 100);

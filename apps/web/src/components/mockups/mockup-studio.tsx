@@ -11,6 +11,7 @@ import { AuthenticatedImage } from '@/components/authenticated-image';
 import { PillSelect } from '@/components/ui/pill-select';
 import { LoadingState } from '@/components/ui/states';
 import { MockupApprovalPanel, MockupProposalPanel } from './mockup-approval-panel';
+import { strandFromPreset } from './lighting-layer-toolbar';
 
 const MockupCanvas = dynamic(() => import('./mockup-canvas').then((m) => m.MockupCanvas), {
   ssr: false,
@@ -120,14 +121,57 @@ export function MockupStudio({ mockupId }: { mockupId: string }) {
     }
   }, [mockup, initialized]);
 
-  if (isLoading || !mockup) return <LoadingState message="Loading studio..." />;
+  const currentMockup = mockup;
+  if (isLoading || !currentMockup) return <LoadingState message="Loading studio..." />;
 
-  const afterImage = mockup.renderedImageUrl ?? mockup.imageUrl;
+  const afterImage = currentMockup.renderedImageUrl ?? currentMockup.imageUrl;
+
+  function applyDetectedSuggestions() {
+    const detectedFeatures = currentMockup?.detectedFeatures ?? [];
+    if (!detectedFeatures.length) {
+      toast('Run AI detect first', 'error');
+      return;
+    }
+    const generated = detectedFeatures
+      .filter((feature) => feature.points.length >= 2 && feature.confidence >= 0.55)
+      .map((feature, idx) => {
+        const type = feature.type;
+        const presetId = type === 'tree' || type === 'bush'
+          ? 'tree_wrap'
+          : type === 'window' || type === 'door' || type === 'walkway'
+            ? 'garland'
+            : type === 'column' || type === 'garage'
+              ? 'commercial'
+              : 'roofline';
+        const color = presetId === 'tree_wrap' ? '#00AA44' : presetId === 'commercial' ? '#F5F5F5' : '#FFD700';
+        return {
+          ...strandFromPreset(feature.points, presetId, color),
+          id: `${presetId}-${idx}-${crypto.randomUUID()}`,
+        };
+      });
+    if (!generated.length) {
+      toast('No usable detections found', 'error');
+      return;
+    }
+    setStrands((prev) => [...prev, ...generated]);
+    toast(`Added ${generated.length} AI-suggested layer${generated.length > 1 ? 's' : ''}`, 'success');
+  }
 
   function saveStrands() {
     update.mutate({
       mockupId,
-      strands: strands.map((strand) => ({ ...strand, layerId: strand.layerId ?? undefined })),
+      strands: strands.map((strand) => ({
+        id: strand.id,
+        points: strand.points,
+        color: strand.color,
+        lightType: strand.lightType,
+        pattern: strand.pattern,
+        bulbSize: strand.bulbSize,
+        spacing: strand.spacing,
+        brightness: strand.brightness,
+        layerId: strand.layerId ?? undefined,
+        layerType: strand.layerType ?? 'lighting',
+      })),
       backgroundBrightness: brightness,
     });
   }
@@ -143,6 +187,7 @@ export function MockupStudio({ mockupId }: { mockupId: string }) {
         </div>
         <div className="hidden flex-wrap gap-2 lg:flex">
           <button type="button" className="btn-secondary text-sm" onClick={() => detect.mutate({ mockupId })}>AI detect</button>
+          <button type="button" className="btn-secondary text-sm" onClick={applyDetectedSuggestions}>Apply AI layers</button>
           <button type="button" className="btn-secondary text-sm" onClick={() => version.mutate({ mockupId, revisionNotes: 'Manual save' })}>Save version</button>
           <button type="button" className="btn-primary text-sm" onClick={() => update.mutate({ mockupId, status: 'approved' })}>Approve internally</button>
         </div>
@@ -222,6 +267,7 @@ export function MockupStudio({ mockupId }: { mockupId: string }) {
 
       <div className="fixed inset-x-0 bottom-0 z-40 flex gap-2 border-t border-border bg-surface/95 p-3 backdrop-blur safe-bottom lg:hidden">
         <button type="button" className="btn-secondary min-h-11 flex-1 text-sm" onClick={() => detect.mutate({ mockupId })}>AI detect</button>
+        <button type="button" className="btn-secondary min-h-11 flex-1 text-sm" onClick={applyDetectedSuggestions}>Apply AI</button>
         <button type="button" className="btn-secondary min-h-11 flex-1 text-sm" onClick={saveStrands}>Save</button>
         <button type="button" className="btn-primary min-h-11 flex-1 text-sm" onClick={() => update.mutate({ mockupId, status: 'approved' })}>Approve</button>
       </div>

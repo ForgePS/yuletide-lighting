@@ -46,6 +46,11 @@ export const updateSignLocationSchema = z.object({
   placementType: signPlacementTypeSchema.optional(),
   status: signLocationStatusSchema.optional(),
   notes: z.string().max(2000).optional().nullable(),
+  photoUrl: z.string().url().optional().nullable(),
+});
+
+export const deleteSignLocationSchema = z.object({
+  locationId: z.string().min(1),
 });
 
 export const recoverSignLocationSchema = z.object({

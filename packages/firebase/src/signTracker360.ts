@@ -10,7 +10,7 @@ import type {
   SignTrackerPageData,
   SignTrackerSettings,
 } from '@clcrm/types';
-import { colCreate, colGet, colList, colUpdate } from './firestore';
+import { colCreate, colDelete, colGet, colList, colUpdate } from './firestore';
 
 const COLLECTION = 'signLocations';
 const SETTINGS_COLLECTION = 'signTrackerSettings';
@@ -283,6 +283,7 @@ export async function updateSignLocation(
     placementType: SignLocation['placementType'];
     status: SignLocationStatus;
     notes: string | null;
+    photoUrl: string | null;
   }>,
   userId?: string | null,
   userName?: string | null,
@@ -308,15 +309,37 @@ export async function updateSignLocation(
   if (data.quantityPlaced !== undefined) {
     updates.signData = { ...existing.signData, quantityPlaced: data.quantityPlaced };
   }
+  if (data.photoUrl) {
+    const photos = [...existing.photos];
+    const photo = { imageUrl: data.photoUrl, uploadedAt: new Date() };
+    if (photos.length > 0) {
+      photos[0] = photo;
+    } else {
+      photos.push(photo);
+    }
+    updates.photos = photos;
+  }
   if (data.status) {
     updates.status = data.status;
     updates.history = [...existing.history, historyEntry];
-  } else if (data.location || data.placementType || data.notes !== undefined || data.quantityPlaced !== undefined) {
+  } else if (
+    data.location ||
+    data.placementType ||
+    data.notes !== undefined ||
+    data.quantityPlaced !== undefined ||
+    data.photoUrl
+  ) {
     updates.history = [...existing.history, { ...historyEntry, action: 'edited' }];
   }
 
   await colUpdate(orgId, COLLECTION, locationId, updates);
   return (await getSignLocation(orgId, locationId))!;
+}
+
+export async function deleteSignLocation(orgId: string, locationId: string): Promise<void> {
+  const existing = await getSignLocation(orgId, locationId);
+  if (!existing) throw new Error('Sign location not found');
+  await colDelete(orgId, COLLECTION, locationId);
 }
 
 export async function recoverSignLocation(

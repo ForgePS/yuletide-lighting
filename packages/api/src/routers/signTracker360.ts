@@ -5,6 +5,7 @@ import {
   getSignLocation,
   createSignLocation,
   updateSignLocation,
+  deleteSignLocation,
   recoverSignLocation,
   reverseGeocodeSignLocation,
   getSignTrackerPageData,
@@ -22,6 +23,7 @@ import {
 import {
   createSignLocationSchema,
   updateSignLocationSchema,
+  deleteSignLocationSchema,
   recoverSignLocationSchema,
   signLocationFilterSchema,
   reverseGeocodeSchema,
@@ -104,6 +106,11 @@ export const signTracker360Router = router({
       throw new TRPCError({ code: 'FORBIDDEN', message: 'Crew can only update location details' });
     }
     return updateSignLocation(ctx.auth.organizationId, locationId, data, ctx.auth.userId, ctx.auth.email);
+  }),
+
+  delete: officeProcedure.input(deleteSignLocationSchema).mutation(async ({ ctx, input }) => {
+    await deleteSignLocation(ctx.auth.organizationId, input.locationId);
+    return { ok: true as const };
   }),
 
   recover: crewOrOfficeProcedure.input(recoverSignLocationSchema).mutation(({ ctx, input }) => {

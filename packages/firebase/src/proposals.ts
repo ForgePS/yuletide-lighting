@@ -632,6 +632,26 @@ export async function createProposalTemplate(orgId: string, data: Omit<ProposalT
   return mapTimestampsFromData({ id: snap.id, ...snap.data()! }) as ProposalTemplate;
 }
 
+export async function updateProposalTemplate(
+  orgId: string,
+  templateId: string,
+  data: Partial<Omit<ProposalTemplate, 'id' | 'organizationId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>>,
+  userId?: string | null,
+) {
+  const db = getAdminFirestore();
+  await db.doc(`organizations/${orgId}/proposalTemplates/${templateId}`).update({
+    ...data,
+    updatedAt: ts(),
+    updatedBy: userId ?? null,
+  });
+  return listProposalTemplates(orgId);
+}
+
+export async function deleteProposalTemplate(orgId: string, templateId: string) {
+  await colDelete(orgId, 'proposalTemplates', templateId);
+  return { success: true as const };
+}
+
 export async function updateProposalPackage(orgId: string, proposalId: string, packageId: string, data: Partial<ProposalPackage>, userId?: string | null) {
   const db = getAdminFirestore();
   await db.doc(`${subPath(orgId, proposalId, 'packages')}/${packageId}`).update({ ...data, updatedAt: ts(), updatedBy: userId ?? null });

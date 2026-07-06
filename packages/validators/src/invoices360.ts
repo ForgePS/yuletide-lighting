@@ -80,6 +80,50 @@ export const createReminderTemplateSchema = z.object({
 });
 
 export const updateReminderTemplateSchema = createReminderTemplateSchema.partial();
+export const updateReminderTemplateInputSchema = z.object({
+  templateId: z.string().min(1),
+  data: updateReminderTemplateSchema,
+});
+export const deleteReminderTemplateSchema = z.object({
+  templateId: z.string().min(1),
+});
+
+export const invoiceTemplateBlockTypeSchema = z.enum(['text', 'image', 'field', 'divider']);
+export const invoiceTemplateBlockSchema = z.object({
+  id: z.string().min(1),
+  type: invoiceTemplateBlockTypeSchema,
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+  width: z.number().min(1).max(100),
+  height: z.number().min(1).max(100),
+  content: z.string().max(10000).optional().nullable(),
+  fieldKey: z.string().max(100).optional().nullable(),
+  textSize: z.number().int().min(8).max(72).optional().nullable(),
+  align: z.enum(['left', 'center', 'right']).optional().nullable(),
+});
+
+export const createInvoiceTemplateSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(1000).optional().or(z.literal('')),
+  logoUrl: z.string().url().optional().or(z.literal('')),
+  backgroundImageUrl: z.string().url().optional().or(z.literal('')),
+  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default('#DC2626'),
+  pageWidth: z.number().int().min(600).max(2400).default(1024),
+  pageHeight: z.number().int().min(800).max(3200).default(1325),
+  contentHtml: z.string().max(50000).optional().or(z.literal('')),
+  blocks: z.array(invoiceTemplateBlockSchema).default([]),
+  isDefault: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+});
+
+export const updateInvoiceTemplateSchema = createInvoiceTemplateSchema.partial();
+export const updateInvoiceTemplateInputSchema = z.object({
+  templateId: z.string().min(1),
+  data: updateInvoiceTemplateSchema,
+});
+export const deleteInvoiceTemplateSchema = z.object({
+  templateId: z.string().min(1),
+});
 
 export const generateStatementSchema = z.object({
   customerId: z.string().min(1),

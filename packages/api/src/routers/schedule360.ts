@@ -28,6 +28,7 @@ import {
   createCrewProfile,
   updateCrewProfile,
   archiveCrewProfile,
+  deleteCrewProfile,
   addCrewMember,
   removeCrewMember,
 } from '@yuletide/firebase';
@@ -112,6 +113,9 @@ export const schedule360Router = router({
     }),
     archive: officeProcedure.input(z.object({ crewId: z.string().min(1) })).mutation(({ ctx, input }) =>
       archiveCrewProfile(ctx.auth.organizationId, input.crewId, ctx.auth.userId),
+    ),
+    delete: officeProcedure.input(z.object({ crewId: z.string().min(1) })).mutation(({ ctx, input }) =>
+      deleteCrewProfile(ctx.auth.organizationId, input.crewId, ctx.auth.userId),
     ),
     addMember: officeProcedure.input(crewMemberSchema).mutation(({ ctx, input }) =>
       addCrewMember(ctx.auth.organizationId, input.crewId, input.userId, ctx.auth.userId),

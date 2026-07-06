@@ -27,7 +27,7 @@ import {
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
-import { colCreate, colGet, colList, colUpdate } from './firestore';
+import { colCreate, colDelete, colGet, colList, colUpdate } from './firestore';
 import { triggerAutomation } from './messages360';
 import { syncCustomerPipelineFromAppointment, syncCustomerPipelineFromJob } from './jobs360';
 
@@ -503,6 +503,36 @@ export async function updateCrewProfile(
 
 export async function archiveCrewProfile(orgId: string, crewId: string, actorId?: string | null): Promise<CrewProfile> {
   return updateCrewProfile(orgId, crewId, { isActive: false }, actorId);
+}
+
+export async function deleteCrewProfile(orgId: string, crewId: string, actorId?: string | null): Promise<{ success: true }> {
+  const doc = await getCrewDoc(orgId, crewId);
+  if (!doc) throw new Error('Crew not found');
+
+  const events = await colList<CalendarEvent>(orgId, 'calendarEvents');
+  await Promise.all(
+    events
+      .filter((event) => event.crewId === crewId)
+      .map((event) =>
+        colUpdate(orgId, 'calendarEvents', event.id, {
+          crewId: null,
+          crewName: null,
+          updatedBy: actorId ?? null,
+        }),
+      ),
+  );
+
+  const dispatch = await colList<DispatchBoardEntry>(orgId, 'dispatchBoard');
+  await Promise.all(
+    dispatch
+      .filter((entry) => entry.crewId === crewId)
+      .map((entry) =>
+        colDelete(orgId, 'dispatchBoard', entry.id),
+      ),
+  );
+
+  await colDelete(orgId, 'crewSchedules', crewId);
+  return { success: true };
 }
 
 export async function addCrewMember(

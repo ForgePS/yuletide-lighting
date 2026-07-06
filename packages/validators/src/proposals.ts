@@ -138,6 +138,9 @@ export const createProposalTemplateSchema = z.object({
 });
 
 export const updateProposalTemplateSchema = createProposalTemplateSchema.partial();
+export const deleteProposalTemplateSchema = z.object({
+  templateId: z.string().min(1),
+});
 
 export const recordProposalViewSchema = z.object({
   token: z.string().min(1),

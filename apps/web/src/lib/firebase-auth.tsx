@@ -46,34 +46,42 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const auth = getClientAuth();
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
+    let unsub: (() => void) | undefined;
 
-    const unsub = onIdTokenChanged(auth, async (nextUser) => {
-      setUser(nextUser);
-      try {
-        if (nextUser) {
-          const token = await nextUser.getIdToken(!getCachedAuthToken());
-          setIdToken(token);
-          setCachedAuthToken(token);
-          writeAuthCookie(token);
-        } else {
+    try {
+      const auth = getClientAuth();
+      if (!auth) {
+        setLoading(false);
+        return;
+      }
+
+      unsub = onIdTokenChanged(auth, async (nextUser) => {
+        setUser(nextUser);
+        try {
+          if (nextUser) {
+            const token = await nextUser.getIdToken(!getCachedAuthToken());
+            setIdToken(token);
+            setCachedAuthToken(token);
+            writeAuthCookie(token);
+          } else {
+            setIdToken(null);
+            setCachedAuthToken(null);
+            writeAuthCookie(null);
+          }
+        } catch {
           setIdToken(null);
           setCachedAuthToken(null);
           writeAuthCookie(null);
+        } finally {
+          setLoading(false);
         }
-      } catch {
-        setIdToken(null);
-        setCachedAuthToken(null);
-        writeAuthCookie(null);
-      } finally {
-        setLoading(false);
-      }
-    });
-    return unsub;
+      });
+    } catch (err) {
+      console.error('[FirebaseAuthProvider] failed to initialize Firebase Auth', err);
+      setLoading(false);
+    }
+
+    return () => unsub?.();
   }, []);
 
   async function signIn(email: string, password: string) {

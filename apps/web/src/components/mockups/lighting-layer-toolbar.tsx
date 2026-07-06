@@ -116,5 +116,6 @@ export function strandFromPreset(
     bulbSize: preset.bulbSize,
     spacing: preset.spacing,
     brightness: 1,
+    layerType: preset.layerType as MockupStrand['layerType'],
   };
 }

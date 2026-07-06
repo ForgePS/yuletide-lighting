@@ -37,7 +37,11 @@ function mapDoc<T>(data: Record<string, unknown>): T {
 }
 
 function normalizeMockup(raw: Record<string, unknown>): MockupRecord {
-  const strands = (raw.strands as MockupRecord['strands']) ?? [];
+  const strands = ((raw.strands as MockupRecord['strands']) ?? []).map((strand) => ({
+    ...strand,
+    layerId: strand.layerId ?? null,
+    layerType: strand.layerType ?? null,
+  }));
   return {
     id: String(raw.id),
     organizationId: String(raw.organizationId ?? ''),
@@ -160,7 +164,22 @@ export async function createMockup360(
 }
 
 export async function updateMockup360(orgId: string, mockupId: string, data: Partial<MockupRecord>, userId?: string | null) {
-  await colUpdate(orgId, 'mockups', mockupId, { ...data, updatedBy: userId });
+  const patch: Record<string, unknown> = { ...data, updatedBy: userId };
+  if (data.strands) {
+    patch.strands = data.strands.map((strand) => ({
+      id: strand.id,
+      points: strand.points,
+      color: strand.color,
+      lightType: strand.lightType,
+      pattern: strand.pattern,
+      bulbSize: strand.bulbSize,
+      spacing: strand.spacing,
+      brightness: strand.brightness,
+      layerId: strand.layerId ?? null,
+      layerType: strand.layerType ?? null,
+    }));
+  }
+  await colUpdate(orgId, 'mockups', mockupId, patch);
   return getMockup360(orgId, mockupId);
 }
 

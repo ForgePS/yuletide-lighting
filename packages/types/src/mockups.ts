@@ -52,6 +52,7 @@ export type MockupStrand = {
   spacing: number;
   brightness: number;
   layerId?: string | null;
+  layerType?: LayerType | null;
 };
 
 export type MockupLayer = MockupAuditFields & {
@@ -266,6 +267,10 @@ export function mockAiPropertyDetection(_imageUrl: string): AiDetectionResult {
       { type: 'gutter', points: [{ x: 100, y: 160 }, { x: 700, y: 160 }], confidence: 0.85 },
       { type: 'window', points: [{ x: 250, y: 200 }, { x: 350, y: 280 }], confidence: 0.79 },
       { type: 'tree', points: [{ x: 50, y: 300 }, { x: 120, y: 450 }], confidence: 0.81 },
+      { type: 'bush', points: [{ x: 540, y: 360 }, { x: 640, y: 390 }], confidence: 0.74 },
+      { type: 'door', points: [{ x: 365, y: 260 }, { x: 430, y: 370 }], confidence: 0.77 },
+      { type: 'walkway', points: [{ x: 330, y: 430 }, { x: 470, y: 530 }], confidence: 0.7 },
+      { type: 'garage', points: [{ x: 470, y: 210 }, { x: 690, y: 380 }], confidence: 0.69 },
     ],
     overlayUrl: null,
   };

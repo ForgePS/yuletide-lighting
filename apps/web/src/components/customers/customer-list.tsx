@@ -31,6 +31,7 @@ import {
   customerDisplayName,
 } from '@/lib/customer360-utils';
 import { MultiSelectDropdown } from '@/components/ui/multi-select-dropdown';
+import { BulkActionBar } from '@/components/ui/bulk-action-bar';
 import type { CustomerListItem, CustomerStatus, CustomerType } from '@clcrm/types';
 
 function QuickActions({ customer }: { customer: CustomerListItem }) {
@@ -84,16 +85,31 @@ function QuickActions({ customer }: { customer: CustomerListItem }) {
   );
 }
 
-export function CustomerTable({ items }: { items: CustomerListItem[] }) {
+export function CustomerTable({
+  items,
+  selectedIds,
+  onToggle,
+  onToggleAll,
+}: {
+  items: CustomerListItem[];
+  selectedIds: Set<string>;
+  onToggle: (id: string) => void;
+  onToggleAll: () => void;
+}) {
   if (items.length === 0) {
     return <EmptyState title="No customers found" description="Try adjusting your search or filters, or add a new customer." />;
   }
+
+  const allSelected = items.length > 0 && items.every((c) => selectedIds.has(c.id));
 
   return (
     <div className="overflow-x-auto">
       <table className="data-table min-w-[900px]">
         <thead>
           <tr>
+            <th className="w-10">
+              <input type="checkbox" checked={allSelected} onChange={onToggleAll} aria-label="Select all" />
+            </th>
             <th>Customer</th>
             <th>Type</th>
             <th>Phone</th>
@@ -109,6 +125,14 @@ export function CustomerTable({ items }: { items: CustomerListItem[] }) {
         <tbody>
           {items.map((customer) => (
             <tr key={customer.id}>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(customer.id)}
+                  onChange={() => onToggle(customer.id)}
+                  aria-label={`Select ${customerDisplayName(customer)}`}
+                />
+              </td>
               <td>
                 <Link href={`/app/customers/${customer.id}`} className="font-medium text-primary hover:underline">
                   {customerDisplayName(customer)}
@@ -166,8 +190,21 @@ export function CustomerList() {
   const [view, setView] = useState<'table' | 'card'>('table');
   const [typeFilters, setTypeFilters] = useState<CustomerType[]>([]);
   const [statusFilters, setStatusFilters] = useState<CustomerStatus[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState<CustomerStatus | ''>('');
+  const [bulkRep, setBulkRep] = useState('');
   const { year } = useAnalyticsYear();
   const { toast } = useToast();
+  const bulkUpdate = trpc.customer360.bulkUpdate.useMutation({
+    onSuccess: (result) => {
+      toast(`Updated ${result.updated} customers`, 'success');
+      setSelectedIds(new Set());
+      setBulkStatus('');
+      setBulkRep('');
+      refetch();
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
   const seedDemo = trpc.customer360.seedDemo.useMutation({
     onSuccess: (result) => {
       if (result.seeded) toast('Demo customer seeded', 'success');
@@ -250,11 +287,48 @@ export function CustomerList() {
       </div>
 
       <div className="mt-6">
+        <BulkActionBar selectedCount={selectedIds.size} onClear={() => setSelectedIds(new Set())}>
+          <select className="input w-auto py-1.5 text-sm" value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value as CustomerStatus | '')}>
+            <option value="">Set status...</option>
+            {CUSTOMER_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <input className="input w-40 py-1.5 text-sm" placeholder="Assign rep" value={bulkRep} onChange={(e) => setBulkRep(e.target.value)} />
+          <button
+            type="button"
+            className="btn-primary text-sm"
+            disabled={bulkUpdate.isPending || (!bulkStatus && !bulkRep.trim())}
+            onClick={() =>
+              bulkUpdate.mutate({
+                customerIds: [...selectedIds],
+                ...(bulkStatus ? { status: bulkStatus } : {}),
+                ...(bulkRep.trim() ? { assignedSalespersonName: bulkRep.trim() } : {}),
+              })
+            }
+          >
+            Apply
+          </button>
+        </BulkActionBar>
+
         {isLoading && <LoadingState message="Loading customers..." />}
         {isError && <ErrorState message="Could not load customers." onRetry={() => refetch()} />}
         {!isLoading && !isError && view === 'table' && (
           <div className="card overflow-hidden">
-            <CustomerTable items={data?.items ?? []} />
+            <CustomerTable
+              items={data?.items ?? []}
+              selectedIds={selectedIds}
+              onToggle={(id) =>
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                })
+              }
+              onToggleAll={() => {
+                const ids = data?.items.map((c) => c.id) ?? [];
+                setSelectedIds((prev) => (ids.every((id) => prev.has(id)) ? new Set() : new Set(ids)));
+              }}
+            />
           </div>
         )}
         {!isLoading && !isError && view === 'card' && (

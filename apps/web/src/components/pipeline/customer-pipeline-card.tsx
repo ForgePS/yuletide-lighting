@@ -3,16 +3,18 @@
 import Link from 'next/link';
 import type { CustomerPipelineItem } from '@clcrm/types';
 import { formatCurrency } from '@clcrm/ui';
-import { FileText, Phone, User } from 'lucide-react';
+import { FileText, Pencil, Phone, User } from 'lucide-react';
 import { NextActionBadge } from './next-action-badge';
 import { labelPipelineStage } from '@/lib/pipeline-utils';
 
 export function CustomerPipelineCard({
   customer,
   onDragStart,
+  onEdit,
 }: {
   customer: CustomerPipelineItem;
   onDragStart: () => void;
+  onEdit?: () => void;
 }) {
   const name = customer.businessName?.trim()
     ? customer.businessName
@@ -55,6 +57,12 @@ export function CustomerPipelineCard({
           <User className="h-3 w-3" />
           View
         </Link>
+        {onEdit ? (
+          <button type="button" className="btn-secondary inline-flex items-center gap-1 px-2 py-1 text-xs" onClick={onEdit}>
+            <Pencil className="h-3 w-3" />
+            Edit
+          </button>
+        ) : null}
         {customer.phone && (
           <a href={`tel:${customer.phone}`} className="btn-ghost inline-flex items-center gap-1 px-2 py-1 text-xs">
             <Phone className="h-3 w-3" />

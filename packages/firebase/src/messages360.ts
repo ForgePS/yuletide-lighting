@@ -21,7 +21,7 @@ import {
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
-import { colCreate, colGet, colList, colUpdate } from './firestore';
+import { colCreate, colDelete, colGet, colList, colUpdate } from './firestore';
 
 function ts() {
   return Timestamp.now();
@@ -392,6 +392,12 @@ export async function markMessageRead(orgId: string, conversationId: string, mes
     readAt: ts(),
     updatedAt: ts(),
   });
+  const conversation = await getConversation(orgId, conversationId);
+  if (conversation && (conversation.unreadCount ?? 0) > 0) {
+    await colUpdate(orgId, 'conversations', conversationId, {
+      unreadCount: Math.max(0, (conversation.unreadCount ?? 0) - 1),
+    });
+  }
 }
 
 export async function getCustomerTimeline(orgId: string, customerId: string): Promise<TimelineEvent[]> {
@@ -453,6 +459,21 @@ export async function createMessageTemplate(orgId: string, input: Omit<MessageTe
   return mapDoc<MessageTemplate>(created as Record<string, unknown>);
 }
 
+export async function updateMessageTemplate(
+  orgId: string,
+  templateId: string,
+  input: Partial<MessageTemplate>,
+  userId?: string | null,
+) {
+  await colUpdate(orgId, 'templates', templateId, { ...input, updatedBy: userId });
+  return colGet<MessageTemplate>(orgId, 'templates', templateId);
+}
+
+export async function deleteMessageTemplate(orgId: string, templateId: string) {
+  await colDelete(orgId, 'templates', templateId);
+  return { success: true as const };
+}
+
 export async function ensureAutomations(orgId: string): Promise<Automation[]> {
   const db = getAdminFirestore();
   const snap = await db.collection(orgPath(orgId, 'automations')).get();
@@ -474,6 +495,21 @@ export async function ensureAutomations(orgId: string): Promise<Automation[]> {
 
 export async function createAutomation(orgId: string, input: Omit<Automation, keyof import('@clcrm/types').MessageAuditFields | 'id' | 'organizationId' | 'sentCount'>, userId?: string | null) {
   return colCreate(orgId, 'automations', { organizationId: orgId, ...input, sentCount: 0, createdBy: userId, updatedBy: userId }) as Promise<Automation>;
+}
+
+export async function updateAutomation(
+  orgId: string,
+  automationId: string,
+  input: Partial<Automation>,
+  userId?: string | null,
+) {
+  await colUpdate(orgId, 'automations', automationId, { ...input, updatedBy: userId });
+  return colGet<Automation>(orgId, 'automations', automationId);
+}
+
+export async function deleteAutomation(orgId: string, automationId: string) {
+  await colDelete(orgId, 'automations', automationId);
+  return { success: true as const };
 }
 
 export async function toggleAutomation(orgId: string, automationId: string, isActive: boolean, userId?: string | null) {
@@ -576,6 +612,26 @@ export async function sendCampaign(orgId: string, campaignId: string, userId?: s
   });
 
   return colGet<Campaign>(orgId, 'campaigns', campaignId);
+}
+
+export async function updateCampaign(
+  orgId: string,
+  campaignId: string,
+  input: Partial<Campaign>,
+  userId?: string | null,
+) {
+  await colUpdate(orgId, 'campaigns', campaignId, { ...input, updatedBy: userId });
+  return colGet<Campaign>(orgId, 'campaigns', campaignId);
+}
+
+export async function deleteCampaign(orgId: string, campaignId: string) {
+  await colDelete(orgId, 'campaigns', campaignId);
+  return { success: true as const };
+}
+
+export async function deleteConversation(orgId: string, conversationId: string) {
+  await colDelete(orgId, 'conversations', conversationId);
+  return { success: true as const };
 }
 
 export async function ensureInternalChannels(orgId: string): Promise<InternalChannel[]> {

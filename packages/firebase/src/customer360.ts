@@ -943,6 +943,7 @@ export async function getCustomerPipeline(
     search?: string;
     stages?: CustomerStage[];
     overdueOnly?: boolean;
+    assignedTo?: string;
   },
 ): Promise<{
   columns: CustomerPipelineColumn[];
@@ -988,6 +989,10 @@ export async function getCustomerPipeline(
   }
   if (opts?.overdueOnly) {
     items = items.filter((c) => c.isOverdue);
+  }
+  if (opts?.assignedTo?.trim()) {
+    const rep = opts.assignedTo.trim().toLowerCase();
+    items = items.filter((c) => (c.assignedTo ?? '').toLowerCase().includes(rep));
   }
 
   const columns: CustomerPipelineColumn[] = PIPELINE_STAGE_ORDER.map((stage) => {
@@ -1052,6 +1057,94 @@ export async function updateCustomerNextAction(
     nextActionDue: data.nextActionDue ?? null,
   });
   return { success: true };
+}
+
+export async function updateCustomerPipelineDetails(
+  orgId: string,
+  customerId: string,
+  data: {
+    stage?: CustomerStage;
+    nextAction?: string | null;
+    nextActionDue?: Date | null;
+    pipelineEstimatedValueCents?: number | null;
+    pipelineAssignedTo?: string | null;
+  },
+  userId?: string | null,
+  userName?: string | null,
+) {
+  const customer = await getCustomer(orgId, customerId);
+  if (!customer) throw new Error('Customer not found');
+
+  const updates: Partial<CustomerRecord> = {};
+  if (data.nextAction !== undefined) updates.nextAction = data.nextAction;
+  if (data.nextActionDue !== undefined) updates.nextActionDue = data.nextActionDue;
+  if (data.pipelineEstimatedValueCents !== undefined) {
+    updates.pipelineEstimatedValueCents = data.pipelineEstimatedValueCents;
+  }
+  if (data.pipelineAssignedTo !== undefined) updates.pipelineAssignedTo = data.pipelineAssignedTo;
+
+  if (data.stage) {
+    const previous = resolveCustomerPipelineStage(customer);
+    updates.pipelineStage = data.stage;
+    updates.previousPipelineStage = previous;
+    updates.stageUpdatedAt = new Date();
+  }
+
+  await updateCustomer(orgId, customerId, updates);
+
+  if (data.stage) {
+    await logCustomerActivity(
+      orgId,
+      customerId,
+      'note_added',
+      `Pipeline stage changed to ${data.stage.replace(/_/g, ' ')}`,
+      userId,
+      userName,
+    );
+  }
+
+  return { success: true };
+}
+
+export async function bulkUpdateCustomers360(
+  orgId: string,
+  customerIds: string[],
+  patch: {
+    status?: CustomerStatus;
+    assignedSalespersonName?: string | null;
+    assignedSalespersonId?: string | null;
+    tags?: string[];
+    tagMode?: 'set' | 'append';
+  },
+  userId?: string | null,
+) {
+  let updated = 0;
+  for (const customerId of customerIds) {
+    const customer = await getCustomer(orgId, customerId);
+    if (!customer) continue;
+
+    const data: Partial<CustomerRecord> = {};
+    if (patch.status) data.status = patch.status;
+    if (patch.assignedSalespersonName !== undefined) {
+      data.assignedSalespersonName = patch.assignedSalespersonName;
+    }
+    if (patch.assignedSalespersonId !== undefined) {
+      data.assignedSalespersonId = patch.assignedSalespersonId;
+    }
+    if (patch.tags) {
+      const existing = customer.tags ?? [];
+      data.tags =
+        patch.tagMode === 'append'
+          ? [...new Set([...existing, ...patch.tags])]
+          : patch.tags;
+    }
+
+    if (Object.keys(data).length === 0) continue;
+    await updateCustomer(orgId, customerId, data);
+    await logCustomerActivity(orgId, customerId, 'note_added', 'Bulk update applied', userId, 'System');
+    updated += 1;
+  }
+  return { updated };
 }
 
 export async function logCustomerActivity(

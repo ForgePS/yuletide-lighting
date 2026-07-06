@@ -102,6 +102,33 @@ export const portalMessageSchema = z.object({
   attachmentUrls: z.array(z.string().url()).default([]),
 });
 
+export const portalTokenMessageSchema = z.object({
+  token: z.string().min(8),
+  body: z.string().min(1).max(5000),
+});
+
+export const updateTemplate360Schema = createTemplate360Schema.partial().extend({
+  templateId: z.string().min(1),
+  isActive: z.boolean().optional(),
+});
+
+export const deleteTemplate360Schema = z.object({ templateId: z.string().min(1) });
+
+export const updateAutomation360Schema = createAutomationSchema.partial().extend({
+  automationId: z.string().min(1),
+  isActive: z.boolean().optional(),
+});
+
+export const deleteAutomation360Schema = z.object({ automationId: z.string().min(1) });
+
+export const updateCampaign360Schema = createCampaignSchema.partial().extend({
+  campaignId: z.string().min(1),
+});
+
+export const deleteCampaign360Schema = z.object({ campaignId: z.string().min(1) });
+
+export const deleteConversation360Schema = z.object({ conversationId: z.string().min(1) });
+
 export const triggerAutomationSchema = z.object({
   trigger: automationTriggerSchema,
   customerId: z.string().min(1),

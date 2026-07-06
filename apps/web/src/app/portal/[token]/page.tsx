@@ -3,14 +3,27 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams } from 'next/navigation';
+import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, formatDate } from '@clcrm/ui';
+import { useToast } from '@/lib/toast';
 import { LoadingState, ErrorState } from '@/components/ui/states';
 import { labelProposalStatus } from '@/lib/proposal-utils';
 
 export default function PortalDashboardPage() {
   const token = useParams().token as string;
+  const { toast } = useToast();
+  const [messageBody, setMessageBody] = useState('');
+  const utils = trpc.useUtils();
   const { data, isLoading, isError } = trpc.portal360.public.dashboard.useQuery({ token });
+  const sendMessage = trpc.portal360.public.sendMessage.useMutation({
+    onSuccess: () => {
+      toast('Message sent — we\'ll get back to you soon', 'success');
+      setMessageBody('');
+      utils.portal360.public.dashboard.invalidate({ token });
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
 
   if (isLoading) return <LoadingState message="Loading your portal..." />;
   if (isError || !data) {
@@ -121,6 +134,30 @@ export default function PortalDashboardPage() {
           </section>
         )}
 
+        <section className="card p-6">
+          <h2 className="font-semibold">Message your team</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Send a note and we&apos;ll respond as soon as possible.</p>
+          <form
+            className="mt-4 space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!messageBody.trim()) return;
+              sendMessage.mutate({ token, body: messageBody.trim() });
+            }}
+          >
+            <textarea
+              className="input min-h-[100px] w-full"
+              placeholder="How can we help?"
+              value={messageBody}
+              onChange={(e) => setMessageBody(e.target.value)}
+              required
+            />
+            <button type="submit" className="btn-primary" disabled={sendMessage.isPending || !messageBody.trim()}>
+              {sendMessage.isPending ? 'Sending…' : 'Send message'}
+            </button>
+          </form>
+        </section>
+
         <div className="grid gap-4 sm:grid-cols-2">
           {data.settings.allowServiceRequests && data.settings.permissions.requestService && (
             <Link href={`/portal/${token}/service-request`} className="card block p-6 hover:border-primary">
@@ -128,10 +165,12 @@ export default function PortalDashboardPage() {
               <p className="mt-2 text-sm text-muted-foreground">Report an issue with your display or schedule a repair visit.</p>
             </Link>
           )}
-          <Link href={`/portal/${token}/rebook`} className="card block p-6 hover:border-primary">
-            <h2 className="font-semibold">Rebook next season</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Request the same design for next year — we&apos;ll reach out to confirm.</p>
-          </Link>
+          {data.settings.enabled && (
+            <Link href={`/portal/${token}/rebook`} className="card block p-6 hover:border-primary">
+              <h2 className="font-semibold">Rebook next season</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Request the same design for next year — we&apos;ll reach out to confirm.</p>
+            </Link>
+          )}
         </div>
       </div>
     </div>

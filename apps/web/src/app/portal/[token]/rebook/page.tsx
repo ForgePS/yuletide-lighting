@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency } from '@clcrm/ui';
 import { useToast } from '@/lib/toast';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 
 const MONTHS = ['August', 'September', 'October', 'November', 'Flexible'];
 
@@ -14,7 +14,7 @@ export default function PortalRebookPage() {
   const token = useParams().token as string;
   const router = useRouter();
   const { toast } = useToast();
-  const { data: info, isLoading } = trpc.portal360.public.rebookInfo.useQuery({ token });
+  const { data: info, isLoading, isError } = trpc.portal360.public.rebookInfo.useQuery({ token });
   const submit = trpc.portal360.public.submitRebook.useMutation({
     onSuccess: (r) => {
       toast(r.newProposalId ? 'Rebooked — your proposal is being prepared!' : 'Rebook request submitted!', 'success');
@@ -27,6 +27,13 @@ export default function PortalRebookPage() {
   const [notes, setNotes] = useState('');
 
   if (isLoading) return <LoadingState message="Loading..." />;
+  if (isError || !info) {
+    return (
+      <div className="mesh-bg flex min-h-screen items-center justify-center p-4">
+        <ErrorState message="Portal access not found or disabled. Check your link or contact your provider." />
+      </div>
+    );
+  }
 
   return (
     <div className="mesh-bg min-h-screen py-8">

@@ -6,6 +6,7 @@ import {
   submitPortalRebookRequest,
   enableCustomerPortal,
   getPortalRebookInfo,
+  submitPortalMessage,
 } from '@yuletide/firebase';
 import { router, officeProcedure, publicProcedure } from '../trpc';
 
@@ -57,6 +58,10 @@ export const portal360Router = router({
 
     rebookInfo: publicProcedure.input(z.object({ token: z.string().min(8) })).query(({ input }) =>
       getPortalRebookInfo(input.token),
+    ),
+
+    sendMessage: publicProcedure.input(z.object({ token: z.string().min(8), body: z.string().min(1).max(5000) })).mutation(({ input }) =>
+      submitPortalMessage(input.token, input.body),
     ),
   }),
 

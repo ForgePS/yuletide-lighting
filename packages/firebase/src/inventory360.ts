@@ -130,6 +130,37 @@ export async function updateInventoryItem360(orgId: string, itemId: string, data
   return getInventoryItem360(orgId, itemId);
 }
 
+export async function bulkUpdateInventoryItems360(
+  orgId: string,
+  itemIds: string[],
+  patch: {
+    categoryId?: string;
+    categoryName?: string;
+    reorderLevel?: number;
+    stockAdjustment?: number;
+  },
+  userId?: string | null,
+) {
+  let updated = 0;
+  for (const itemId of itemIds) {
+    const existing = await getInventoryItem360(orgId, itemId);
+    if (!existing) continue;
+
+    const data: Partial<InventoryItemRecord> = {};
+    if (patch.categoryId) data.categoryId = patch.categoryId;
+    if (patch.categoryName) data.categoryName = patch.categoryName;
+    if (patch.reorderLevel !== undefined) data.reorderLevel = patch.reorderLevel;
+    if (patch.stockAdjustment) {
+      data.quantityOnHand = Math.max(0, (existing.quantityOnHand ?? 0) + patch.stockAdjustment);
+    }
+
+    if (Object.keys(data).length === 0) continue;
+    await updateInventoryItem360(orgId, itemId, data, userId);
+    updated += 1;
+  }
+  return { updated };
+}
+
 export async function ensureInventoryCategories(orgId: string): Promise<InventoryCategory[]> {
   const db = getAdminFirestore();
   const snap = await db.collection(orgPath(orgId, 'inventoryCategories')).get();

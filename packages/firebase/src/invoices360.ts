@@ -30,7 +30,8 @@ import {
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
 import { colCreate, colDelete, colGet, colList, colUpdate, getByPublicToken, nanoid as firestoreNanoid } from './firestore';
-import { getInvoiceSettings } from './settings360';
+import { getOrganization } from './firestore';
+import { getBrandingForCustomerFacing, getInvoiceSettings } from './settings360';
 
 function ts() {
   return Timestamp.now();
@@ -42,6 +43,44 @@ function orgPath(orgId: string, collection: string) {
 
 function mapDoc<T>(data: Record<string, unknown>): T {
   return mapTimestampsFromData(data) as unknown as T;
+}
+
+function toTemplateVars(input: {
+  invoice: InvoiceRecord;
+  customer?: { firstName?: string; lastName?: string; email?: string } | null;
+  paymentLink: string;
+}) {
+  const customerName = input.invoice.customerName
+    || `${input.customer?.firstName ?? ''} ${input.customer?.lastName ?? ''}`.trim()
+    || 'Customer';
+  return {
+    invoiceNumber: input.invoice.invoiceNumber,
+    customerName,
+    dueDate: input.invoice.dueDate.toLocaleDateString(),
+    subtotal: `$${(input.invoice.subtotalCents / 100).toFixed(2)}`,
+    amountPaid: `$${(input.invoice.amountPaidCents / 100).toFixed(2)}`,
+    balanceDue: `$${(input.invoice.balanceDueCents / 100).toFixed(2)}`,
+    notes: input.invoice.notes ?? '',
+    paymentLink: input.paymentLink,
+    propertyAddress: input.invoice.propertyAddress ?? '',
+  };
+}
+
+export async function getDefaultInvoiceTemplate(orgId: string): Promise<InvoiceTemplate | null> {
+  const templates = await ensureInvoiceTemplates(orgId);
+  return templates.find((row) => row.isDefault) ?? templates[0] ?? null;
+}
+
+export function renderInvoiceTemplate(
+  template: InvoiceTemplate,
+  vars: Record<string, string>,
+) {
+  const renderedHtml = template.contentHtml ? renderTemplate(template.contentHtml, vars) : '';
+  const renderedBlocks = (template.blocks ?? []).map((block) => ({
+    ...block,
+    content: renderTemplate(block.content ?? (block.fieldKey ? `{{${block.fieldKey}}}` : ''), vars),
+  }));
+  return { renderedHtml, renderedBlocks };
 }
 
 const DEFAULT_INVOICE_TEMPLATE: Omit<InvoiceTemplate, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> = {
@@ -239,7 +278,20 @@ export async function sendInvoice360(orgId: string, invoiceId: string, userId?: 
     nextReminderAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000),
     updatedBy: userId,
   });
-  await logInvoiceActivity(orgId, invoiceId, 'sent', 'Invoice sent', { userId: userId ?? undefined });
+  const invoice = await getInvoice360(orgId, invoiceId);
+  const customer = invoice ? await colGet<{ firstName?: string; lastName?: string; email?: string }>(orgId, 'customers', invoice.customerId) : null;
+  const template = await getDefaultInvoiceTemplate(orgId);
+  const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app'}/pay/${invoice?.publicToken ?? ''}`;
+  const vars = invoice ? toTemplateVars({ invoice, customer, paymentLink }) : null;
+  await logInvoiceActivity(orgId, invoiceId, 'sent', 'Invoice sent', {
+    userId: userId ?? undefined,
+    metadata: {
+      templateId: template?.id ?? null,
+      templateName: template?.name ?? null,
+      paymentLink,
+      previewHtml: template && vars ? renderInvoiceTemplate(template, vars).renderedHtml : null,
+    },
+  });
   return getInvoice360(orgId, invoiceId);
 }
 
@@ -918,8 +970,29 @@ export async function getInvoiceByToken360(token: string) {
   if (!invoice) return null;
   const orgId = String(invoice.organizationId);
   const normalized = normalizeInvoice({ ...invoice, organizationId: orgId });
-  const customer = await colGet<{ firstName?: string; lastName?: string; email?: string }>(orgId, 'customers', normalized.customerId);
-  return { invoice: normalized, customer };
+  const [customer, organization, branding, template] = await Promise.all([
+    colGet<{ firstName?: string; lastName?: string; email?: string }>(orgId, 'customers', normalized.customerId),
+    getOrganization(orgId),
+    getBrandingForCustomerFacing(orgId),
+    getDefaultInvoiceTemplate(orgId),
+  ]);
+  const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app'}/pay/${normalized.publicToken}`;
+  const vars = toTemplateVars({ invoice: normalized, customer, paymentLink });
+  const rendered = template ? renderInvoiceTemplate(template, vars) : null;
+  return {
+    invoice: normalized,
+    customer,
+    organization: organization
+      ? {
+          ...organization,
+          companyName: branding.companyName,
+          brandColor: branding.brandColor,
+          logoUrl: branding.logoUrl,
+        }
+      : null,
+    template,
+    renderedTemplate: rendered,
+  };
 }
 
 export async function aiCollectionsQuery(orgId: string, question: string): Promise<AiCollectionsQueryResult> {

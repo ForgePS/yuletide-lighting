@@ -35,6 +35,8 @@ import {
   getCustomerPipeline,
   updateCustomerPipelineStage,
   updateCustomerNextAction,
+  updateCustomerPipelineDetails,
+  bulkUpdateCustomers360,
   logCustomerActivity,
   seedCustomer360Demo,
 } from '@yuletide/firebase';
@@ -57,6 +59,8 @@ import {
   customerPipelineFiltersSchema,
   updateCustomerPipelineStageSchema,
   updateCustomerNextActionSchema,
+  updatePipelineCustomerSchema,
+  bulkUpdateCustomers360Schema,
   propertyListFiltersSchema,
 } from '@clcrm/validators';
 import { router, officeProcedure, adminProcedure } from '../trpc';
@@ -152,6 +156,7 @@ export const customer360Router = router({
       search: input?.search,
       stages: input?.stages,
       overdueOnly: input?.overdueOnly,
+      assignedTo: input?.assignedTo,
     }),
   ),
 
@@ -180,6 +185,30 @@ export const customer360Router = router({
         ctx.auth.userId,
       ),
     ),
+
+  updatePipelineCustomer: officeProcedure
+    .input(updatePipelineCustomerSchema)
+    .mutation(({ ctx, input }) => {
+      const { customerId, ...data } = input;
+      return updateCustomerPipelineDetails(
+        ctx.auth.organizationId,
+        customerId,
+        {
+          stage: data.stage,
+          nextAction: data.nextAction ?? undefined,
+          nextActionDue: data.nextActionDue ?? undefined,
+          pipelineEstimatedValueCents: data.pipelineEstimatedValueCents ?? undefined,
+          pipelineAssignedTo: data.pipelineAssignedTo ?? undefined,
+        },
+        ctx.auth.userId,
+        ctx.auth.email ?? 'Office',
+      );
+    }),
+
+  bulkUpdate: officeProcedure.input(bulkUpdateCustomers360Schema).mutation(({ ctx, input }) => {
+    const { customerIds, ...patch } = input;
+    return bulkUpdateCustomers360(ctx.auth.organizationId, customerIds, patch, ctx.auth.userId);
+  }),
 
   getBasic: officeProcedure.input(z.object({ customerId: z.string() })).query(async ({ ctx, input }) => {
     const customer = await requireCustomer(ctx.auth.organizationId, input.customerId);

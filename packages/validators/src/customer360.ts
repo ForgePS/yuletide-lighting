@@ -412,6 +412,24 @@ export const updateCustomerNextActionSchema = z.object({
   nextActionDue: z.coerce.date().optional().nullable(),
 });
 
+export const updatePipelineCustomerSchema = z.object({
+  customerId: z.string().min(1),
+  stage: customerStageSchema.optional(),
+  nextAction: z.string().max(500).optional().nullable(),
+  nextActionDue: z.coerce.date().optional().nullable(),
+  pipelineEstimatedValueCents: z.number().int().min(0).optional().nullable(),
+  pipelineAssignedTo: z.string().max(200).optional().nullable(),
+});
+
+export const bulkUpdateCustomers360Schema = z.object({
+  customerIds: z.array(z.string().min(1)).min(1).max(500),
+  status: customerStatusSchema.optional(),
+  assignedSalespersonName: z.string().max(200).optional().nullable(),
+  assignedSalespersonId: z.string().optional().nullable(),
+  tags: z.array(z.string().max(80)).optional(),
+  tagMode: z.enum(['set', 'append']).optional(),
+});
+
 export const customerPipelineFiltersSchema = z.object({
   search: z.string().optional(),
   stages: z.array(customerStageSchema).optional(),

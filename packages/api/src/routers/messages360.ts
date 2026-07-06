@@ -14,13 +14,20 @@ import {
   receiveSms360,
   ensureMessageTemplates,
   createMessageTemplate,
+  updateMessageTemplate,
+  deleteMessageTemplate,
   ensureAutomations,
   createAutomation,
+  updateAutomation,
+  deleteAutomation,
   toggleAutomation,
   triggerAutomation,
   listCampaigns,
   createCampaign,
+  updateCampaign,
+  deleteCampaign,
   sendCampaign,
+  deleteConversation,
   ensureInternalChannels,
   sendInternalMessage,
   listInternalMessages,
@@ -36,12 +43,20 @@ import {
   receiveSms360Schema,
   updateConversationSchema,
   createTemplate360Schema,
+  updateTemplate360Schema,
+  deleteTemplate360Schema,
   createCampaignSchema,
+  updateCampaign360Schema,
+  deleteCampaign360Schema,
   createAutomationSchema,
+  updateAutomation360Schema,
+  deleteAutomation360Schema,
+  deleteConversation360Schema,
   sendInternalMessageSchema,
   createReviewRequestSchema,
   aiCommunicationSchema,
   portalMessageSchema,
+  portalTokenMessageSchema,
   triggerAutomationSchema,
 } from '@clcrm/validators';
 import { router, officeProcedure, publicProcedure } from '../trpc';
@@ -73,6 +88,9 @@ export const messages360Router = router({
     markRead: officeProcedure.input(z.object({ conversationId: z.string(), messageId: z.string() })).mutation(({ ctx, input }) =>
       markMessageRead(ctx.auth.organizationId, input.conversationId, input.messageId),
     ),
+    delete: officeProcedure.input(deleteConversation360Schema).mutation(({ ctx, input }) =>
+      deleteConversation(ctx.auth.organizationId, input.conversationId),
+    ),
   }),
 
   send: officeProcedure.input(sendMessage360Schema).mutation(({ ctx, input }) =>
@@ -93,12 +111,26 @@ export const messages360Router = router({
     create: officeProcedure.input(createTemplate360Schema).mutation(({ ctx, input }) =>
       createMessageTemplate(ctx.auth.organizationId, { ...input, isActive: true } as never, ctx.auth.userId),
     ),
+    update: officeProcedure.input(updateTemplate360Schema).mutation(({ ctx, input }) => {
+      const { templateId, ...data } = input;
+      return updateMessageTemplate(ctx.auth.organizationId, templateId, data as never, ctx.auth.userId);
+    }),
+    delete: officeProcedure.input(deleteTemplate360Schema).mutation(({ ctx, input }) =>
+      deleteMessageTemplate(ctx.auth.organizationId, input.templateId),
+    ),
   }),
 
   automations: router({
     list: officeProcedure.query(({ ctx }) => ensureAutomations(ctx.auth.organizationId)),
     create: officeProcedure.input(createAutomationSchema).mutation(({ ctx, input }) =>
       createAutomation(ctx.auth.organizationId, input as never, ctx.auth.userId),
+    ),
+    update: officeProcedure.input(updateAutomation360Schema).mutation(({ ctx, input }) => {
+      const { automationId, ...data } = input;
+      return updateAutomation(ctx.auth.organizationId, automationId, data as never, ctx.auth.userId);
+    }),
+    delete: officeProcedure.input(deleteAutomation360Schema).mutation(({ ctx, input }) =>
+      deleteAutomation(ctx.auth.organizationId, input.automationId),
     ),
     toggle: officeProcedure.input(z.object({ automationId: z.string(), isActive: z.boolean() })).mutation(({ ctx, input }) =>
       toggleAutomation(ctx.auth.organizationId, input.automationId, input.isActive, ctx.auth.userId),
@@ -112,6 +144,13 @@ export const messages360Router = router({
     list: officeProcedure.query(({ ctx }) => listCampaigns(ctx.auth.organizationId)),
     create: officeProcedure.input(createCampaignSchema).mutation(({ ctx, input }) =>
       createCampaign(ctx.auth.organizationId, input as never, ctx.auth.userId),
+    ),
+    update: officeProcedure.input(updateCampaign360Schema).mutation(({ ctx, input }) => {
+      const { campaignId, ...data } = input;
+      return updateCampaign(ctx.auth.organizationId, campaignId, data as never, ctx.auth.userId);
+    }),
+    delete: officeProcedure.input(deleteCampaign360Schema).mutation(({ ctx, input }) =>
+      deleteCampaign(ctx.auth.organizationId, input.campaignId),
     ),
     send: officeProcedure.input(z.object({ campaignId: z.string() })).mutation(({ ctx, input }) =>
       sendCampaign(ctx.auth.organizationId, input.campaignId, ctx.auth.userId),

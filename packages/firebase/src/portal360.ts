@@ -8,6 +8,7 @@ import { createServiceIssue360 } from './service-issues';
 import { listCalendarEvents } from './schedule360';
 import { logCustomerActivity, createCommunication } from './customer360';
 import { processPortalRebook, getPortalRebookContext } from './rebooking360';
+import { receivePortalMessage } from './messages360';
 
 export type PortalCustomerContext = {
   organizationId: string;
@@ -320,4 +321,10 @@ export async function getPortalRebookInfo(token: string) {
   if (!ctx) return null;
   const rebook = await getPortalRebookContext(ctx.organizationId, ctx.customer.id);
   return { ...rebook, customerName: ctx.customer.businessName || `${ctx.customer.firstName ?? ''} ${ctx.customer.lastName ?? ''}`.trim() };
+}
+
+export async function submitPortalMessage(token: string, body: string) {
+  const ctx = await getCustomerByPortalToken(token);
+  if (!ctx) throw new Error('Portal access not found or disabled');
+  return receivePortalMessage(ctx.organizationId, { customerId: ctx.customer.id, body });
 }

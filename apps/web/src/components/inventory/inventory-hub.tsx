@@ -12,6 +12,7 @@ import {
   stockLevelColor,
 } from '@/lib/inventory-utils';
 import { EmptyState, LoadingState } from '@/components/ui/states';
+import { BulkActionBar } from '@/components/ui/bulk-action-bar';
 import { InventoryEditDialog, InventoryForm } from './inventory-table';
 import { LowStockAlertPanel } from './low-stock-panel';
 import type { InventoryItemRecord } from '@clcrm/types';
@@ -39,6 +40,20 @@ export function InventoryHub() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [editing, setEditing] = useState<InventoryItemRecord | null>(null);
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkReorder, setBulkReorder] = useState('');
+  const [bulkStockAdjust, setBulkStockAdjust] = useState('');
+
+  const bulkUpdate = trpc.inventory360.items.bulkUpdate.useMutation({
+    onSuccess: (result) => {
+      toast(`Updated ${result.updated} items`, 'success');
+      setSelectedIds(new Set());
+      setBulkReorder('');
+      setBulkStockAdjust('');
+      refetch();
+    },
+    onError: () => toast('Bulk update failed', 'error'),
+  });
 
   const create = trpc.inventory360.items.create.useMutation({
     onSuccess: () => {
@@ -203,10 +218,54 @@ export function InventoryHub() {
         <EmptyState title="No matching items" description="Try a different search or category filter." />
       ) : (
         <div className="card overflow-hidden">
+          <BulkActionBar selectedCount={selectedIds.size} onClear={() => setSelectedIds(new Set())}>
+            <input
+              type="number"
+              min={0}
+              className="input w-28 py-1.5 text-sm"
+              placeholder="Reorder lvl"
+              value={bulkReorder}
+              onChange={(e) => setBulkReorder(e.target.value)}
+            />
+            <input
+              type="number"
+              className="input w-28 py-1.5 text-sm"
+              placeholder="Stock +/-"
+              value={bulkStockAdjust}
+              onChange={(e) => setBulkStockAdjust(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              disabled={bulkUpdate.isPending || (!bulkReorder && !bulkStockAdjust)}
+              onClick={() =>
+                bulkUpdate.mutate({
+                  itemIds: [...selectedIds],
+                  ...(bulkReorder ? { reorderLevel: Number(bulkReorder) } : {}),
+                  ...(bulkStockAdjust ? { stockAdjustment: Number(bulkStockAdjust) } : {}),
+                })
+              }
+            >
+              Apply
+            </button>
+          </BulkActionBar>
           <div className="overflow-x-auto">
             <table className="data-table min-w-[960px]">
               <thead>
                 <tr>
+                  <th className="w-10">
+                    <input
+                      type="checkbox"
+                      checked={pageItems.length > 0 && pageItems.every((i) => selectedIds.has(i.id))}
+                      onChange={() => {
+                        const ids = pageItems.map((i) => i.id);
+                        setSelectedIds((prev) =>
+                          ids.every((id) => prev.has(id)) ? new Set() : new Set([...prev, ...ids]),
+                        );
+                      }}
+                      aria-label="Select page"
+                    />
+                  </th>
                   <th>SKU</th>
                   <th>Name</th>
                   <th>Category</th>
@@ -224,6 +283,21 @@ export function InventoryHub() {
                   const busy = adjustingId === item.id && update.isPending;
                   return (
                     <tr key={item.id} className="group">
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={() =>
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(item.id)) next.delete(item.id);
+                              else next.add(item.id);
+                              return next;
+                            })
+                          }
+                          aria-label={`Select ${item.sku}`}
+                        />
+                      </td>
                       <td className="font-mono text-xs whitespace-nowrap">{item.sku}</td>
                       <td>
                         <Link href={`/app/inventory/items/${item.id}`} className="font-medium text-primary hover:underline">

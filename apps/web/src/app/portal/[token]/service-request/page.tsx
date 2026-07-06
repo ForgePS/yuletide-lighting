@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 
 const CATEGORIES = [
   { value: 'lights_out', label: 'Lights out / section dark' },
@@ -20,7 +20,7 @@ export default function PortalServiceRequestPage() {
   const token = useParams().token as string;
   const router = useRouter();
   const { toast } = useToast();
-  const { data, isLoading } = trpc.portal360.public.dashboard.useQuery({ token });
+  const { data, isLoading, isError } = trpc.portal360.public.dashboard.useQuery({ token });
   const submit = trpc.portal360.public.submitServiceRequest.useMutation({
     onSuccess: () => {
       toast('Service request submitted', 'success');
@@ -35,6 +35,13 @@ export default function PortalServiceRequestPage() {
   const [propertyId, setPropertyId] = useState('');
 
   if (isLoading) return <LoadingState message="Loading..." />;
+  if (isError || !data) {
+    return (
+      <div className="mesh-bg flex min-h-screen items-center justify-center p-4">
+        <ErrorState message="Portal access not found or disabled. Check your link or contact your provider." />
+      </div>
+    );
+  }
 
   return (
     <div className="mesh-bg min-h-screen py-8">

@@ -29,6 +29,8 @@ jobs:
           TINA_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_TINA_CLIENT_ID }}
           TINA_TOKEN: ${{ secrets.TINA_TOKEN }}
           PLATFORM_CREATOR_EMAILS: ${{ secrets.PLATFORM_CREATOR_EMAILS }}
+          MAPBOX_PUBLIC_TOKEN: ${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN }}
+          MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
         run: |
           # Empty GitHub secrets must not override known Firebase web defaults.
           FIREBASE_API_KEY="${FIREBASE_API_KEY:-AIzaSyD9jk7wARDfxpaYxigLKTJ13gK7eCBhCEY}"
@@ -38,6 +40,8 @@ jobs:
           FIREBASE_MESSAGING_SENDER_ID="${FIREBASE_MESSAGING_SENDER_ID:-928287362183}"
           FIREBASE_APP_ID="${FIREBASE_APP_ID:-1:928287362183:web:e0cca4d6e2f6d89cc3bc22}"
           TINA_CLIENT_ID="${TINA_CLIENT_ID:-b17e495a-4dd4-4314-b4c8-7e816567433b}"
+          MAPBOX_PUBLIC="${MAPBOX_PUBLIC_TOKEN:-$MAPBOX_SERVER_TOKEN}"
+          MAPBOX_SERVER="${MAPBOX_SERVER_TOKEN:-$MAPBOX_PUBLIC_TOKEN}"
           cat > .env <<EOF
           NEXT_PUBLIC_FIREBASE_API_KEY=${FIREBASE_API_KEY}
           NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
@@ -51,6 +55,15 @@ jobs:
           NEXT_PUBLIC_TINA_BRANCH=main
           NEXT_PUBLIC_APP_URL=https://yuletide-lighting.web.app
           EOF
+          if [ -n "$MAPBOX_PUBLIC" ]; then
+            echo "NEXT_PUBLIC_MAPBOX_TOKEN=${MAPBOX_PUBLIC}" >> .env
+          fi
+          if [ -n "$MAPBOX_SERVER" ]; then
+            echo "MAPBOX_TOKEN=${MAPBOX_SERVER}" >> .env
+          fi
+          if [ -z "$MAPBOX_PUBLIC" ]; then
+            echo "::warning::NEXT_PUBLIC_MAPBOX_TOKEN is not set — sign tracker maps and geocoding will be disabled."
+          fi
 
       - name: Verify deploy credentials
         env:

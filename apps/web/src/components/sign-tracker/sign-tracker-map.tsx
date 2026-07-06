@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import type { SignLocationListItem } from '@clcrm/types';
 import { STATUS_COLORS } from '@/lib/sign-tracker-utils';
+import { getMapboxPublicToken } from '@/lib/mapbox-env';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 type SignTrackerMapProps = {
@@ -42,9 +43,9 @@ export function SignTrackerMap({
   );
 
   useEffect(() => {
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    const token = getMapboxPublicToken();
     if (!token) {
-      setMapError('Map unavailable — set NEXT_PUBLIC_MAPBOX_TOKEN');
+      setMapError('Map unavailable — add NEXT_PUBLIC_MAPBOX_TOKEN to GitHub secrets and redeploy.');
       return;
     }
 

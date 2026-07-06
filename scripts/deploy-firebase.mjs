@@ -40,6 +40,11 @@ function prepareEnv() {
   if (adminKey) {
     kept.push(`CLCRM_FIREBASE_ADMIN_KEY=${adminKey}`);
   }
+  const mapboxToken =
+    parseEnvValue(lines, 'MAPBOX_TOKEN') ?? parseEnvValue(lines, 'NEXT_PUBLIC_MAPBOX_TOKEN');
+  if (mapboxToken) {
+    kept.push(`MAPBOX_TOKEN=${mapboxToken}`);
+  }
   let env = kept.join('\n');
   if (!/^NEXT_PUBLIC_APP_URL=/m.test(env)) {
     env += '\nNEXT_PUBLIC_APP_URL=https://yuletide-lighting.web.app\n';

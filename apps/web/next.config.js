@@ -40,6 +40,7 @@ const nextConfig = {
       'b17e495a-4dd4-4314-b4c8-7e816567433b',
     ),
     NEXT_PUBLIC_TINA_BRANCH: envOr('NEXT_PUBLIC_TINA_BRANCH', 'main'),
+    NEXT_PUBLIC_MAPBOX_TOKEN: envOr('NEXT_PUBLIC_MAPBOX_TOKEN', ''),
   },
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],

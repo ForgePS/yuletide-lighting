@@ -92,6 +92,7 @@ export function SignTrackerDashboard() {
   const { idToken, loading: authLoading } = useAuth();
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<SignLocationListItem | null>(null);
+  const [detailMode, setDetailMode] = useState<'view' | 'edit'>('view');
   const [showMap, setShowMap] = useState(false);
   const [filters, setFilters] = useState<SignTrackerFilters>({
     seasonYear: currentSeasonYear(),
@@ -196,11 +197,19 @@ export function SignTrackerDashboard() {
                 <th>Type</th>
                 <th>Status</th>
                 <th>Placed</th>
+                <th className="w-20" />
               </tr>
             </thead>
             <tbody>
               {data.locations.map((loc) => (
-                <tr key={loc.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedLocation(loc)}>
+                <tr
+                  key={loc.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => {
+                    setDetailMode('view');
+                    setSelectedLocation(loc);
+                  }}
+                >
                   <td className="font-medium">{loc.location.address || '—'}</td>
                   <td>{loc.location.city}</td>
                   <td>{loc.signData.quantityPlaced}</td>
@@ -211,6 +220,19 @@ export function SignTrackerDashboard() {
                     </span>
                   </td>
                   <td>{new Date(loc.signData.placementDate).toLocaleDateString()}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-primary hover:underline"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setDetailMode('edit');
+                        setSelectedLocation(loc);
+                      }}
+                    >
+                      Edit
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -221,6 +243,7 @@ export function SignTrackerDashboard() {
       {selectedLocation && (
         <SignLocationDetail
           location={selectedLocation}
+          initialMode={detailMode}
           onClose={() => setSelectedLocation(null)}
           onUpdated={() => {
             utils.signTracker360.pageData.invalidate();

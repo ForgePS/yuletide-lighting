@@ -8,7 +8,9 @@ const webRoot = path.join(repoRoot, 'apps/web');
 const rootEnvPath = path.join(repoRoot, '.env');
 const webEnvPath = path.join(webRoot, '.env');
 const webEnvBackupPath = path.join(webRoot, '.env.deploy-backup');
-const only = process.argv.includes('--hosting-only') ? '--only hosting' : '';
+const only = process.argv.includes('--hosting-only')
+  ? '--only hosting,firestore:indexes'
+  : '';
 
 const RESERVED_ENV_PREFIXES = ['X_GOOGLE_', 'FIREBASE_', 'EXT_'];
 

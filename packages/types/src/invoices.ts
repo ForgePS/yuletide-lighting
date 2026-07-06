@@ -154,6 +154,37 @@ export type ReminderTemplate = InvoiceAuditFields & {
   isActive: boolean;
 };
 
+export type InvoiceTemplateBlockType = 'text' | 'image' | 'field' | 'divider';
+
+export type InvoiceTemplateBlock = {
+  id: string;
+  type: InvoiceTemplateBlockType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content?: string | null;
+  fieldKey?: string | null;
+  textSize?: number | null;
+  align?: 'left' | 'center' | 'right' | null;
+};
+
+export type InvoiceTemplate = InvoiceAuditFields & {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string | null;
+  logoUrl?: string | null;
+  backgroundImageUrl?: string | null;
+  primaryColor: string;
+  pageWidth: number;
+  pageHeight: number;
+  contentHtml?: string | null;
+  blocks: InvoiceTemplateBlock[];
+  isDefault: boolean;
+  isActive: boolean;
+};
+
 export type CollectionQueueItem = InvoiceAuditFields & {
   id: string;
   organizationId: string;

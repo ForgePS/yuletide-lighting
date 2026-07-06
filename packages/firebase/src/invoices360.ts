@@ -13,6 +13,7 @@ import type {
   InvoiceRecord,
   InvoiceReminder,
   InvoiceStatus,
+  InvoiceTemplate,
   ReminderStage,
   ReminderTemplate,
 } from '@clcrm/types';
@@ -29,7 +30,8 @@ import {
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
 import { colCreate, colDelete, colGet, colList, colUpdate, getByPublicToken, nanoid as firestoreNanoid } from './firestore';
-import { getInvoiceSettings } from './settings360';
+import { getOrganization } from './firestore';
+import { getBrandingForCustomerFacing, getInvoiceSettings } from './settings360';
 
 function ts() {
   return Timestamp.now();
@@ -42,6 +44,64 @@ function orgPath(orgId: string, collection: string) {
 function mapDoc<T>(data: Record<string, unknown>): T {
   return mapTimestampsFromData(data) as unknown as T;
 }
+
+function toTemplateVars(input: {
+  invoice: InvoiceRecord;
+  customer?: { firstName?: string; lastName?: string; email?: string } | null;
+  paymentLink: string;
+}) {
+  const customerName = input.invoice.customerName
+    || `${input.customer?.firstName ?? ''} ${input.customer?.lastName ?? ''}`.trim()
+    || 'Customer';
+  return {
+    invoiceNumber: input.invoice.invoiceNumber,
+    customerName,
+    dueDate: input.invoice.dueDate.toLocaleDateString(),
+    subtotal: `$${(input.invoice.subtotalCents / 100).toFixed(2)}`,
+    amountPaid: `$${(input.invoice.amountPaidCents / 100).toFixed(2)}`,
+    balanceDue: `$${(input.invoice.balanceDueCents / 100).toFixed(2)}`,
+    notes: input.invoice.notes ?? '',
+    paymentLink: input.paymentLink,
+    propertyAddress: input.invoice.propertyAddress ?? '',
+  };
+}
+
+export async function getDefaultInvoiceTemplate(orgId: string): Promise<InvoiceTemplate | null> {
+  const templates = await ensureInvoiceTemplates(orgId);
+  return templates.find((row) => row.isDefault) ?? templates[0] ?? null;
+}
+
+export function renderInvoiceTemplate(
+  template: InvoiceTemplate,
+  vars: Record<string, string>,
+) {
+  const renderedHtml = template.contentHtml ? renderTemplate(template.contentHtml, vars) : '';
+  const renderedBlocks = (template.blocks ?? []).map((block) => ({
+    ...block,
+    content: renderTemplate(block.content ?? (block.fieldKey ? `{{${block.fieldKey}}}` : ''), vars),
+  }));
+  return { renderedHtml, renderedBlocks };
+}
+
+const DEFAULT_INVOICE_TEMPLATE: Omit<InvoiceTemplate, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> = {
+  organizationId: '',
+  name: 'Default invoice template',
+  description: 'Standard invoice layout',
+  logoUrl: null,
+  backgroundImageUrl: null,
+  primaryColor: '#DC2626',
+  pageWidth: 1024,
+  pageHeight: 1325,
+  contentHtml: '<h1>Invoice {{invoiceNumber}}</h1><p>Customer: {{customerName}}</p><p>Due: {{dueDate}}</p><p>Total: {{subtotal}}</p><p>Balance due: {{balanceDue}}</p>',
+  blocks: [
+    { id: 'title', type: 'field', x: 5, y: 4, width: 45, height: 8, fieldKey: 'invoiceNumber', content: 'Invoice #{{invoiceNumber}}', textSize: 32, align: 'left' },
+    { id: 'customer', type: 'field', x: 5, y: 16, width: 50, height: 6, fieldKey: 'customerName', content: 'Customer: {{customerName}}', textSize: 16, align: 'left' },
+    { id: 'due-date', type: 'field', x: 5, y: 24, width: 35, height: 5, fieldKey: 'dueDate', content: 'Due date: {{dueDate}}', textSize: 14, align: 'left' },
+    { id: 'balance', type: 'field', x: 60, y: 16, width: 35, height: 10, fieldKey: 'balanceDue', content: 'Balance Due: {{balanceDue}}', textSize: 24, align: 'right' },
+  ],
+  isDefault: true,
+  isActive: true,
+};
 
 function normalizeInvoice(raw: Record<string, unknown>): InvoiceRecord {
   const subtotalCents = Number(raw.subtotalCents ?? 0);
@@ -218,7 +278,20 @@ export async function sendInvoice360(orgId: string, invoiceId: string, userId?: 
     nextReminderAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000),
     updatedBy: userId,
   });
-  await logInvoiceActivity(orgId, invoiceId, 'sent', 'Invoice sent', { userId: userId ?? undefined });
+  const invoice = await getInvoice360(orgId, invoiceId);
+  const customer = invoice ? await colGet<{ firstName?: string; lastName?: string; email?: string }>(orgId, 'customers', invoice.customerId) : null;
+  const template = await getDefaultInvoiceTemplate(orgId);
+  const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app'}/pay/${invoice?.publicToken ?? ''}`;
+  const vars = invoice ? toTemplateVars({ invoice, customer, paymentLink }) : null;
+  await logInvoiceActivity(orgId, invoiceId, 'sent', 'Invoice sent', {
+    userId: userId ?? undefined,
+    metadata: {
+      templateId: template?.id ?? null,
+      templateName: template?.name ?? null,
+      paymentLink,
+      previewHtml: template && vars ? renderInvoiceTemplate(template, vars).renderedHtml : null,
+    },
+  });
   return getInvoice360(orgId, invoiceId);
 }
 
@@ -468,8 +541,114 @@ export async function createReminderTemplate(orgId: string, input: Omit<Reminder
   return colCreate(orgId, 'reminderTemplates', { organizationId: orgId, ...input, version: 1, createdBy: userId, updatedBy: userId }) as Promise<ReminderTemplate>;
 }
 
+export async function updateReminderTemplate(
+  orgId: string,
+  templateId: string,
+  input: Partial<Omit<ReminderTemplate, keyof import('@clcrm/types').InvoiceAuditFields | 'id' | 'organizationId' | 'version'>>,
+  userId?: string | null,
+) {
+  const template = await colGet<ReminderTemplate>(orgId, 'reminderTemplates', templateId);
+  if (!template) throw new Error('Reminder template not found');
+  const patch: Record<string, unknown> = { ...input, updatedBy: userId ?? null };
+  if (input.subject !== undefined && !String(input.subject).trim()) patch.subject = template.subject;
+  if (input.body !== undefined && !String(input.body).trim()) patch.body = template.body;
+  await colUpdate(orgId, 'reminderTemplates', templateId, patch);
+  return colGet<ReminderTemplate>(orgId, 'reminderTemplates', templateId);
+}
+
+export async function deleteReminderTemplate(orgId: string, templateId: string) {
+  await colDelete(orgId, 'reminderTemplates', templateId);
+  return { success: true as const };
+}
+
 export async function listReminderTemplates(orgId: string) {
   return ensureReminderTemplates(orgId);
+}
+
+export async function ensureInvoiceTemplates(orgId: string): Promise<InvoiceTemplate[]> {
+  const db = getAdminFirestore();
+  const snap = await db.collection(orgPath(orgId, 'invoiceTemplates')).get();
+  if (!snap.empty) return snap.docs.map((d) => mapDoc<InvoiceTemplate>({ id: d.id, ...d.data()! }));
+
+  const now = ts();
+  const ref = db.collection(orgPath(orgId, 'invoiceTemplates')).doc();
+  const seed = {
+    ...DEFAULT_INVOICE_TEMPLATE,
+    organizationId: orgId,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: null,
+    updatedBy: null,
+  };
+  await ref.set(seed);
+  return [mapDoc<InvoiceTemplate>({ id: ref.id, ...seed })];
+}
+
+export async function listInvoiceTemplates(orgId: string) {
+  return ensureInvoiceTemplates(orgId);
+}
+
+export async function createInvoiceTemplate(
+  orgId: string,
+  input: Omit<InvoiceTemplate, keyof import('@clcrm/types').InvoiceAuditFields | 'id' | 'organizationId'>,
+  userId?: string | null,
+) {
+  const db = getAdminFirestore();
+  const now = ts();
+  const ref = db.collection(orgPath(orgId, 'invoiceTemplates')).doc();
+  if (input.isDefault) {
+    const existing = await listInvoiceTemplates(orgId);
+    await Promise.all(existing.map((template) => colUpdate(orgId, 'invoiceTemplates', template.id, { isDefault: false, updatedBy: userId ?? null })));
+  }
+  await ref.set({
+    organizationId: orgId,
+    ...input,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: userId ?? null,
+    updatedBy: userId ?? null,
+  });
+  const snap = await ref.get();
+  return mapDoc<InvoiceTemplate>({ id: snap.id, ...snap.data()! });
+}
+
+export async function updateInvoiceTemplate(
+  orgId: string,
+  templateId: string,
+  input: Partial<Omit<InvoiceTemplate, keyof import('@clcrm/types').InvoiceAuditFields | 'id' | 'organizationId'>>,
+  userId?: string | null,
+) {
+  const current = await colGet<InvoiceTemplate>(orgId, 'invoiceTemplates', templateId);
+  if (!current) throw new Error('Invoice template not found');
+
+  if (input.isDefault) {
+    const existing = await listInvoiceTemplates(orgId);
+    await Promise.all(existing
+      .filter((template) => template.id !== templateId)
+      .map((template) => colUpdate(orgId, 'invoiceTemplates', template.id, { isDefault: false, updatedBy: userId ?? null })));
+  }
+
+  await colUpdate(orgId, 'invoiceTemplates', templateId, {
+    ...input,
+    updatedBy: userId ?? null,
+  });
+  return colGet<InvoiceTemplate>(orgId, 'invoiceTemplates', templateId);
+}
+
+export async function deleteInvoiceTemplate(orgId: string, templateId: string) {
+  const template = await colGet<InvoiceTemplate>(orgId, 'invoiceTemplates', templateId);
+  if (!template) throw new Error('Invoice template not found');
+
+  const templates = await listInvoiceTemplates(orgId);
+  if (template.isDefault && templates.length > 1) {
+    const replacement = templates.find((row) => row.id !== templateId);
+    if (replacement) {
+      await colUpdate(orgId, 'invoiceTemplates', replacement.id, { isDefault: true });
+    }
+  }
+
+  await colDelete(orgId, 'invoiceTemplates', templateId);
+  return { success: true as const };
 }
 
 export async function createDispute360(
@@ -791,8 +970,29 @@ export async function getInvoiceByToken360(token: string) {
   if (!invoice) return null;
   const orgId = String(invoice.organizationId);
   const normalized = normalizeInvoice({ ...invoice, organizationId: orgId });
-  const customer = await colGet<{ firstName?: string; lastName?: string; email?: string }>(orgId, 'customers', normalized.customerId);
-  return { invoice: normalized, customer };
+  const [customer, organization, branding, template] = await Promise.all([
+    colGet<{ firstName?: string; lastName?: string; email?: string }>(orgId, 'customers', normalized.customerId),
+    getOrganization(orgId),
+    getBrandingForCustomerFacing(orgId),
+    getDefaultInvoiceTemplate(orgId),
+  ]);
+  const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app'}/pay/${normalized.publicToken}`;
+  const vars = toTemplateVars({ invoice: normalized, customer, paymentLink });
+  const rendered = template ? renderInvoiceTemplate(template, vars) : null;
+  return {
+    invoice: normalized,
+    customer,
+    organization: organization
+      ? {
+          ...organization,
+          companyName: branding.companyName,
+          brandColor: branding.brandColor,
+          logoUrl: branding.logoUrl,
+        }
+      : null,
+    template,
+    renderedTemplate: rendered,
+  };
 }
 
 export async function aiCollectionsQuery(orgId: string, question: string): Promise<AiCollectionsQueryResult> {

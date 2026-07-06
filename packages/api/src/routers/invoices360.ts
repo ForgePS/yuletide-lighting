@@ -15,6 +15,12 @@ import {
   controlReminders360,
   listReminderTemplates,
   createReminderTemplate,
+  updateReminderTemplate,
+  deleteReminderTemplate,
+  listInvoiceTemplates,
+  createInvoiceTemplate,
+  updateInvoiceTemplate,
+  deleteInvoiceTemplate,
   createDispute360,
   updateDispute360,
   listDisputes360,
@@ -42,6 +48,11 @@ import {
   updateDisputeSchema,
   reminderControlSchema,
   createReminderTemplateSchema,
+  updateReminderTemplateInputSchema,
+  deleteReminderTemplateSchema,
+  createInvoiceTemplateSchema,
+  updateInvoiceTemplateInputSchema,
+  deleteInvoiceTemplateSchema,
   generateStatementSchema,
   aiCollectionsQuerySchema,
   updateInvoiceStatusSchema,
@@ -148,7 +159,38 @@ export const invoices360Router = router({
       create: officeProcedure.input(createReminderTemplateSchema).mutation(({ ctx, input }) =>
         createReminderTemplate(ctx.auth.organizationId, { ...input, isActive: true } as never, ctx.auth.userId),
       ),
+      update: officeProcedure.input(updateReminderTemplateInputSchema).mutation(({ ctx, input }) =>
+        updateReminderTemplate(ctx.auth.organizationId, input.templateId, input.data, ctx.auth.userId),
+      ),
+      delete: officeProcedure.input(deleteReminderTemplateSchema).mutation(({ ctx, input }) =>
+        deleteReminderTemplate(ctx.auth.organizationId, input.templateId),
+      ),
     }),
+  }),
+
+  templates: router({
+    list: officeProcedure.query(({ ctx }) => listInvoiceTemplates(ctx.auth.organizationId)),
+    create: officeProcedure.input(createInvoiceTemplateSchema).mutation(({ ctx, input }) =>
+      createInvoiceTemplate(ctx.auth.organizationId, {
+        ...input,
+        description: input.description || null,
+        logoUrl: input.logoUrl || null,
+        backgroundImageUrl: input.backgroundImageUrl || null,
+        contentHtml: input.contentHtml || null,
+      }, ctx.auth.userId),
+    ),
+    update: officeProcedure.input(updateInvoiceTemplateInputSchema).mutation(({ ctx, input }) =>
+      updateInvoiceTemplate(ctx.auth.organizationId, input.templateId, {
+        ...input.data,
+        description: input.data.description === undefined ? undefined : (input.data.description || null),
+        logoUrl: input.data.logoUrl === undefined ? undefined : (input.data.logoUrl || null),
+        backgroundImageUrl: input.data.backgroundImageUrl === undefined ? undefined : (input.data.backgroundImageUrl || null),
+        contentHtml: input.data.contentHtml === undefined ? undefined : (input.data.contentHtml || null),
+      }, ctx.auth.userId),
+    ),
+    delete: officeProcedure.input(deleteInvoiceTemplateSchema).mutation(({ ctx, input }) =>
+      deleteInvoiceTemplate(ctx.auth.organizationId, input.templateId),
+    ),
   }),
 
   disputes: router({

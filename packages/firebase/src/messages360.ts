@@ -19,6 +19,7 @@ import {
   DEFAULT_MESSAGE_TEMPLATES,
   renderMessageTemplate,
 } from '@clcrm/types';
+import { nanoid } from 'nanoid';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
 import { colCreate, colDelete, colGet, colList, colUpdate } from './firestore';
@@ -39,6 +40,63 @@ function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+function appBaseUrl() {
+  return (process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app').replace(/\/$/, '');
+}
+
+async function ensurePortalAccessUrlForCustomer(orgId: string, customerId: string) {
+  const customer = await colGet<{ portalToken?: string | null; portalEnabled?: boolean }>(orgId, 'customers', customerId);
+  if (!customer) return `${appBaseUrl()}/portal/login`;
+  let portalToken = customer.portalToken ?? null;
+  const updates: Record<string, unknown> = {};
+  if (!portalToken) {
+    portalToken = nanoid(32);
+    updates.portalToken = portalToken;
+  }
+  if (!customer.portalEnabled) {
+    updates.portalEnabled = true;
+    updates.portalInviteSentAt = new Date();
+  }
+  if (Object.keys(updates).length > 0) {
+    await colUpdate(orgId, 'customers', customerId, updates);
+  }
+  return portalToken ? `${appBaseUrl()}/portal/${portalToken}` : `${appBaseUrl()}/portal/login`;
+}
+
+function hasPortalPlaceholder(text?: string | null) {
+  if (!text) return false;
+  return (
+    /%7Btoken%7D/i.test(text)
+    || /\{\{\s*token\s*\}\}/i.test(text)
+    || /\{\s*token\s*\}/i.test(text)
+    || /\{\{\s*portal(?:_|)link\s*\}\}/i.test(text)
+    || /\{\s*portal(?:_|)link\s*\}/i.test(text)
+    || /\{\{\s*portal(?:_|)url\s*\}\}/i.test(text)
+    || /\{\s*portal(?:_|)url\s*\}/i.test(text)
+    || /\/portal\/(%7Btoken%7D|\{token\})/i.test(text)
+  );
+}
+
+async function replacePortalPlaceholders(
+  orgId: string,
+  customerId: string,
+  text?: string | null,
+) {
+  if (!text) return text ?? undefined;
+  if (!hasPortalPlaceholder(text)) return text;
+  const portalAccessUrl = await ensurePortalAccessUrlForCustomer(orgId, customerId);
+  return text
+    .replace(/\/portal\/(%7Btoken%7D|\{token\})/gi, portalAccessUrl)
+    .replace(/portal\/(%7Btoken%7D|\{token\})/gi, portalAccessUrl)
+    .replace(/%7Btoken%7D/gi, portalAccessUrl)
+    .replace(/\{\{\s*token\s*\}\}/gi, portalAccessUrl)
+    .replace(/\{\s*token\s*\}/gi, portalAccessUrl)
+    .replace(/\{\{\s*portal(?:_|)link\s*\}\}/gi, portalAccessUrl)
+    .replace(/\{\s*portal(?:_|)link\s*\}/gi, portalAccessUrl)
+    .replace(/\{\{\s*portal(?:_|)url\s*\}\}/gi, portalAccessUrl)
+    .replace(/\{\s*portal(?:_|)url\s*\}/gi, portalAccessUrl);
 }
 
 async function msgCreate(orgId: string, conversationId: string, data: Record<string, unknown>) {
@@ -127,19 +185,21 @@ export async function sendMessage360(
   userId?: string | null,
   userName?: string | null,
 ) {
+  const body = (await replacePortalPlaceholders(orgId, input.customerId, input.body)) ?? input.body;
+  const subject = (await replacePortalPlaceholders(orgId, input.customerId, input.subject)) ?? input.subject;
   const conversation = input.conversationId
     ? await getConversation(orgId, input.conversationId)
     : await ensureConversation(orgId, input.customerId, { source: input.channel === 'portal' ? 'portal' : input.channel as Conversation['source'] });
 
   if (!conversation) throw new Error('Conversation not found');
 
-  const classification = classifyMessage(input.body);
+  const classification = classifyMessage(body);
   const now = new Date();
   const message = await msgCreate(orgId, conversation.id, {
     channel: input.channel,
     direction: 'outbound',
-    body: input.body,
-    subject: input.subject ?? null,
+    body,
+    subject: subject ?? null,
     status: input.scheduledAt && input.scheduledAt > now ? 'sent' : 'delivered',
     sentByUserId: userId ?? null,
     sentByUserName: userName ?? null,
@@ -154,7 +214,7 @@ export async function sendMessage360(
 
   await colUpdate(orgId, 'conversations', conversation.id, {
     lastActivityAt: now,
-    lastMessagePreview: input.body.slice(0, 120),
+    lastMessagePreview: body.slice(0, 120),
     status: 'waiting_on_customer',
     category: classification.category,
     priority: classification.priority,
@@ -167,8 +227,8 @@ export async function sendMessage360(
     customerId: input.customerId,
     channel: input.channel,
     direction: 'outbound',
-    subject: input.subject,
-    body: input.body,
+    subject,
+    body,
     sentByUserId: userId,
     isRead: false,
     status: 'delivered',
@@ -179,8 +239,8 @@ export async function sendMessage360(
     customerId: input.customerId,
     trigger: 'proposal_sent',
     channel: input.channel,
-    title: input.subject ?? 'Message sent',
-    body: input.body.slice(0, 200),
+    title: subject ?? 'Message sent',
+    body: body.slice(0, 200),
     status: 'delivered',
     sentAt: now,
   });

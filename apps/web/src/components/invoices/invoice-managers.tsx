@@ -171,20 +171,507 @@ export function ReminderEngine() {
 }
 
 export function ReminderTemplateManager() {
+  const { toast } = useToast();
+  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.invoices360.reminders.templates.list.useQuery();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    name: '',
+    stage: 'due_today' as const,
+    channel: 'email' as const,
+    subject: '',
+    body: '',
+  });
+  const create = trpc.invoices360.reminders.templates.create.useMutation({
+    onSuccess: () => {
+      toast('Reminder template created', 'success');
+      utils.invoices360.reminders.templates.list.invalidate();
+      setForm({ name: '', stage: 'due_today', channel: 'email', subject: '', body: '' });
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+  const update = trpc.invoices360.reminders.templates.update.useMutation({
+    onSuccess: () => {
+      toast('Reminder template updated', 'success');
+      utils.invoices360.reminders.templates.list.invalidate();
+      setEditingId(null);
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+  const remove = trpc.invoices360.reminders.templates.delete.useMutation({
+    onSuccess: () => {
+      toast('Reminder template deleted', 'success');
+      utils.invoices360.reminders.templates.list.invalidate();
+      setEditingId(null);
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+
   if (isLoading) return <LoadingState />;
   return (
     <div className="space-y-4">
+      <form
+        className="card grid gap-3 p-4 md:grid-cols-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!form.name.trim() || !form.subject.trim() || !form.body.trim()) return;
+          create.mutate({
+            name: form.name.trim(),
+            stage: form.stage,
+            channel: form.channel,
+            subject: form.subject.trim(),
+            body: form.body.trim(),
+          });
+        }}
+      >
+        <label className="text-sm">
+          <span className="text-muted-foreground">Template name</span>
+          <input className="input mt-1 w-full" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-sm">
+            <span className="text-muted-foreground">Stage</span>
+            <select className="input mt-1 w-full" value={form.stage} onChange={(e) => setForm({ ...form, stage: e.target.value as typeof form.stage })}>
+              {Object.entries(REMINDER_STAGE_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="text-muted-foreground">Channel</span>
+            <select className="input mt-1 w-full" value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value as typeof form.channel })}>
+              <option value="email">Email</option>
+              <option value="sms">SMS</option>
+            </select>
+          </label>
+        </div>
+        <label className="text-sm md:col-span-2">
+          <span className="text-muted-foreground">Subject</span>
+          <input className="input mt-1 w-full" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
+        </label>
+        <label className="text-sm md:col-span-2">
+          <span className="text-muted-foreground">Body</span>
+          <textarea className="input mt-1 min-h-[90px] w-full" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
+        </label>
+        <div className="md:col-span-2">
+          <button type="submit" className="btn-primary text-sm" disabled={create.isPending}>Create reminder template</button>
+        </div>
+      </form>
       {data?.map((t) => (
         <div key={t.id} className="card p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-medium">{t.name}</p>
-            <span className="text-xs text-muted-foreground">v{t.version} · {t.channel}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">v{t.version} · {t.channel}</span>
+              <button type="button" className="btn-secondary text-xs" onClick={() => setEditingId(t.id)}>Edit</button>
+              <button
+                type="button"
+                className="btn-secondary text-xs text-destructive"
+                disabled={remove.isPending}
+                onClick={() => {
+                  if (confirm(`Delete reminder template "${t.name}"?`)) {
+                    remove.mutate({ templateId: t.id });
+                  }
+                }}
+              >
+                Delete
+              </button>
+            </div>
           </div>
           <p className="mt-1 text-sm font-medium">{t.subject}</p>
           <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{t.body}</pre>
+          {editingId === t.id && (
+            <form
+              className="mt-3 space-y-2 border-t pt-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                update.mutate({
+                  templateId: t.id,
+                  data: {
+                    name: String(fd.get('name') || t.name),
+                    stage: String(fd.get('stage') || t.stage) as keyof typeof REMINDER_STAGE_LABELS,
+                    channel: String(fd.get('channel') || t.channel) as 'email' | 'sms',
+                    subject: String(fd.get('subject') || t.subject),
+                    body: String(fd.get('body') || t.body),
+                  },
+                });
+              }}
+            >
+              <div className="grid gap-2 md:grid-cols-3">
+                <input name="name" className="input" defaultValue={t.name} />
+                <select name="stage" className="input" defaultValue={t.stage}>
+                  {Object.entries(REMINDER_STAGE_LABELS).map(([key, label]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </select>
+                <select name="channel" className="input" defaultValue={t.channel}>
+                  <option value="email">Email</option>
+                  <option value="sms">SMS</option>
+                </select>
+              </div>
+              <input name="subject" className="input w-full" defaultValue={t.subject} />
+              <textarea name="body" className="input min-h-[90px] w-full" defaultValue={t.body} />
+              <div className="flex gap-2">
+                <button type="submit" className="btn-primary text-xs" disabled={update.isPending}>Save</button>
+                <button type="button" className="btn-secondary text-xs" onClick={() => setEditingId(null)}>Cancel</button>
+              </div>
+            </form>
+          )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function renderTemplatePlaceholder(fieldKey?: string | null) {
+  if (!fieldKey) return 'Field';
+  const labels: Record<string, string> = {
+    invoiceNumber: '{{invoiceNumber}}',
+    customerName: '{{customerName}}',
+    dueDate: '{{dueDate}}',
+    subtotal: '{{subtotal}}',
+    balanceDue: '{{balanceDue}}',
+    notes: '{{notes}}',
+  };
+  return labels[fieldKey] ?? `{{${fieldKey}}}`;
+}
+
+export function InvoiceTemplateBuilder() {
+  const { toast } = useToast();
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.invoices360.templates.list.useQuery();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [newTemplateName, setNewTemplateName] = useState('');
+
+  const create = trpc.invoices360.templates.create.useMutation({
+    onSuccess: () => {
+      toast('Invoice template created', 'success');
+      utils.invoices360.templates.list.invalidate();
+      setNewTemplateName('');
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+  const update = trpc.invoices360.templates.update.useMutation({
+    onSuccess: () => {
+      toast('Invoice template updated', 'success');
+      utils.invoices360.templates.list.invalidate();
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+  const remove = trpc.invoices360.templates.delete.useMutation({
+    onSuccess: () => {
+      toast('Invoice template deleted', 'success');
+      utils.invoices360.templates.list.invalidate();
+      setSelectedId(null);
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+
+  if (isLoading) return <LoadingState />;
+  const templates = data ?? [];
+  const selected = templates.find((row) => row.id === selectedId) ?? templates[0] ?? null;
+
+  async function uploadAsset(file: File, field: 'logoUrl' | 'backgroundImageUrl') {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', body: form, credentials: 'include' });
+    if (!res.ok) {
+      toast('Upload failed', 'error');
+      return;
+    }
+    const payload = await res.json() as { url?: string };
+    if (!payload.url || !selected) return;
+    update.mutate({ templateId: selected.id, data: { [field]: payload.url } });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="card p-6">
+        <h2 className="font-semibold">Invoice template visual builder</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Create and edit invoice templates with draggable-style blocks, uploaded assets, and HTML content.</p>
+        <form
+          className="mt-4 flex flex-wrap gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!newTemplateName.trim()) return;
+            create.mutate({
+              name: newTemplateName.trim(),
+              description: '',
+              logoUrl: '',
+              backgroundImageUrl: '',
+              primaryColor: '#DC2626',
+              pageWidth: 1024,
+              pageHeight: 1325,
+              contentHtml: '<h1>Invoice {{invoiceNumber}}</h1>',
+              blocks: [],
+              isDefault: templates.length === 0,
+              isActive: true,
+            });
+          }}
+        >
+          <input className="input w-full max-w-sm" placeholder="New invoice template name" value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} />
+          <button type="submit" className="btn-primary" disabled={create.isPending}>Create</button>
+        </form>
+      </div>
+
+      {!templates.length ? (
+        <EmptyState title="No invoice templates" description="Create your first visual invoice template above." />
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+          <div className="card max-h-[680px] overflow-y-auto p-3">
+            {templates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                className={`mb-2 w-full rounded-lg border px-3 py-2 text-left ${selected?.id === template.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}
+                onClick={() => setSelectedId(template.id)}
+              >
+                <p className="font-medium">{template.name}</p>
+                <p className="text-xs text-muted-foreground">{template.isDefault ? 'Default' : 'Custom'} · {template.isActive ? 'Active' : 'Inactive'}</p>
+              </button>
+            ))}
+          </div>
+
+          {selected && (
+            <div className="space-y-4">
+              <div className="card grid gap-3 p-4 md:grid-cols-2">
+                <label className="text-sm">
+                  <span className="text-muted-foreground">Template name</span>
+                  <input
+                    className="input mt-1 w-full"
+                    value={selected.name}
+                    onChange={(e) => update.mutate({ templateId: selected.id, data: { name: e.target.value } })}
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="text-muted-foreground">Primary color</span>
+                  <input
+                    className="input mt-1 h-10 w-full"
+                    type="color"
+                    value={selected.primaryColor}
+                    onChange={(e) => update.mutate({ templateId: selected.id, data: { primaryColor: e.target.value } })}
+                  />
+                </label>
+                <label className="text-sm md:col-span-2">
+                  <span className="text-muted-foreground">Description</span>
+                  <input
+                    className="input mt-1 w-full"
+                    value={selected.description ?? ''}
+                    onChange={(e) => update.mutate({ templateId: selected.id, data: { description: e.target.value } })}
+                  />
+                </label>
+                <label className="text-sm md:col-span-2">
+                  <span className="text-muted-foreground">HTML content editor</span>
+                  <textarea
+                    className="input mt-1 min-h-[120px] w-full font-mono text-xs"
+                    value={selected.contentHtml ?? ''}
+                    onChange={(e) => update.mutate({ templateId: selected.id, data: { contentHtml: e.target.value } })}
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2 md:col-span-2">
+                  <label className="btn-secondary cursor-pointer text-sm">
+                    Upload logo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadAsset(file, 'logoUrl');
+                      }}
+                    />
+                  </label>
+                  <label className="btn-secondary cursor-pointer text-sm">
+                    Upload background
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadAsset(file, 'backgroundImageUrl');
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm"
+                    onClick={() => update.mutate({ templateId: selected.id, data: { isDefault: true } })}
+                  >
+                    Make default
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm text-destructive"
+                    onClick={() => {
+                      if (confirm(`Delete template "${selected.name}"?`)) {
+                        remove.mutate({ templateId: selected.id });
+                      }
+                    }}
+                  >
+                    Delete template
+                  </button>
+                </div>
+              </div>
+
+              <div className="card p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold">Layout blocks</h3>
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm"
+                    onClick={() =>
+                      update.mutate({
+                        templateId: selected.id,
+                        data: {
+                          blocks: [
+                            ...(selected.blocks ?? []),
+                            {
+                              id: `block-${Date.now()}`,
+                              type: 'text',
+                              x: 10,
+                              y: 10,
+                              width: 30,
+                              height: 8,
+                              content: 'New block',
+                              textSize: 14,
+                              align: 'left',
+                            },
+                          ],
+                        },
+                      })
+                    }
+                  >
+                    Add block
+                  </button>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {(selected.blocks ?? []).map((block) => (
+                    <div key={block.id} className="rounded-lg border p-3 text-sm">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          className="input"
+                          value={block.type}
+                          onChange={(e) =>
+                            update.mutate({
+                              templateId: selected.id,
+                              data: {
+                                blocks: (selected.blocks ?? []).map((row) =>
+                                  row.id === block.id ? { ...row, type: e.target.value as typeof row.type } : row,
+                                ),
+                              },
+                            })
+                          }
+                        />
+                        <input
+                          className="input"
+                          placeholder="field key"
+                          value={block.fieldKey ?? ''}
+                          onChange={(e) =>
+                            update.mutate({
+                              templateId: selected.id,
+                              data: {
+                                blocks: (selected.blocks ?? []).map((row) =>
+                                  row.id === block.id ? { ...row, fieldKey: e.target.value || null } : row,
+                                ),
+                              },
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="mt-2 grid grid-cols-4 gap-2">
+                        {(['x', 'y', 'width', 'height'] as const).map((key) => (
+                          <label key={key} className="text-xs">
+                            {key}
+                            <input
+                              type="number"
+                              className="input mt-1"
+                              value={block[key]}
+                              onChange={(e) =>
+                                update.mutate({
+                                  templateId: selected.id,
+                                  data: {
+                                    blocks: (selected.blocks ?? []).map((row) =>
+                                      row.id === block.id ? { ...row, [key]: Number(e.target.value) } : row,
+                                    ),
+                                  },
+                                })
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <textarea
+                        className="input mt-2 min-h-[70px] w-full text-xs"
+                        value={block.content ?? ''}
+                        onChange={(e) =>
+                          update.mutate({
+                            templateId: selected.id,
+                            data: {
+                              blocks: (selected.blocks ?? []).map((row) =>
+                                row.id === block.id ? { ...row, content: e.target.value } : row,
+                              ),
+                            },
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="btn-secondary mt-2 text-xs text-destructive"
+                        onClick={() =>
+                          update.mutate({
+                            templateId: selected.id,
+                            data: { blocks: (selected.blocks ?? []).filter((row) => row.id !== block.id) },
+                          })
+                        }
+                      >
+                        Remove block
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card p-4">
+                <h3 className="font-semibold">Preview</h3>
+                <div
+                  className="relative mt-3 overflow-hidden rounded border bg-white"
+                  style={{
+                    width: '100%',
+                    aspectRatio: `${selected.pageWidth}/${selected.pageHeight}`,
+                    backgroundImage: selected.backgroundImageUrl ? `url(${selected.backgroundImageUrl})` : undefined,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                >
+                  {selected.logoUrl && (
+                    <img src={selected.logoUrl} alt="Template logo" className="absolute left-4 top-4 h-14 max-w-[200px] object-contain" />
+                  )}
+                  {(selected.blocks ?? []).map((block) => (
+                    <div
+                      key={block.id}
+                      className="absolute rounded border border-dashed border-primary/50 px-2 py-1 text-xs"
+                      style={{
+                        left: `${block.x}%`,
+                        top: `${block.y}%`,
+                        width: `${block.width}%`,
+                        height: `${block.height}%`,
+                        fontSize: `${block.textSize ?? 12}px`,
+                        color: selected.primaryColor,
+                        textAlign: block.align ?? 'left',
+                      }}
+                    >
+                      {block.type === 'image' ? '[Image]' : (block.content?.trim() || renderTemplatePlaceholder(block.fieldKey))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -316,6 +803,7 @@ export function InvoiceSettingsPage() {
   return (
     <div className="space-y-10">
       <PaymentDateMigrationPanel />
+      <InvoiceTemplateBuilder />
       <ReminderEngine />
       <ReminderTemplateManager />
     </div>

@@ -54,6 +54,14 @@ function CrewCard({
     },
     onError: (e) => toast(e.message, 'error'),
   });
+  const deleteCrew = trpc.schedule360.crews.delete.useMutation({
+    onSuccess: () => {
+      toast('Crew deleted', 'success');
+      utils.schedule360.crews.list.invalidate();
+      onUpdated();
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
   const addMember = trpc.schedule360.crews.addMember.useMutation({
     onSuccess: () => {
       toast('Member added', 'success');
@@ -243,6 +251,18 @@ function CrewCard({
               }}
             >
               Archive
+            </button>
+            <button
+              type="button"
+              className="btn-secondary text-sm text-destructive"
+              disabled={deleteCrew.isPending}
+              onClick={() => {
+                if (confirm(`Delete "${crew.name}" permanently? This cannot be undone.`)) {
+                  deleteCrew.mutate({ crewId: crew.id });
+                }
+              }}
+            >
+              Delete
             </button>
           </>
         )}

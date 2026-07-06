@@ -34,16 +34,16 @@ async function syncSession(user: User, forceRefresh = false) {
 
 export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [idToken, setIdToken] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
+  const [idToken, setIdToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
     const cached = getCachedAuthToken() ?? readAuthCookie();
-    if (cached) setCachedAuthToken(cached);
-    return cached;
-  });
-  const [loading, setLoading] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return !getCachedAuthToken() && !readAuthCookie();
-  });
+    if (cached) {
+      setCachedAuthToken(cached);
+      setIdToken(cached);
+    }
+  }, []);
 
   useEffect(() => {
     const auth = getClientAuth();

@@ -11,11 +11,16 @@ import { LoadingState, ErrorState } from '@/components/ui/states';
 import { labelProposalStatus } from '@/lib/proposal-utils';
 
 export default function PortalDashboardPage() {
-  const token = useParams().token as string;
+  const rawToken = useParams().token as string;
+  const token = decodeURIComponent(rawToken ?? '').trim();
+  const looksLikePlaceholderToken = /^\{.+\}$/.test(token) || token.toLowerCase() === 'token';
   const { toast } = useToast();
   const [messageBody, setMessageBody] = useState('');
   const utils = trpc.useUtils();
-  const { data, isLoading, isError } = trpc.portal360.public.dashboard.useQuery({ token });
+  const { data, isLoading, isError } = trpc.portal360.public.dashboard.useQuery(
+    { token },
+    { enabled: !looksLikePlaceholderToken && token.length >= 8 },
+  );
   const sendMessage = trpc.portal360.public.sendMessage.useMutation({
     onSuccess: () => {
       toast('Message sent — we\'ll get back to you soon', 'success');
@@ -25,6 +30,13 @@ export default function PortalDashboardPage() {
     onError: (e) => toast(e.message, 'error'),
   });
 
+  if (looksLikePlaceholderToken) {
+    return (
+      <div className="mesh-bg flex min-h-screen items-center justify-center p-4">
+        <ErrorState message="This link still contains a placeholder token. Open the full portal link from your invite, or paste your access code at /portal/login." />
+      </div>
+    );
+  }
   if (isLoading) return <LoadingState message="Loading your portal..." />;
   if (isError || !data) {
     return (

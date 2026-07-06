@@ -17,10 +17,15 @@ const CATEGORIES = [
 ];
 
 export default function PortalServiceRequestPage() {
-  const token = useParams().token as string;
+  const rawToken = useParams().token as string;
+  const token = decodeURIComponent(rawToken ?? '').trim();
+  const looksLikePlaceholderToken = /^\{.+\}$/.test(token) || token.toLowerCase() === 'token';
   const router = useRouter();
   const { toast } = useToast();
-  const { data, isLoading, isError } = trpc.portal360.public.dashboard.useQuery({ token });
+  const { data, isLoading, isError } = trpc.portal360.public.dashboard.useQuery(
+    { token },
+    { enabled: !looksLikePlaceholderToken && token.length >= 8 },
+  );
   const submit = trpc.portal360.public.submitServiceRequest.useMutation({
     onSuccess: () => {
       toast('Service request submitted', 'success');
@@ -34,6 +39,13 @@ export default function PortalServiceRequestPage() {
   const [category, setCategory] = useState('customer_request');
   const [propertyId, setPropertyId] = useState('');
 
+  if (looksLikePlaceholderToken) {
+    return (
+      <div className="mesh-bg flex min-h-screen items-center justify-center p-4">
+        <ErrorState message="This link still contains a placeholder token. Open the full portal link from your invite, or paste your access code at /portal/login." />
+      </div>
+    );
+  }
   if (isLoading) return <LoadingState message="Loading..." />;
   if (isError || !data) {
     return (

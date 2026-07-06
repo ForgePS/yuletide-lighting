@@ -11,10 +11,15 @@ import { LoadingState, ErrorState } from '@/components/ui/states';
 const MONTHS = ['August', 'September', 'October', 'November', 'Flexible'];
 
 export default function PortalRebookPage() {
-  const token = useParams().token as string;
+  const rawToken = useParams().token as string;
+  const token = decodeURIComponent(rawToken ?? '').trim();
+  const looksLikePlaceholderToken = /^\{.+\}$/.test(token) || token.toLowerCase() === 'token';
   const router = useRouter();
   const { toast } = useToast();
-  const { data: info, isLoading, isError } = trpc.portal360.public.rebookInfo.useQuery({ token });
+  const { data: info, isLoading, isError } = trpc.portal360.public.rebookInfo.useQuery(
+    { token },
+    { enabled: !looksLikePlaceholderToken && token.length >= 8 },
+  );
   const submit = trpc.portal360.public.submitRebook.useMutation({
     onSuccess: (r) => {
       toast(r.newProposalId ? 'Rebooked — your proposal is being prepared!' : 'Rebook request submitted!', 'success');
@@ -26,6 +31,13 @@ export default function PortalRebookPage() {
   const [preferredMonth, setPreferredMonth] = useState('Flexible');
   const [notes, setNotes] = useState('');
 
+  if (looksLikePlaceholderToken) {
+    return (
+      <div className="mesh-bg flex min-h-screen items-center justify-center p-4">
+        <ErrorState message="This link still contains a placeholder token. Open the full portal link from your invite, or paste your access code at /portal/login." />
+      </div>
+    );
+  }
   if (isLoading) return <LoadingState message="Loading..." />;
   if (isError || !info) {
     return (

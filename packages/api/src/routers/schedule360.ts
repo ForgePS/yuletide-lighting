@@ -37,7 +37,7 @@ import {
   aiSchedulingQuerySchema,
   calendarRangeSchema,
 } from '@clcrm/validators';
-import { router, officeProcedure } from '../trpc';
+import { router, officeProcedure, requireModule } from '../trpc';
 
 export const schedule360Router = router({
   dashboard: officeProcedure.query(({ ctx }) => getScheduleDashboard(ctx.auth.organizationId)),
@@ -107,10 +107,10 @@ export const schedule360Router = router({
   }),
 
   routes: router({
-    list: officeProcedure.input(z.object({ date: z.coerce.date().optional() }).optional()).query(({ ctx, input }) =>
+    list: officeProcedure.use(requireModule('routes')).input(z.object({ date: z.coerce.date().optional() }).optional()).query(({ ctx, input }) =>
       listRoutes(ctx.auth.organizationId, input?.date),
     ),
-    optimize: officeProcedure.input(optimizeRouteSchema).mutation(({ ctx, input }) =>
+    optimize: officeProcedure.use(requireModule('routes')).input(optimizeRouteSchema).mutation(({ ctx, input }) =>
       optimizeRoute(ctx.auth.organizationId, input, ctx.auth.userId),
     ),
   }),

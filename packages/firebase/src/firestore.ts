@@ -95,6 +95,7 @@ export type CustomerRecord = {
   pipelineEstimatedValueCents?: number | null;
   nextAction?: string | null;
   nextActionDue?: Date | null;
+  leadSource?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -143,6 +144,17 @@ export async function ensureOrganization(companyName: string, ownerUid: string):
 
   const orgRef = db.collection('organizations').doc();
   const now = ts();
+  let trialDays = 14;
+  try {
+    const { getPlatformSettings } = await import('./creator360');
+    const settings = await getPlatformSettings();
+    trialDays = settings.defaultTrialDays ?? 14;
+  } catch {
+    // platform settings optional during bootstrap
+  }
+  const trialEndsAt = new Date();
+  trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
+
   const orgData = {
     companyName,
     brandColor: '#DC2626',
@@ -153,6 +165,8 @@ export async function ensureOrganization(companyName: string, ownerUid: string):
       { code: '3YR', label: '3 Year', active: true },
       { code: '5YR', label: '5 Year', active: true },
     ],
+    subscriptionStatus: 'trialing' as const,
+    trialEndsAt,
     createdAt: now,
     updatedAt: now,
   };

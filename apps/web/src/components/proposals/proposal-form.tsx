@@ -285,7 +285,7 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">Season / year</span>
-            <input className="input w-full" value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })} placeholder="2025" />
+            <input className="input w-full" value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })} placeholder={String(new Date().getFullYear())} />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">Salesperson</span>

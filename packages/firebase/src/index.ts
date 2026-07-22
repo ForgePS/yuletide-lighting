@@ -34,3 +34,4 @@ export * from './csv-import';
 export * from './record-paths';
 export * from './proposal-acceptance';
 export * from './consultations360';
+export * from './documents360';

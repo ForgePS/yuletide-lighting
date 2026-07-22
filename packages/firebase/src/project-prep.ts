@@ -207,3 +207,117 @@ export async function deleteProjectPrepItem360(orgId: string, prepItemId: string
   await db.doc(`${prepPath(orgId)}/${prepItemId}`).delete();
   return { success: true };
 }
+
+/**
+ * Idempotent: create project-prep rows from job materials (planned/reserved).
+ * Marks shortages as to_be_ordered when available qty is insufficient.
+ */
+export async function ensureProjectPrepFromJob(
+  orgId: string,
+  input: {
+    jobId: string;
+    proposalId?: string | null;
+    customerId?: string | null;
+    customerName?: string | null;
+    jobTitle?: string | null;
+    inventoryReserved?: boolean;
+  },
+  userId?: string | null,
+): Promise<{ created: number; shortages: number }> {
+  const db = getAdminFirestore();
+  const existing = await listProjectPrepItems360(orgId, { jobId: input.jobId, pageSize: 200 });
+  const existingByInventory = new Set(
+    existing.items.map((i) => i.inventoryItemId).filter(Boolean) as string[],
+  );
+
+  const materialsSnap = await db
+    .collection(`organizations/${orgId}/jobMaterials`)
+    .where('jobId', '==', input.jobId)
+    .get();
+
+  let created = 0;
+  let shortages = 0;
+
+  for (const doc of materialsSnap.docs) {
+    const mat = doc.data();
+    const inventoryItemId = String(mat.inventoryItemId ?? '');
+    if (!inventoryItemId || existingByInventory.has(inventoryItemId)) continue;
+
+    let itemName = String(mat.description ?? 'Material');
+    let sku: string | null = null;
+    let category: string | null = null;
+    let available = 0;
+    try {
+      const itemSnap = await db.doc(`organizations/${orgId}/inventoryItems/${inventoryItemId}`).get();
+      if (itemSnap.exists) {
+        const item = itemSnap.data()!;
+        itemName = String(item.name ?? itemName);
+        sku = item.sku ? String(item.sku) : null;
+        category = item.category ? String(item.category) : null;
+        available = Number(item.quantityOnHand ?? 0) - Number(item.quantityReserved ?? 0);
+      }
+    } catch {
+      // ignore inventory lookup failures
+    }
+
+    const quantityNeeded = Number(mat.quantity ?? 1);
+    const isShort =
+      !input.inventoryReserved ||
+      mat.status === 'planned' ||
+      available < 0 ||
+      (mat.status !== 'reserved' && available < quantityNeeded);
+
+    if (isShort) shortages += 1;
+
+    await createProjectPrepItem360(
+      orgId,
+      {
+        customerId: input.customerId ?? '',
+        customerName: input.customerName ?? '',
+        jobId: input.jobId,
+        jobTitle: input.jobTitle ?? 'Installation',
+        proposalId: input.proposalId ?? '',
+        inventoryItemId,
+        sku: sku ?? '',
+        itemName,
+        category: category ?? '',
+        status: isShort ? 'to_be_ordered' : 'pending',
+        quantityNeeded,
+        quantityPulled: 0,
+        quantityOrdered: 0,
+        quantityCheckedIn: 0,
+        notes: isShort ? 'Shortage detected on proposal acceptance' : undefined,
+        source: input.proposalId ? `proposal:${input.proposalId}` : `job:${input.jobId}`,
+      },
+      userId,
+    );
+    existingByInventory.add(inventoryItemId);
+    created += 1;
+  }
+
+  // If no materials, still create a prep placeholder once
+  if (materialsSnap.empty && existing.items.length === 0) {
+    await createProjectPrepItem360(
+      orgId,
+      {
+        customerId: input.customerId ?? '',
+        customerName: input.customerName ?? '',
+        jobId: input.jobId,
+        jobTitle: input.jobTitle ?? 'Installation',
+        proposalId: input.proposalId ?? '',
+        itemName: 'Scope review / kit build',
+        status: 'pending',
+        quantityNeeded: 1,
+        quantityPulled: 0,
+        quantityOrdered: 0,
+        quantityCheckedIn: 0,
+        notes: 'Auto-created — add BOM from approved proposal',
+        source: input.proposalId ? `proposal:${input.proposalId}` : `job:${input.jobId}`,
+      },
+      userId,
+    );
+    created += 1;
+  }
+
+  return { created, shortages };
+}

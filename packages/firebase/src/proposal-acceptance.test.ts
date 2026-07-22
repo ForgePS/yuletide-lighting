@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { agreementSourceForProposal } from './proposal-acceptance';
 
 /** Pure helpers mirroring deposit invoice idempotency matching. */
 const DEPOSIT_NOTE_PREFIX = 'Deposit for proposal:';
@@ -28,5 +29,9 @@ describe('proposal acceptance idempotency matching', () => {
   it('ignores other invoices for the same proposal', () => {
     expect(isDepositInvoice({ proposalId: 'p1', notes: 'Final balance' }, 'p1')).toBe(false);
     expect(isDepositInvoice({ proposalId: 'p2', invoiceKind: 'deposit' }, 'p1')).toBe(false);
+  });
+
+  it('builds stable agreement source keys per proposal', () => {
+    expect(agreementSourceForProposal('abc')).toBe('proposal:abc');
   });
 });

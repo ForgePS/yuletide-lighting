@@ -14,10 +14,12 @@ import {
   projectPrepStatusUpdateSchema,
   updateProjectPrepItemInputSchema,
 } from '@clcrm/validators';
-import { router, adminProcedure, officeProcedure } from '../trpc';
+import { router, adminProcedure, officeProcedure, requireModule } from '../trpc';
+
+const prepProcedure = officeProcedure.use(requireModule('jobs'));
 
 export const projectPrep360Router = router({
-  list: officeProcedure.input(projectPrepListFiltersSchema.optional()).query(({ ctx, input }) =>
+  list: prepProcedure.input(projectPrepListFiltersSchema.optional()).query(({ ctx, input }) =>
     listProjectPrepItems360(ctx.auth.organizationId, {
       page: input?.page,
       pageSize: input?.pageSize,
@@ -28,17 +30,17 @@ export const projectPrep360Router = router({
     }),
   ),
 
-  getById: officeProcedure.input(z.object({ prepItemId: z.string() })).query(async ({ ctx, input }) => {
+  getById: prepProcedure.input(z.object({ prepItemId: z.string() })).query(async ({ ctx, input }) => {
     const item = await getProjectPrepItem360(ctx.auth.organizationId, input.prepItemId);
     if (!item) throw new TRPCError({ code: 'NOT_FOUND', message: 'Prep item not found' });
     return item;
   }),
 
-  create: officeProcedure.input(projectPrepItemInputSchema).mutation(({ ctx, input }) =>
+  create: prepProcedure.input(projectPrepItemInputSchema).mutation(({ ctx, input }) =>
     createProjectPrepItem360(ctx.auth.organizationId, input, ctx.auth.userId),
   ),
 
-  update: officeProcedure
+  update: prepProcedure
     .input(z.object({ prepItemId: z.string(), data: updateProjectPrepItemInputSchema }))
     .mutation(async ({ ctx, input }) => {
       const item = await updateProjectPrepItem360(ctx.auth.organizationId, input.prepItemId, input.data, ctx.auth.userId);
@@ -46,13 +48,13 @@ export const projectPrep360Router = router({
       return item;
     }),
 
-  updateStatus: officeProcedure.input(projectPrepStatusUpdateSchema).mutation(async ({ ctx, input }) => {
+  updateStatus: prepProcedure.input(projectPrepStatusUpdateSchema).mutation(async ({ ctx, input }) => {
     const item = await updateProjectPrepStatus360(ctx.auth.organizationId, input.prepItemId, input, ctx.auth.userId);
     if (!item) throw new TRPCError({ code: 'NOT_FOUND', message: 'Prep item not found' });
     return item;
   }),
 
-  delete: adminProcedure.input(z.object({ prepItemId: z.string() })).mutation(({ ctx, input }) =>
+  delete: adminProcedure.use(requireModule('jobs')).input(z.object({ prepItemId: z.string() })).mutation(({ ctx, input }) =>
     deleteProjectPrepItem360(ctx.auth.organizationId, input.prepItemId),
   ),
 });

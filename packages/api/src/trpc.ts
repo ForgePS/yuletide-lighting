@@ -94,3 +94,29 @@ export function requirePermission(resource: PermissionResource, action: Permissi
 
 export const permissionProcedure = (resource: PermissionResource, action: PermissionAction) =>
   protectedProcedure.use(requirePermission(resource, action));
+
+/** Gate a procedure behind an organization enabled module (Creator entitlements). */
+export function requireModule(moduleKey: string) {
+  return t.middleware(async ({ ctx, next }) => {
+    if (!ctx.auth) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+    }
+    try {
+      const { getOrganization } = await import('@yuletide/firebase');
+      const org = await getOrganization(ctx.auth.organizationId);
+      const enabled = org?.enabledModules;
+      if (Array.isArray(enabled) && enabled.length > 0 && !enabled.includes(moduleKey)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: `Module not enabled for this organization: ${moduleKey}`,
+        });
+      }
+    } catch (err) {
+      if (err instanceof TRPCError) throw err;
+      // If org lookup fails, allow through (fail open for ops resilience)
+    }
+    return next({ ctx: { ...ctx, auth: ctx.auth } });
+  });
+}
+
+export const moduleProcedure = (moduleKey: string) => protectedProcedure.use(requireModule(moduleKey));

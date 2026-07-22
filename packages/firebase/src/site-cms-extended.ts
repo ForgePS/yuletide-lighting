@@ -18,6 +18,7 @@ import {
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
 import { deleteStoragePath, uploadPlatformFile } from './storage';
+import { createCustomer } from './firestore';
 
 function ts() {
   return Timestamp.now();
@@ -289,6 +290,88 @@ export async function deleteCmsForm(id: string): Promise<void> {
   await website().collection('forms').doc(id).delete();
 }
 
+function cmsFieldString(data: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function parseCmsLeadName(data: Record<string, unknown>): { firstName: string; lastName: string } {
+  const first = cmsFieldString(data, 'firstName');
+  const last = cmsFieldString(data, 'lastName');
+  if (first || last) {
+    return { firstName: first || 'Website', lastName: last || 'Lead' };
+  }
+  const full = cmsFieldString(data, 'name', 'fullName');
+  if (full) {
+    const parts = full.split(/\s+/);
+    return {
+      firstName: parts[0] || 'Website',
+      lastName: parts.slice(1).join(' ') || 'Lead',
+    };
+  }
+  return { firstName: 'Website', lastName: 'Lead' };
+}
+
+async function resolveOperatingOrganizationId(): Promise<string | null> {
+  const fromEnv =
+    process.env.OPERATING_ORGANIZATION_ID?.trim() ||
+    process.env.NEXT_PUBLIC_OPERATING_ORGANIZATION_ID?.trim();
+  if (fromEnv) return fromEnv;
+  const snap = await getAdminFirestore()
+    .collection('organizations')
+    .orderBy('createdAt', 'asc')
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  return snap.docs[0]!.id;
+}
+
+async function createCrmLeadFromCmsSubmission(input: {
+  formName: string;
+  data: Record<string, unknown>;
+}): Promise<{ customerId: string; organizationId: string } | null> {
+  const organizationId = await resolveOperatingOrganizationId();
+  if (!organizationId) return null;
+
+  const { firstName, lastName } = parseCmsLeadName(input.data);
+  const email = cmsFieldString(input.data, 'email') || null;
+  const phone = cmsFieldString(input.data, 'phone', 'mobile') || null;
+  const message = cmsFieldString(input.data, 'message', 'notes');
+  const notes = [`Website form: ${input.formName}`, message ? `Message: ${message}` : null]
+    .filter(Boolean)
+    .join('\n');
+
+  const customer = await createCustomer(organizationId, {
+    firstName,
+    lastName,
+    businessName: null,
+    customerType: 'residential',
+    status: 'lead',
+    referralSource: 'website',
+    assignedSalespersonId: null,
+    assignedSalespersonName: null,
+    email,
+    secondaryEmail: null,
+    phone,
+    mobilePhone: phone,
+    preferredContactMethod: email ? 'email' : phone ? 'phone' : 'email',
+    tags: ['website-lead'],
+    notes,
+    smsOptIn: false,
+    emailOptIn: Boolean(email),
+    billingSameAsPhysical: true,
+    portalEnabled: false,
+    pipelineStage: 'new_lead',
+    stageUpdatedAt: new Date(),
+    leadSource: 'website',
+  } as Parameters<typeof createCustomer>[1]);
+
+  return { customerId: customer.id, organizationId };
+}
+
 export async function submitCmsForm(input: {
   formId: string;
   data: Record<string, unknown>;
@@ -320,12 +403,28 @@ export async function submitCmsForm(input: {
     notes: '',
     createdAt: new Date(),
   };
-  await website()
+  const submissionRef = website()
     .collection('forms')
     .doc(form.id)
     .collection('submissions')
-    .doc(id)
-    .set({ ...submission, createdAt: ts() });
+    .doc(id);
+  await submissionRef.set({ ...submission, createdAt: ts() });
+
+  try {
+    const lead = await createCrmLeadFromCmsSubmission({
+      formName: form.name,
+      data: input.data,
+    });
+    if (lead) {
+      await submissionRef.update({
+        crmCustomerId: lead.customerId,
+        crmOrganizationId: lead.organizationId,
+      });
+    }
+  } catch {
+    // Never fail the form submit if CRM create fails
+  }
+
   return {
     submissionId: id,
     successMessage: form.settings.successMessage,

@@ -84,6 +84,8 @@ export type CmsFormSubmission = {
   notes: string;
   createdAt: Date;
   ipHash?: string | null;
+  crmCustomerId?: string | null;
+  crmOrganizationId?: string | null;
 };
 
 export type CmsCollectionFieldType = 'text' | 'textarea' | 'rich_text' | 'number' | 'date' | 'image' | 'url' | 'boolean' | 'select';

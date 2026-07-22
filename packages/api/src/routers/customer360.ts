@@ -41,6 +41,9 @@ import {
   createConsultation360,
   completeConsultation360,
   getCustomerTimeline,
+  listCustomerDocuments360,
+  createCustomerDocument360,
+  deleteCustomerDocument360,
 } from '@yuletide/firebase';
 import {
   customerListFiltersSchema,
@@ -611,6 +614,13 @@ export const customer360Router = router({
           assignedUserName: z.string().nullable().optional(),
           customerGoals: z.string().nullable().optional(),
           budgetRange: z.string().nullable().optional(),
+          preferredColors: z.string().nullable().optional(),
+          preferredLightStyle: z.string().nullable().optional(),
+          powerAvailability: z.string().nullable().optional(),
+          accessRequirements: z.string().nullable().optional(),
+          safetyConcerns: z.string().nullable().optional(),
+          measurementsNotes: z.string().nullable().optional(),
+          followUpAction: z.string().nullable().optional(),
           notes: z.string().nullable().optional(),
         }),
       )
@@ -629,11 +639,16 @@ export const customer360Router = router({
       .input(
         z.object({
           consultationId: z.string().min(1),
+          propertyId: z.string().nullable().optional(),
           notes: z.string().nullable().optional(),
           measurementsNotes: z.string().nullable().optional(),
           followUpAction: z.string().nullable().optional(),
           customerGoals: z.string().nullable().optional(),
           budgetRange: z.string().nullable().optional(),
+          preferredColors: z.string().nullable().optional(),
+          preferredLightStyle: z.string().nullable().optional(),
+          powerAvailability: z.string().nullable().optional(),
+          accessRequirements: z.string().nullable().optional(),
           safetyConcerns: z.string().nullable().optional(),
         }),
       )
@@ -817,6 +832,47 @@ export const customer360Router = router({
       .input(z.object({ ruleId: z.string(), data: updateFollowUpRuleSchema }))
       .mutation(({ ctx, input }) =>
         updateFollowUpRule(ctx.auth.organizationId, input.ruleId, input.data, ctx.auth.userId),
+      ),
+  }),
+
+  documents: router({
+    list: officeProcedure.input(z.object({ customerId: z.string() })).query(({ ctx, input }) =>
+      listCustomerDocuments360(ctx.auth.organizationId, input.customerId),
+    ),
+    create: officeProcedure
+      .input(
+        z.object({
+          customerId: z.string().min(1),
+          title: z.string().min(1),
+          category: z
+            .enum(['proposal', 'agreement', 'invoice', 'photo', 'permit', 'other'])
+            .optional(),
+          url: z.string().nullable().optional(),
+          notes: z.string().nullable().optional(),
+          relatedRecordType: z.string().nullable().optional(),
+          relatedRecordId: z.string().nullable().optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        await requireCustomer(ctx.auth.organizationId, input.customerId);
+        return createCustomerDocument360(
+          ctx.auth.organizationId,
+          {
+            customerId: input.customerId,
+            title: input.title,
+            category: input.category,
+            url: emptyToNull(input.url),
+            notes: emptyToNull(input.notes),
+            relatedRecordType: emptyToNull(input.relatedRecordType),
+            relatedRecordId: emptyToNull(input.relatedRecordId),
+          },
+          ctx.auth.userId,
+        );
+      }),
+    delete: officeProcedure
+      .input(z.object({ documentId: z.string().min(1) }))
+      .mutation(({ ctx, input }) =>
+        deleteCustomerDocument360(ctx.auth.organizationId, input.documentId),
       ),
   }),
 });

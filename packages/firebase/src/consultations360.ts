@@ -66,6 +66,19 @@ export async function listConsultations360(orgId: string, customerId?: string) {
     .sort((a, b) => (b.scheduledAt?.getTime?.() ?? b.createdAt.getTime()) - (a.scheduledAt?.getTime?.() ?? a.createdAt.getTime()));
 }
 
+export type ConsultationSurveyFields = {
+  customerGoals?: string | null;
+  budgetRange?: string | null;
+  preferredColors?: string | null;
+  preferredLightStyle?: string | null;
+  powerAvailability?: string | null;
+  accessRequirements?: string | null;
+  safetyConcerns?: string | null;
+  measurementsNotes?: string | null;
+  followUpAction?: string | null;
+  notes?: string | null;
+};
+
 export async function createConsultation360(
   orgId: string,
   input: {
@@ -75,10 +88,7 @@ export async function createConsultation360(
     scheduledAt?: Date | null;
     assignedUserId?: string | null;
     assignedUserName?: string | null;
-    customerGoals?: string | null;
-    budgetRange?: string | null;
-    notes?: string | null;
-  },
+  } & ConsultationSurveyFields,
   userId?: string | null,
 ) {
   const ref = collection(orgId).doc();
@@ -95,13 +105,13 @@ export async function createConsultation360(
     assignedUserName: input.assignedUserName ?? null,
     customerGoals: input.customerGoals ?? null,
     budgetRange: input.budgetRange ?? null,
-    preferredColors: null,
-    preferredLightStyle: null,
-    powerAvailability: null,
-    accessRequirements: null,
-    safetyConcerns: null,
-    measurementsNotes: null,
-    followUpAction: null,
+    preferredColors: input.preferredColors ?? null,
+    preferredLightStyle: input.preferredLightStyle ?? null,
+    powerAvailability: input.powerAvailability ?? null,
+    accessRequirements: input.accessRequirements ?? null,
+    safetyConcerns: input.safetyConcerns ?? null,
+    measurementsNotes: input.measurementsNotes ?? null,
+    followUpAction: input.followUpAction ?? null,
     notes: input.notes ?? null,
     photoUrls: [] as string[],
     createdAt: now,
@@ -125,14 +135,7 @@ export async function createConsultation360(
 export async function completeConsultation360(
   orgId: string,
   consultationId: string,
-  input: {
-    notes?: string | null;
-    measurementsNotes?: string | null;
-    followUpAction?: string | null;
-    customerGoals?: string | null;
-    budgetRange?: string | null;
-    safetyConcerns?: string | null;
-  },
+  input: ConsultationSurveyFields & { propertyId?: string | null },
   userId?: string | null,
 ) {
   const ref = collection(orgId).doc(consultationId);
@@ -144,11 +147,16 @@ export async function completeConsultation360(
     status: 'completed' as const,
     completedAt: now,
     updatedAt: now,
+    propertyId: input.propertyId !== undefined ? input.propertyId : existing.propertyId ?? null,
     notes: input.notes ?? existing.notes ?? null,
     measurementsNotes: input.measurementsNotes ?? existing.measurementsNotes ?? null,
     followUpAction: input.followUpAction ?? existing.followUpAction ?? null,
     customerGoals: input.customerGoals ?? existing.customerGoals ?? null,
     budgetRange: input.budgetRange ?? existing.budgetRange ?? null,
+    preferredColors: input.preferredColors ?? existing.preferredColors ?? null,
+    preferredLightStyle: input.preferredLightStyle ?? existing.preferredLightStyle ?? null,
+    powerAvailability: input.powerAvailability ?? existing.powerAvailability ?? null,
+    accessRequirements: input.accessRequirements ?? existing.accessRequirements ?? null,
     safetyConcerns: input.safetyConcerns ?? existing.safetyConcerns ?? null,
   };
   await ref.update(patch);

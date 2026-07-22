@@ -168,12 +168,15 @@ export function CustomerHeader({ customerId, customer }: CustomerHeaderProps) {
 
 const TABS = [
   { segment: '', label: 'Overview' },
+  { segment: 'contacts', label: 'Contacts' },
   { segment: 'properties', label: 'Properties' },
   { segment: 'consultations', label: 'Consultations' },
   { segment: 'timeline', label: 'Timeline' },
-  { segment: 'designs', label: 'Sales / Designs' },
+  { segment: 'sales', label: 'Sales' },
+  { segment: 'designs', label: 'Designs' },
   { segment: 'jobs', label: 'Jobs' },
   { segment: 'billing', label: 'Billing' },
+  { segment: 'documents', label: 'Documents' },
   { segment: 'storage', label: 'Storage' },
   { segment: 'communications', label: 'Communications' },
 ] as const;

@@ -75,9 +75,25 @@ export async function consumeJobMaterials(orgId: string, jobId: string) {
   });
   await batch.commit();
 
-  const job = await colGet<{ customerId?: string }>(orgId, 'jobs', jobId);
+  const job = await colGet<{ customerId?: string; title?: string }>(orgId, 'jobs', jobId);
   if (job?.customerId) {
     await syncCustomerPipelineFromJob(orgId, job.customerId, 'installed');
+    try {
+      const { fireAutomationTrigger } = await import('./automation360');
+      const { triggerReviewRequestForJob } = await import('./reviews360');
+      const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', job.customerId);
+      const customerName = customer
+        ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || 'Customer'
+        : 'Customer';
+      await fireAutomationTrigger(
+        orgId,
+        'job_completed',
+        { customerId: job.customerId, customerName, jobId },
+      );
+      await triggerReviewRequestForJob(orgId, jobId, null);
+    } catch {
+      // Best-effort post-install hooks
+    }
   }
 }
 

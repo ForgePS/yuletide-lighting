@@ -179,6 +179,27 @@ export async function getCrewMobileJobDetail(orgId: string, jobId: string, userI
   const timeEntries = await colList<{ id: string; userId: string; jobId?: string; clockOut?: Date | null }>(orgId, 'timeEntries');
   const activeEntry = timeEntries.find((e) => e.userId === userId && e.jobId === jobId && !e.clockOut);
 
+  const job = detail?.job;
+  const property = detail?.property;
+  const hazardNotes = [
+    property?.siteHazardNotes,
+    property?.siteHazards?.length ? `Hazards: ${property.siteHazards.join(', ')}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n') || null;
+  const accessFromProperty = [
+    property?.gateCode ? `Gate code: ${property.gateCode}` : null,
+    property?.accessInstructions,
+  ]
+    .filter(Boolean)
+    .join('\n') || null;
+
+  const mockupFromJob = job?.mockupPhotoUrls?.filter(Boolean) ?? [];
+  const mockupFromRecords = (detail?.mockups ?? [])
+    .map((m) => m.renderedImageUrl || m.imageUrl)
+    .filter((url): url is string => Boolean(url));
+  const mockupPhotoUrls = mockupFromJob.length ? mockupFromJob : mockupFromRecords;
+
   return {
     ...base,
     materials: (detail?.materials ?? []).map((m) => ({
@@ -187,7 +208,11 @@ export async function getCrewMobileJobDetail(orgId: string, jobId: string, userI
       quantity: m.quantity,
       status: m.status,
     })),
-    mockups: detail?.mockups ?? [],
+    mockups: (detail?.mockups ?? []).map((m) => ({
+      id: m.id,
+      name: m.name,
+      imageUrl: m.renderedImageUrl || m.imageUrl,
+    })),
     photos: photos.filter((p) => p.jobId === jobId).map((p) => ({
       id: p.id,
       url: p.url,
@@ -196,7 +221,67 @@ export async function getCrewMobileJobDetail(orgId: string, jobId: string, userI
     })),
     activity,
     activeTimeEntryId: activeEntry?.id ?? null,
+    scopeSummary: job?.scopeSummary ?? null,
+    safetyNotes: job?.safetyNotes ?? hazardNotes,
+    accessNotes: job?.accessNotes ?? accessFromProperty,
+    mockupPhotoUrls: mockupPhotoUrls.length ? mockupPhotoUrls : null,
+    approvedPackageName: job?.approvedPackageName ?? null,
+    installNotes: job?.installNotes ?? property?.installNotes ?? null,
   };
+}
+
+export async function crewRecordMaterialUsage(
+  orgId: string,
+  userId: string,
+  userName: string | null | undefined,
+  input: {
+    jobId: string;
+    items: Array<{ inventoryItemId: string; quantity: number; notes?: string }>;
+  },
+) {
+  const materials = await colList<{
+    id: string;
+    jobId: string;
+    inventoryItemId: string;
+    quantity: number;
+    status: string;
+  }>(orgId, 'jobMaterials');
+  const forJob = materials.filter((m) => m.jobId === input.jobId);
+
+  for (const item of input.items) {
+    const row = forJob.find((m) => m.inventoryItemId === item.inventoryItemId);
+    if (row) {
+      await colUpdate(orgId, 'jobMaterials', row.id, {
+        quantityUsed: item.quantity,
+        usageNotes: item.notes ?? null,
+        status: row.status === 'planned' ? 'reserved' : row.status,
+        updatedBy: userId,
+      });
+    } else {
+      await colCreate(orgId, 'jobMaterials', {
+        jobId: input.jobId,
+        inventoryItemId: item.inventoryItemId,
+        quantity: item.quantity,
+        quantityUsed: item.quantity,
+        usageNotes: item.notes ?? null,
+        status: 'consumed',
+        organizationId: orgId,
+        createdBy: userId,
+        updatedBy: userId,
+      });
+    }
+  }
+
+  await logJobActivity(orgId, {
+    jobId: input.jobId,
+    userId,
+    userName,
+    action: 'material_used',
+    notes: `Recorded usage for ${input.items.length} item(s)`,
+    metadata: { items: input.items },
+  });
+
+  return { success: true };
 }
 
 export async function crewClockIn(

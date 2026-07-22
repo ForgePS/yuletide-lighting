@@ -43,6 +43,7 @@ import {
   createBackup,
   getReportsSettings,
   updateReportsSettings,
+  getPublicSeasonConfig,
 } from '@yuletide/firebase';
 import {
   companySettingsSchema,
@@ -67,9 +68,13 @@ import {
   auditLogFilterSchema,
   settingsRoleSchema,
 } from '@clcrm/validators';
-import { router, adminProcedure, officeProcedure, permissionProcedure } from '../trpc';
+import { router, adminProcedure, officeProcedure, permissionProcedure, publicProcedure } from '../trpc';
 
 export const settings360Router = router({
+  public: router({
+    seasonConfig: publicProcedure.query(() => getPublicSeasonConfig()),
+  }),
+
   dashboard: officeProcedure.query(({ ctx }) => getSettingsDashboard(ctx.auth.organizationId)),
 
   company: officeProcedure.query(({ ctx }) => getCompanySettings(ctx.auth.organizationId)),

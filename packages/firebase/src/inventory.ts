@@ -61,12 +61,17 @@ export async function consumeJobMaterials(orgId: string, jobId: string) {
     const itemRef = db.doc(`organizations/${orgId}/inventoryItems/${mat.inventoryItemId}`);
     const itemSnap = await itemRef.get();
     const item = itemSnap.data()!;
+    const unitCostCentsAtConsume = Number(item.unitCostCents ?? item.costCents ?? 0);
     batch.update(itemRef, {
       quantityOnHand: item.quantityOnHand - mat.quantity,
       quantityReserved: item.quantityReserved - mat.quantity,
       updatedAt: ts(),
     });
-    batch.update(matDoc.ref, { status: 'consumed', updatedAt: ts() });
+    batch.update(matDoc.ref, {
+      status: 'consumed',
+      unitCostCentsAtConsume,
+      updatedAt: ts(),
+    });
   }
   batch.update(db.doc(`organizations/${orgId}/jobs/${jobId}`), {
     stage: 'installed',
@@ -74,6 +79,13 @@ export async function consumeJobMaterials(orgId: string, jobId: string) {
     updatedAt: ts(),
   });
   await batch.commit();
+
+  try {
+    const { recomputeAndStoreJobCosting } = await import('./job-costing');
+    await recomputeAndStoreJobCosting(orgId, jobId);
+  } catch {
+    // Best-effort costing refresh
+  }
 
   const job = await colGet<{ customerId?: string; title?: string }>(orgId, 'jobs', jobId);
   if (job?.customerId) {

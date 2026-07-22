@@ -14,14 +14,19 @@ Go-live gates for Yuletide CRM against the Production Readiness blueprint.
 
 - [ ] Public website form creates CMS submission **and** CRM lead (`new_lead`)
 - [ ] Consultation scheduled → completed with survey fields
-- [ ] Proposal sent → viewed → accepted
-- [ ] Acceptance creates: job, deposit invoice, agreement draft, prep rows, timeline event
+- [ ] Proposal sent → viewed → accepted (records signer IP, terms version, signed snapshot)
+- [ ] Accepted proposal cannot be edited without creating a revision
+- [ ] Agreement sent for signature; customer signs at `/a/{token}`
+- [ ] Acceptance creates: job, deposit invoice, agreement, prep rows, timeline event
 - [ ] Deposit payment link works (`/pay/{token}`)
 - [ ] Inventory reserve (or shortage → `to_be_ordered` prep)
-- [ ] Job scheduled on calendar
-- [ ] Install complete consumes materials + review request
+- [ ] Job scheduled; routes optimize with lat/lng nearest-neighbor
+- [ ] Crew mobile shows scope, mockups, materials; customer signoff works
+- [ ] Install complete consumes materials + review request + job costing refresh
 - [ ] Takedown complete creates storage record
 - [ ] Rebooking campaign can create next-season proposal
+- [ ] New signup lands on `/onboarding` checklist
+- [ ] Public site season tokens resolve from org season settings
 
 ## Integrations
 

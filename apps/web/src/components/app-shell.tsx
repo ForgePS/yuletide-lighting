@@ -260,6 +260,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     enabled: deferSecondaryQueries && !authLoading && !!user,
     staleTime: 60_000,
   });
+  const { data: onboarding } = trpc.onboarding360.state.useQuery(undefined, {
+    enabled: deferSecondaryQueries && !authLoading && !!user,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const showOnboardingBanner =
+    Boolean(onboarding) && !onboarding?.completed && !pathname.startsWith('/onboarding');
 
   const locked = billing?.isLocked ?? false;
   const onSubscriptionPage = pathname.startsWith('/app/settings/subscription');
@@ -408,6 +415,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
         </header>
         <main className="flex-1 overflow-auto">
+          {showOnboardingBanner ? (
+            <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 sm:px-6 lg:px-8">
+              Finish setting up your workspace —{' '}
+              <Link href="/onboarding" className="font-semibold underline underline-offset-2">
+                continue onboarding
+              </Link>
+            </div>
+          ) : null}
           {yearFilterVisible && (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2.5 sm:px-6 lg:px-8">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">

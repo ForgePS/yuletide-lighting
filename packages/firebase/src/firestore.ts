@@ -47,6 +47,8 @@ export type OrganizationRecord = {
   twilioPhoneNumber?: string | null;
   reviewGoogleUrl?: string | null;
   reviewFacebookUrl?: string | null;
+  onboardingCompletedAt?: Date | null;
+  onboardingStep?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -124,7 +126,7 @@ function ts() {
 
 function mapTimestamps<T extends Record<string, unknown>>(data: T): T {
   const result = { ...data };
-  for (const key of ['createdAt', 'updatedAt', 'sentAt', 'acceptedAt', 'dueDate', 'scheduledStart', 'scheduledEnd', 'installedAt', 'removedAt', 'lastViewedAt', 'paidAt', 'clockIn', 'clockOut', 'lastMessageAt', 'occurredAt', 'scheduledDate', 'completionDate', 'followUpDate', 'purchaseDate', 'portalInviteSentAt', 'portalLastLoginAt', 'archivedAt', 'stageUpdatedAt', 'nextActionDue', 'validUntil', 'openDate', 'installDate', 'removalDate', 'contractGeneratedAt']) {
+  for (const key of ['createdAt', 'updatedAt', 'sentAt', 'acceptedAt', 'dueDate', 'scheduledStart', 'scheduledEnd', 'installedAt', 'removedAt', 'lastViewedAt', 'paidAt', 'clockIn', 'clockOut', 'lastMessageAt', 'occurredAt', 'scheduledDate', 'completionDate', 'followUpDate', 'purchaseDate', 'portalInviteSentAt', 'portalLastLoginAt', 'archivedAt', 'stageUpdatedAt', 'nextActionDue', 'validUntil', 'openDate', 'installDate', 'removalDate', 'contractGeneratedAt', 'onboardingCompletedAt', 'trialEndsAt', 'lockedAt', 'currentPeriodEnd']) {
     const val = result[key];
     if (val && typeof val === 'object' && 'toDate' in (val as object)) {
       (result as Record<string, unknown>)[key] = (val as FirebaseFirestore.Timestamp).toDate();
@@ -389,7 +391,7 @@ export async function colDelete(orgId: string, collection: string, id: string) {
 }
 
 export async function getByPublicToken<T>(
-  collection: 'proposals' | 'invoices',
+  collection: 'proposals' | 'invoices' | 'multiYearAgreements',
   token: string,
 ): Promise<T | null> {
   const db = getAdminFirestore();

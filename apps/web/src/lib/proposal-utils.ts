@@ -26,6 +26,7 @@ export const PROPOSAL_STATUS_LABELS: Record<string, string> = {
   rejected: 'Rejected',
   declined: 'Rejected',
   expired: 'Expired',
+  superseded: 'Superseded',
 };
 
 export const PIPELINE_COLUMNS: ProposalStatus[] = [

@@ -129,7 +129,7 @@ export const proposals360Router = router({
         return result;
       }),
 
-    approve: publicProcedure.input(publicApprovalSchema).mutation(async ({ input }) => {
+    approve: publicProcedure.input(publicApprovalSchema).mutation(async ({ input, ctx }) => {
       const result = await recordPublicApproval(input.token, {
         action: input.action,
         customerName: input.customerName,
@@ -137,9 +137,18 @@ export const proposals360Router = router({
         packageId: input.packageId || null,
         agreementCode: input.agreementCode || null,
         notes: input.notes || null,
+        ipAddress: ctx.ip ?? null,
+        userAgent: ctx.userAgent ?? null,
       });
       if (!result) throw new TRPCError({ code: 'NOT_FOUND' });
       return result;
     }),
   }),
+
+  createRevision: officeProcedure
+    .input(z.object({ proposalId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { createProposalRevision360 } = await import('@yuletide/firebase');
+      return createProposalRevision360(ctx.auth.organizationId, input.proposalId, ctx.auth.userId);
+    }),
 });

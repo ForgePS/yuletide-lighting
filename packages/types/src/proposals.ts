@@ -12,6 +12,7 @@ export type ProposalStatus =
   | 'scheduled'
   | 'rejected'
   | 'expired'
+  | 'superseded'
   // legacy aliases stored in DB
   | 'accepted'
   | 'declined';
@@ -143,6 +144,13 @@ export type ProposalRecord = ProposalAuditFields & {
   sentAt?: Date | null;
   acceptedAt?: Date | null;
   acceptedByName?: string | null;
+  signerIp?: string | null;
+  signerUserAgent?: string | null;
+  termsVersion?: string | null;
+  signedSnapshotJson?: string | null;
+  signedDocumentUrl?: string | null;
+  revisionOfId?: string | null;
+  supersededById?: string | null;
   mockupIds: string[];
   designId?: string | null;
   propertyPhotoUrl?: string | null;

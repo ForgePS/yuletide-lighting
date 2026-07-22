@@ -322,7 +322,22 @@ export async function createProposal360(
   return getProposal360(orgId, proposal.id);
 }
 
+const LOCKED_PROPOSAL_STATUSES = new Set([
+  'approved',
+  'accepted',
+  'deposit_paid',
+  'scheduled',
+  'superseded',
+]);
+
 export async function updateProposal360(orgId: string, proposalId: string, data: Record<string, unknown>, userId?: string | null) {
+  const existing = await colGet<ProposalRecord>(orgId, 'proposals', proposalId);
+  if (!existing) throw new Error('Proposal not found');
+  if (LOCKED_PROPOSAL_STATUSES.has(normalizeProposalStatus(existing.status))) {
+    throw new Error(
+      'Accepted proposals cannot be edited. Create a revision or change order instead.',
+    );
+  }
   const patch: Record<string, unknown> = { ...data, updatedBy: userId ?? null };
   if (data.pricing) {
     const calc = calculatePricingFromComponents(data.pricing as PricingComponents);
@@ -339,6 +354,49 @@ export async function updateProposal360(orgId: string, proposalId: string, data:
   }
   await colUpdate(orgId, 'proposals', proposalId, patch);
   return getProposal360(orgId, proposalId);
+}
+
+export async function createProposalRevision360(orgId: string, proposalId: string, userId?: string | null) {
+  const full = await getProposal360(orgId, proposalId);
+  if (!full) throw new Error('Proposal not found');
+  const { packages, views: _views, approvals: _approvals, ...proposal } = full;
+  const created = await createProposal360(
+    orgId,
+    {
+      customerId: proposal.customerId,
+      propertyId: proposal.propertyId,
+      title: `${proposal.title} (revision)`,
+      installType: proposal.installType ?? undefined,
+      season: proposal.season ?? undefined,
+      scopeOfWork: proposal.scopeOfWork ?? undefined,
+      notes: proposal.notes ?? undefined,
+      depositPercent: proposal.depositPercent,
+      packages: packages.map((pkg) => ({
+        tier: pkg.tier,
+        name: pkg.name,
+        label: pkg.label,
+        description: pkg.description,
+        lineItems: pkg.lineItems,
+        products: pkg.products,
+        decorations: pkg.decorations,
+        laborDescription: pkg.laborDescription,
+        addOns: pkg.addOns,
+        warranty: pkg.warranty,
+        isRecommended: pkg.isRecommended,
+        pricing: pkg.pricing,
+      })),
+    } as never,
+    userId,
+  );
+  await colUpdate(orgId, 'proposals', created!.id, {
+    revisionOfId: proposalId,
+    status: 'draft',
+  });
+  await colUpdate(orgId, 'proposals', proposalId, {
+    status: 'superseded',
+    supersededById: created!.id,
+  });
+  return getProposal360(orgId, created!.id);
 }
 
 export async function deleteProposal360(orgId: string, proposalId: string) {
@@ -481,27 +539,48 @@ export async function recordPublicApproval(
     agreementCode?: string | null;
     notes?: string | null;
     ipAddress?: string | null;
+    userAgent?: string | null;
   },
 ) {
   const proposal = await getByPublicToken<ProposalRecord & { organizationId: string }>('proposals', token);
   if (!proposal) return null;
   const orgId = proposal.organizationId;
   const statusMap = { approved: 'approved', rejected: 'rejected', changes_requested: 'customer_questions' } as const;
+  const termsVersion = proposal.termsAndConditions
+    ? `terms-v${Buffer.from(proposal.termsAndConditions).toString('base64url').slice(0, 12)}`
+    : `terms-${new Date().getFullYear()}`;
   const patch: Record<string, unknown> = {
     status: statusMap[input.action],
     acceptedByName: input.customerName,
   };
   if (input.action === 'approved') {
+    const snapshot = {
+      proposalId: proposal.id,
+      title: proposal.title,
+      subtotalCents: proposal.subtotalCents,
+      depositPercent: proposal.depositPercent,
+      selectedPackageId: input.packageId ?? proposal.selectedPackageId ?? null,
+      agreementCode: input.agreementCode ?? null,
+      termsVersion,
+      acceptedByName: input.customerName,
+      acceptedAt: new Date().toISOString(),
+      signerIp: input.ipAddress ?? null,
+    };
     patch.acceptedAt = new Date();
     patch.selectedAgreementCode = input.agreementCode ?? null;
     patch.selectedPackageId = input.packageId ?? proposal.selectedPackageId ?? null;
+    patch.signerIp = input.ipAddress ?? null;
+    patch.signerUserAgent = input.userAgent ?? null;
+    patch.termsVersion = termsVersion;
+    patch.signedSnapshotJson = JSON.stringify(snapshot);
     if (input.packageId) {
       const pkg = await getAdminFirestore().doc(`${subPath(orgId, proposal.id, 'packages')}/${input.packageId}`).get();
       if (pkg.exists) patch.subtotalCents = (pkg.data() as ProposalPackage).subtotalCents;
     }
     patch.depositAmountCents = Math.round((patch.subtotalCents as number ?? proposal.subtotalCents) * (proposal.depositPercent / 100));
     patch.contractGeneratedAt = new Date();
-    patch.contractUrl = `https://contracts.yuletidelighting.com/${proposal.id}`;
+    patch.contractUrl = `/p/${token}?signed=1`;
+    patch.signedDocumentUrl = `/p/${token}?signed=1`;
   }
   await colUpdate(orgId, 'proposals', proposal.id, patch);
   await subCreate(orgId, proposal.id, 'approvals', {
@@ -509,6 +588,8 @@ export async function recordPublicApproval(
     customerName: input.customerName,
     signatureData: input.signatureData ?? null,
     ipAddress: input.ipAddress ?? null,
+    userAgent: input.userAgent ?? null,
+    termsVersion,
     packageId: input.packageId ?? null,
     agreementCode: input.agreementCode ?? null,
     notes: input.notes ?? null,
@@ -662,6 +743,11 @@ export async function createProposalTemplate(orgId: string, data: Omit<ProposalT
 }
 
 export async function updateProposalPackage(orgId: string, proposalId: string, packageId: string, data: Partial<ProposalPackage>, userId?: string | null) {
+  const existing = await colGet<ProposalRecord>(orgId, 'proposals', proposalId);
+  if (!existing) throw new Error('Proposal not found');
+  if (LOCKED_PROPOSAL_STATUSES.has(normalizeProposalStatus(existing.status))) {
+    throw new Error('Accepted proposals cannot be edited. Create a revision or change order instead.');
+  }
   const db = getAdminFirestore();
   await db.doc(`${subPath(orgId, proposalId, 'packages')}/${packageId}`).update({ ...data, updatedAt: ts(), updatedBy: userId ?? null });
   return getProposal360(orgId, proposalId);

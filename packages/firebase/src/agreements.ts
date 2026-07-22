@@ -1,7 +1,11 @@
 import type { MultiYearAgreement, MultiYearAgreementStatus } from '@clcrm/types';
+import { isAgreementSignedStatus } from '@clcrm/types';
 import type { MultiYearAgreementInput, UpdateMultiYearAgreementInput } from '@clcrm/validators';
 import { getAdminFirestore, Timestamp } from './admin';
+import { getByPublicToken, getOrganization, nanoid } from './firestore';
 import { mapTimestampsFromData, stripUndefined } from './firestore-utils';
+
+export const AGREEMENT_TERMS_VERSION = '2026.1';
 
 function ts() {
   return Timestamp.now();
@@ -176,4 +180,120 @@ export async function linkProjectToAgreement360(
   if (!agreement) return null;
   const linkedProjectIds = Array.from(new Set([...(agreement.linkedProjectIds ?? []), projectId]));
   return updateMultiYearAgreement360(orgId, agreementId, { linkedProjectIds }, userId);
+}
+
+export async function sendAgreementForSignature360(
+  orgId: string,
+  agreementId: string,
+  userId?: string | null,
+) {
+  const agreement = await getMultiYearAgreement360(orgId, agreementId);
+  if (!agreement) return null;
+  if (isAgreementSignedStatus(agreement.status) || agreement.status === 'completed' || agreement.status === 'cancelled') {
+    return agreement;
+  }
+
+  const publicToken = agreement.publicToken?.trim() || nanoid(32);
+  const db = getAdminFirestore();
+  const ref = db.doc(`${agreementsPath(orgId)}/${agreementId}`);
+  const patch = {
+    status: 'awaiting_signature' as const,
+    publicToken,
+    termsVersion: agreement.termsVersion ?? AGREEMENT_TERMS_VERSION,
+    updatedAt: ts(),
+    updatedBy: userId ?? null,
+  };
+  await ref.update(patch);
+  const updated = await ref.get();
+  return mapDoc({ id: updated.id, ...updated.data()! });
+}
+
+export async function getAgreementByPublicToken(token: string) {
+  const agreement = await getByPublicToken<MultiYearAgreement & { organizationId: string }>(
+    'multiYearAgreements',
+    token,
+  );
+  if (!agreement) return null;
+
+  const orgId = agreement.organizationId;
+  const organization = await getOrganization(orgId);
+  let branding: { companyName?: string; brandColor?: string; logoUrl?: string | null } | null = null;
+  try {
+    const { getBrandingForCustomerFacing } = await import('./settings360');
+    branding = await getBrandingForCustomerFacing(orgId);
+  } catch {
+    branding = null;
+  }
+
+  return {
+    agreement: {
+      id: agreement.id,
+      organizationId: orgId,
+      title: agreement.title,
+      status: agreement.status,
+      customerName: agreement.customerName,
+      optionCode: agreement.optionCode,
+      optionLabel: agreement.optionLabel,
+      startSeason: agreement.startSeason,
+      endSeason: agreement.endSeason,
+      annualValueCents: agreement.annualValueCents,
+      totalValueCents: agreement.totalValueCents,
+      depositPercent: agreement.depositPercent,
+      notes: agreement.notes ?? null,
+      termsVersion: agreement.termsVersion ?? AGREEMENT_TERMS_VERSION,
+      signedAt: agreement.signedAt ?? null,
+      signedByName: agreement.signedByName ?? null,
+      propertyLabel: agreement.propertyLabel ?? null,
+    },
+    organization: organization
+      ? {
+          id: organization.id,
+          companyName: branding?.companyName ?? organization.companyName,
+          brandColor: branding?.brandColor ?? '#DC2626',
+          logoUrl: branding?.logoUrl ?? null,
+        }
+      : null,
+  };
+}
+
+export async function recordAgreementSignature(
+  token: string,
+  input: {
+    signedByName: string;
+    signatureData?: string | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  },
+) {
+  const agreement = await getByPublicToken<MultiYearAgreement & { organizationId: string }>(
+    'multiYearAgreements',
+    token,
+  );
+  if (!agreement) return null;
+
+  if (isAgreementSignedStatus(agreement.status)) {
+    return getAgreementByPublicToken(token);
+  }
+  if (agreement.status !== 'awaiting_signature' && agreement.status !== 'draft') {
+    throw new Error('Agreement is not available for signature');
+  }
+
+  const orgId = agreement.organizationId;
+  const db = getAdminFirestore();
+  const ref = db.doc(`${agreementsPath(orgId)}/${agreement.id}`);
+  const now = ts();
+  await ref.update(
+    stripUndefined({
+      status: 'active',
+      signedAt: now,
+      signedByName: input.signedByName.trim(),
+      signatureData: input.signatureData?.trim() || input.signedByName.trim(),
+      signerIp: input.ipAddress ?? null,
+      signerUserAgent: input.userAgent ?? null,
+      termsVersion: agreement.termsVersion ?? AGREEMENT_TERMS_VERSION,
+      updatedAt: now,
+    }),
+  );
+
+  return getAgreementByPublicToken(token);
 }

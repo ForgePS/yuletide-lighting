@@ -233,6 +233,11 @@ export type SeasonSettings = SettingsAuditFields & {
   defaultInstallLeadDays: number;
   defaultRemovalLeadDays: number;
   blackoutWeeks: number[];
+  installCutoffDate?: string | null;
+  takedownStartDate?: string | null;
+  rebookingStartDate?: string | null;
+  publicMarketingYear?: number | null;
+  bookingOpen?: boolean | null;
 };
 
 export const DEFAULT_SEASON_SETTINGS: Omit<SeasonSettings, keyof SettingsAuditFields | 'organizationId'> = {
@@ -246,6 +251,11 @@ export const DEFAULT_SEASON_SETTINGS: Omit<SeasonSettings, keyof SettingsAuditFi
   defaultInstallLeadDays: 14,
   defaultRemovalLeadDays: 7,
   blackoutWeeks: [],
+  installCutoffDate: null,
+  takedownStartDate: null,
+  rebookingStartDate: null,
+  publicMarketingYear: null,
+  bookingOpen: true,
 };
 
 export const MONTH_LABELS = [

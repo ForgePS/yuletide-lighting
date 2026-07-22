@@ -29,6 +29,7 @@ import { mapTimestampsFromData } from './firestore-utils';
 import { colCreate, colGet, colList, colUpdate } from './firestore';
 import { triggerAutomation } from './messages360';
 import { syncCustomerPipelineFromAppointment, syncCustomerPipelineFromJob } from './jobs360';
+import { haversineMiles, nearestNeighborOrder, pathDistanceMiles, travelMinutesFromMiles } from './geo';
 
 function ts() {
   return Timestamp.now();
@@ -513,32 +514,155 @@ export async function updateDispatchStatus(orgId: string, dispatchId: string, st
   return colGet<DispatchBoardEntry>(orgId, 'dispatchBoard', dispatchId);
 }
 
-export async function optimizeRoute(orgId: string, input: { routeDate: Date; crewId?: string; eventIds: string[] }, userId?: string | null) {
-  const events = await Promise.all(input.eventIds.map((id) => getCalendarEvent(orgId, id)));
-  const valid = events.filter(Boolean) as CalendarEvent[];
-  const stops = valid.map((e, i) => ({
-    id: nanoid(),
-    eventId: e.id,
-    customerName: e.customerName,
-    address: e.propertyAddress,
-    arrivalAt: new Date(input.routeDate.getTime() + i * 45 * 60000),
-    travelMinutes: i === 0 ? 0 : 25,
-    order: i + 1,
-  }));
+export async function optimizeRoute(
+  orgId: string,
+  input: { routeDate: Date; crewId?: string; eventIds: string[]; startLat?: number; startLng?: number },
+  userId?: string | null,
+) {
+  const rawEvents = await Promise.all(
+    input.eventIds.map(async (id) => {
+      const raw = await colGet<Record<string, unknown>>(orgId, 'calendarEvents', id);
+      if (!raw) return null;
+      return { id, raw, event: normalizeEvent({ ...raw, id, organizationId: orgId }) };
+    }),
+  );
+  const valid = rawEvents.filter(Boolean) as Array<{
+    id: string;
+    raw: Record<string, unknown>;
+    event: CalendarEvent;
+  }>;
 
-  const totalTravel = stops.reduce((s, st) => s + st.travelMinutes, 0);
-  const route = await colCreate(orgId, 'routes', {
+  const propertyIds = [...new Set(valid.map((v) => v.event.propertyId).filter(Boolean))] as string[];
+  const properties = await Promise.all(
+    propertyIds.map((id) =>
+      colGet<{ id: string; latitude?: number | null; longitude?: number | null; addressLine1?: string; city?: string; state?: string }>(
+        orgId,
+        'properties',
+        id,
+      ),
+    ),
+  );
+  const propertyById = new Map(properties.filter(Boolean).map((p) => [p!.id, p!]));
+
+  type StopPoint = {
+    eventId: string;
+    event: CalendarEvent;
+    lat: number;
+    lng: number;
+    address?: string | null;
+  };
+
+  const withCoords: StopPoint[] = [];
+  const withoutCoords: Array<{ eventId: string; event: CalendarEvent; address?: string | null }> = [];
+
+  for (const row of valid) {
+    const e = row.event;
+    const rawLat = Number(row.raw.latitude ?? row.raw.lat ?? row.raw.startLat);
+    const rawLng = Number(row.raw.longitude ?? row.raw.lng ?? row.raw.startLng);
+    const property = e.propertyId ? propertyById.get(e.propertyId) : undefined;
+    const propLat = typeof property?.latitude === 'number' ? property.latitude : NaN;
+    const propLng = typeof property?.longitude === 'number' ? property.longitude : NaN;
+    const lat = Number.isFinite(rawLat) ? rawLat : propLat;
+    const lng = Number.isFinite(rawLng) ? rawLng : propLng;
+    const address =
+      e.propertyAddress ??
+      (property?.addressLine1
+        ? `${property.addressLine1}${property.city ? `, ${property.city}` : ''}${property.state ? ` ${property.state}` : ''}`
+        : null);
+
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      withCoords.push({ eventId: e.id, event: e, lat, lng, address });
+    } else {
+      withoutCoords.push({ eventId: e.id, event: e, address });
+    }
+  }
+
+  const start =
+    input.startLat != null && input.startLng != null
+      ? { lat: input.startLat, lng: input.startLng }
+      : undefined;
+
+  const originalPoints = withCoords.map((p) => ({ id: p.eventId, lat: p.lat, lng: p.lng }));
+  const orderedPoints = nearestNeighborOrder(originalPoints, start);
+  const orderedWithCoords = orderedPoints
+    .map((p) => withCoords.find((w) => w.eventId === p.id)!)
+    .filter(Boolean);
+
+  const originalTourMiles = start
+    ? pathDistanceMiles(originalPoints, start)
+    : pathDistanceMiles(originalPoints);
+  const optimizedTourMiles = start
+    ? pathDistanceMiles(
+        orderedWithCoords.map((p) => ({ lat: p.lat, lng: p.lng })),
+        start,
+      )
+    : pathDistanceMiles(orderedWithCoords.map((p) => ({ lat: p.lat, lng: p.lng })));
+
+  const orderedStops = [...orderedWithCoords, ...withoutCoords];
+  const stops: RoutePlan['stops'] = [];
+  let prev: { lat: number; lng: number } | undefined = start;
+  let totalDistanceMiles = 0;
+  let totalTravelMinutes = 0;
+  let arrivalCursor = input.routeDate.getTime();
+
+  for (let i = 0; i < orderedStops.length; i++) {
+    const stop = orderedStops[i]!;
+    const hasCoords = 'lat' in stop && typeof (stop as StopPoint).lat === 'number';
+    let segmentMiles = 0;
+    let travelMinutes = 0;
+
+    if (hasCoords) {
+      const point = stop as StopPoint;
+      if (prev) {
+        segmentMiles = haversineMiles(prev.lat, prev.lng, point.lat, point.lng);
+        travelMinutes = travelMinutesFromMiles(segmentMiles);
+      } else if (i > 0) {
+        travelMinutes = 15;
+      }
+      prev = { lat: point.lat, lng: point.lng };
+    } else if (i > 0) {
+      travelMinutes = 25;
+    }
+
+    totalDistanceMiles += segmentMiles;
+    totalTravelMinutes += travelMinutes;
+    arrivalCursor += travelMinutes * 60_000;
+
+    stops.push({
+      id: nanoid(),
+      eventId: stop.eventId,
+      customerName: stop.event.customerName,
+      address: stop.address,
+      arrivalAt: new Date(arrivalCursor),
+      travelMinutes,
+      order: i + 1,
+    });
+
+    // Assume ~45 min on-site before next departure
+    arrivalCursor += 45 * 60_000;
+  }
+
+  if (totalDistanceMiles <= 0 && optimizedTourMiles > 0) {
+    totalDistanceMiles = optimizedTourMiles;
+  }
+  totalDistanceMiles = Math.round(totalDistanceMiles * 100) / 100;
+
+  const improvement =
+    originalTourMiles > 0.01 ? Math.max(0, (originalTourMiles - optimizedTourMiles) / originalTourMiles) : 0;
+  const efficiencyScore = Math.round(Math.min(100, Math.max(0, 55 + improvement * 90 - withoutCoords.length * 2)));
+
+  const route = (await colCreate(orgId, 'routes', {
     organizationId: orgId,
     routeDate: input.routeDate,
     crewId: input.crewId ?? null,
-    crewName: valid[0]?.crewName ?? null,
+    crewName: valid[0]?.event.crewName ?? null,
     stops,
-    totalDistanceMiles: stops.length * 8,
-    totalTravelMinutes: totalTravel,
-    efficiencyScore: Math.max(60, 100 - stops.length * 3),
+    totalDistanceMiles,
+    totalTravelMinutes,
+    efficiencyScore,
     createdBy: userId,
     updatedBy: userId,
-  }) as RoutePlan;
+  })) as RoutePlan;
 
   return route;
 }

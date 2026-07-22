@@ -18,6 +18,8 @@ export type AuthContext = {
 
 export type Context = {
   auth: AuthContext | null;
+  ip?: string | null;
+  userAgent?: string | null;
 };
 
 const t = initTRPC.context<Context>().create({

@@ -12,6 +12,7 @@ export const proposalStatusSchema = z.enum([
   'scheduled',
   'rejected',
   'expired',
+  'superseded',
   'accepted',
   'declined',
 ]);

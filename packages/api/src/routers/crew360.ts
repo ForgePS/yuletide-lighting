@@ -10,6 +10,7 @@ import {
   crewUploadPhoto,
   crewReportIssue,
   crewRecordCustomerNotHome,
+  crewRecordMaterialUsage,
   crewSubmitSignature,
   getCrewDashboard,
   listCrewJobsForOffice,
@@ -20,6 +21,7 @@ import {
   crewPhotoUploadSchema,
   crewIssueReportSchema,
   crewCustomerNotHomeSchema,
+  crewMaterialUsageSchema,
   crewSignatureSchema,
   crewScheduleQuerySchema,
 } from '@clcrm/validators';
@@ -94,6 +96,10 @@ export const crewMobileRouter = router({
 
   customerNotHome: protectedProcedure.input(crewCustomerNotHomeSchema).mutation(({ ctx, input }) =>
     crewRecordCustomerNotHome(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.jobId, input.notes),
+  ),
+
+  recordMaterialUsage: protectedProcedure.input(crewMaterialUsageSchema).mutation(({ ctx, input }) =>
+    crewRecordMaterialUsage(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input),
   ),
 
   submitSignature: protectedProcedure.input(crewSignatureSchema).mutation(({ ctx, input }) =>

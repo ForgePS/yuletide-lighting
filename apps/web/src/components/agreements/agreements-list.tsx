@@ -11,6 +11,8 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 const STATUS_OPTIONS: Array<{ value: MultiYearAgreementStatus | ''; label: string }> = [
   { value: '', label: 'All statuses' },
   { value: 'draft', label: 'Draft' },
+  { value: 'awaiting_signature', label: 'Awaiting signature' },
+  { value: 'signed', label: 'Signed' },
   { value: 'active', label: 'Active' },
   { value: 'renewal_due', label: 'Renewal due' },
   { value: 'completed', label: 'Completed' },
@@ -26,7 +28,8 @@ function statusLabel(status: MultiYearAgreementStatus) {
 }
 
 function statusClass(status: MultiYearAgreementStatus) {
-  if (status === 'active') return 'bg-emerald-500/10 text-emerald-700';
+  if (status === 'active' || status === 'signed') return 'bg-emerald-500/10 text-emerald-700';
+  if (status === 'awaiting_signature') return 'bg-sky-500/10 text-sky-700';
   if (status === 'renewal_due') return 'bg-amber-500/10 text-amber-700';
   if (status === 'cancelled') return 'bg-red-500/10 text-red-700';
   return 'bg-muted text-muted-foreground';

@@ -25,6 +25,7 @@ import {
   syncCustomerPipelineFromJob,
   inferAppointmentTypeFromJob,
   createStorageFromRemoval,
+  computeJobCosting,
 } from '@yuletide/firebase';
 import {
   createCustomerSchema,
@@ -69,6 +70,7 @@ import { creator360Router } from './creator360';
 import { websiteCmsRouter } from './website-cms';
 import { crmUiConfigRouter } from './crm-ui-config';
 import { siteCmsExtendedRouter } from './site-cms-extended';
+import { onboarding360Router } from './onboarding360';
 import { router, protectedProcedure, officeProcedure, adminProcedure, publicProcedure } from '../trpc';
 
 type InvoiceRow = {
@@ -496,6 +498,9 @@ export const jobsRouter = router({
     if (!detail) throw new TRPCError({ code: 'NOT_FOUND' });
     return detail;
   }),
+  costing: officeProcedure.input(z.object({ jobId: z.string().min(1) })).query(({ ctx, input }) =>
+    computeJobCosting(ctx.auth.organizationId, input.jobId),
+  ),
   pipeline: officeProcedure.query(async ({ ctx }) => {
     const allJobs = await colList<JobRow>(ctx.auth.organizationId, 'jobs');
     const stages = [
@@ -749,6 +754,7 @@ export const appRouter = router({
   mockups360: mockups360Router,
   reports360: reports360Router,
   settings360: settings360Router,
+  onboarding360: onboarding360Router,
   billing: billingRouter,
   import360: import360Router,
   properties: propertiesRouter,

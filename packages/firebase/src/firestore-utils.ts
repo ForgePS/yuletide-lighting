@@ -36,6 +36,10 @@ const DATE_FIELDS = [
   'nextActionDue',
   'installDate',
   'removalDate',
+  'onboardingCompletedAt',
+  'trialEndsAt',
+  'lockedAt',
+  'currentPeriodEnd',
 ] as const;
 
 export function mapTimestampsFromData<T extends Record<string, unknown>>(data: T): T {

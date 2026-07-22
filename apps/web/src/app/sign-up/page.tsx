@@ -42,7 +42,7 @@ export default function SignUpPage() {
     setError('');
     try {
       await signUp(email, password, company);
-      router.replace('/app');
+      router.replace('/onboarding');
     } catch (err) {
       setError(authErrorMessage(err, 'Could not create account. Try a different email or stronger password.'));
     }

@@ -838,6 +838,11 @@ export function SeasonSettingsPage() {
     defaultInstallLeadDays: 14,
     defaultRemovalLeadDays: 7,
     blackoutWeeks: '',
+    installCutoffDate: '',
+    takedownStartDate: '',
+    rebookingStartDate: '',
+    publicMarketingYear: '' as number | '',
+    bookingOpen: true,
   });
 
   useEffect(() => {
@@ -853,6 +858,11 @@ export function SeasonSettingsPage() {
         defaultInstallLeadDays: data.defaultInstallLeadDays,
         defaultRemovalLeadDays: data.defaultRemovalLeadDays,
         blackoutWeeks: (data.blackoutWeeks ?? []).join(', '),
+        installCutoffDate: data.installCutoffDate ?? '',
+        takedownStartDate: data.takedownStartDate ?? '',
+        rebookingStartDate: data.rebookingStartDate ?? '',
+        publicMarketingYear: data.publicMarketingYear ?? '',
+        bookingOpen: data.bookingOpen ?? true,
       });
     }
   }, [data]);
@@ -878,6 +888,12 @@ export function SeasonSettingsPage() {
         defaultInstallLeadDays: form.defaultInstallLeadDays,
         defaultRemovalLeadDays: form.defaultRemovalLeadDays,
         blackoutWeeks,
+        installCutoffDate: form.installCutoffDate.trim() || null,
+        takedownStartDate: form.takedownStartDate.trim() || null,
+        rebookingStartDate: form.rebookingStartDate.trim() || null,
+        publicMarketingYear:
+          form.publicMarketingYear === '' ? null : Number(form.publicMarketingYear),
+        bookingOpen: form.bookingOpen,
       });
     }}>
       <SettingsSection title="Season calendar" description="Defaults used when creating proposals and planning install/removal windows.">
@@ -901,6 +917,45 @@ export function SeasonSettingsPage() {
         <FormField label="Blackout weeks (comma-separated ISO week numbers)">
           <input className="input mt-4 w-full" value={form.blackoutWeeks} onChange={(e) => setForm({ ...form, blackoutWeeks: e.target.value })} placeholder="e.g. 47, 48, 51" />
         </FormField>
+      </SettingsSection>
+      <SettingsSection title="Public seasonal dates" description="Shown on the marketing site and customer-facing copy via season placeholders.">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <FormField label="Install cutoff date">
+            <input className="input w-full" type="date" value={form.installCutoffDate} onChange={(e) => setForm({ ...form, installCutoffDate: e.target.value })} />
+          </FormField>
+          <FormField label="Takedown start date">
+            <input className="input w-full" type="date" value={form.takedownStartDate} onChange={(e) => setForm({ ...form, takedownStartDate: e.target.value })} />
+          </FormField>
+          <FormField label="Rebooking start date">
+            <input className="input w-full" type="date" value={form.rebookingStartDate} onChange={(e) => setForm({ ...form, rebookingStartDate: e.target.value })} />
+          </FormField>
+          <FormField label="Public marketing year">
+            <input
+              className="input w-full"
+              type="number"
+              min={2020}
+              max={2100}
+              value={form.publicMarketingYear}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  publicMarketingYear: e.target.value === '' ? '' : Number(e.target.value),
+                })
+              }
+              placeholder="Defaults to season year"
+            />
+          </FormField>
+          <FormField label="Booking open">
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.bookingOpen}
+                onChange={(e) => setForm({ ...form, bookingOpen: e.target.checked })}
+              />
+              Accepting new bookings
+            </label>
+          </FormField>
+        </div>
       </SettingsSection>
       <SaveButton saving={update.isPending} />
     </form>

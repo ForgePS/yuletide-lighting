@@ -71,6 +71,13 @@ export function ProposalDetail({ proposalId }: { proposalId: string }) {
     onSuccess: () => { toast('Proposal removed', 'success'); router.push('/app/proposals'); },
     onError: () => toast('Could not remove proposal', 'error'),
   });
+  const createRevision = trpc.proposals360.createRevision.useMutation({
+    onSuccess: (rev) => {
+      toast('Revision created', 'success');
+      if (rev?.id) router.push(`/app/proposals/${rev.id}`);
+    },
+    onError: (e) => toast(e.message || 'Could not create revision', 'error'),
+  });
   const { data: upsells } = trpc.proposals360.upsells.useQuery({ proposalId }, { enabled: !!data });
 
   const [form, setForm] = useState<GeneralForm | null>(null);
@@ -217,6 +224,19 @@ export function ProposalDetail({ proposalId }: { proposalId: string }) {
                   {data.status === 'approved' && data.depositStatus !== 'paid' && (
                     <button type="button" className="block w-full px-4 py-2 text-left text-sm hover:bg-muted" onClick={() => { setDepositOpen(true); setOptionsOpen(false); }}>
                       Collect deposit
+                    </button>
+                  )}
+                  {['approved', 'accepted', 'deposit_paid', 'scheduled'].includes(data.status) && (
+                    <button
+                      type="button"
+                      className="block w-full px-4 py-2 text-left text-sm hover:bg-muted"
+                      disabled={createRevision.isPending}
+                      onClick={() => {
+                        createRevision.mutate({ proposalId });
+                        setOptionsOpen(false);
+                      }}
+                    >
+                      Create revision / change order
                     </button>
                   )}
                   <a href={portalUrl} target="_blank" rel="noreferrer" className="block px-4 py-2 text-sm hover:bg-muted">

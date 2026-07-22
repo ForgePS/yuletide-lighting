@@ -63,6 +63,8 @@ export const optimizeRouteSchema = z.object({
   routeDate: z.coerce.date(),
   crewId: z.string().optional(),
   eventIds: z.array(z.string()).min(1),
+  startLat: z.number().min(-90).max(90).optional(),
+  startLng: z.number().min(-180).max(180).optional(),
 });
 
 export const createResourceReservationSchema = z.object({

@@ -179,6 +179,11 @@ export const seasonSettingsSchema = z.object({
   defaultInstallLeadDays: z.number().int().min(0).max(120).default(14),
   defaultRemovalLeadDays: z.number().int().min(0).max(120).default(7),
   blackoutWeeks: z.array(z.number().int().min(1).max(53)).default([]),
+  installCutoffDate: z.string().optional().nullable(),
+  takedownStartDate: z.string().optional().nullable(),
+  rebookingStartDate: z.string().optional().nullable(),
+  publicMarketingYear: z.number().int().min(2020).max(2100).optional().nullable(),
+  bookingOpen: z.boolean().optional().nullable(),
 });
 
 export const inventorySettingsConfigSchema = z.object({

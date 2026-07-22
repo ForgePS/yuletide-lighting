@@ -67,6 +67,12 @@ export type CrewMobileJobDetail = CrewScheduleItem & {
   photos: Array<{ id: string; url: string; photoType?: CrewPhotoType | null; caption?: string | null }>;
   activity: JobActivityLog[];
   activeTimeEntryId?: string | null;
+  scopeSummary?: string | null;
+  safetyNotes?: string | null;
+  accessNotes?: string | null;
+  mockupPhotoUrls?: string[] | null;
+  approvedPackageName?: string | null;
+  installNotes?: string | null;
 };
 
 export type CrewDashboard = {

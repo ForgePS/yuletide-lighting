@@ -12,9 +12,10 @@ export default function CustomerSalesPage() {
   const customerId = useParams().customerId as string;
   const proposalsQuery = trpc.proposals360.list.useQuery();
   const contactsQuery = trpc.contacts360.list.useQuery({ customerId, pageSize: 100 });
+  const agreementsQuery = trpc.agreements360.list.useQuery({ customerId, pageSize: 100 });
 
-  const loading = proposalsQuery.isLoading || contactsQuery.isLoading;
-  const errored = proposalsQuery.isError || contactsQuery.isError;
+  const loading = proposalsQuery.isLoading || contactsQuery.isLoading || agreementsQuery.isLoading;
+  const errored = proposalsQuery.isError || contactsQuery.isError || agreementsQuery.isError;
 
   if (loading) return <LoadingState message="Loading sales..." />;
   if (errored) {
@@ -23,11 +24,13 @@ export default function CustomerSalesPage() {
         message={
           proposalsQuery.error?.message ??
           contactsQuery.error?.message ??
+          agreementsQuery.error?.message ??
           'Could not load sales data.'
         }
         onRetry={() => {
           void proposalsQuery.refetch();
           void contactsQuery.refetch();
+          void agreementsQuery.refetch();
         }}
       />
     );
@@ -35,6 +38,7 @@ export default function CustomerSalesPage() {
 
   const proposals = (proposalsQuery.data ?? []).filter((p) => p.customerId === customerId);
   const contacts = contactsQuery.data?.items ?? [];
+  const agreements = agreementsQuery.data?.items ?? [];
 
   return (
     <div className="space-y-8">
@@ -76,6 +80,68 @@ export default function CustomerSalesPage() {
                     <td className="px-4 py-3">{formatCurrency(proposal.subtotalCents ?? 0)}</td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {proposal.updatedAt ? formatDate(proposal.updatedAt) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Agreements</h2>
+            <p className="text-sm text-muted-foreground">Multi-year and season agreements for this account.</p>
+          </div>
+          <Link href="/app/agreements" className="btn-secondary text-sm">
+            Manage agreements
+          </Link>
+        </div>
+        {!agreements.length ? (
+          <EmptyState
+            title="No agreements yet"
+            description="Agreements are created when a proposal is accepted, or added manually."
+          />
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border bg-muted/40 text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Title</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Seasons</th>
+                  <th className="px-4 py-3 font-medium">Annual</th>
+                  <th className="px-4 py-3 font-medium">Sign link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agreements.map((agreement) => (
+                  <tr key={agreement.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3">
+                      <Link href="/app/agreements" className="font-medium text-primary hover:underline">
+                        {agreement.title}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 capitalize">{agreement.status.replace(/_/g, ' ')}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {agreement.startSeason}
+                      {agreement.endSeason !== agreement.startSeason ? `–${agreement.endSeason}` : ''}
+                    </td>
+                    <td className="px-4 py-3">{formatCurrency(agreement.annualValueCents)}</td>
+                    <td className="px-4 py-3">
+                      {agreement.status === 'awaiting_signature' && agreement.publicToken ? (
+                        <Link
+                          href={`/a/${agreement.publicToken}`}
+                          className="text-primary hover:underline"
+                          target="_blank"
+                        >
+                          Open sign page
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

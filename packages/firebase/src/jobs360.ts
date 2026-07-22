@@ -19,6 +19,12 @@ export type OrgJobRecord = {
   estimatedHours?: number | null;
   installNotes?: string | null;
   internalNotes?: string | null;
+  scopeSummary?: string | null;
+  safetyNotes?: string | null;
+  accessNotes?: string | null;
+  mockupPhotoUrls?: string[] | null;
+  approvedPackageName?: string | null;
+  approvedPackageId?: string | null;
 };
 
 export type JobMaterialRow = {

@@ -2,11 +2,21 @@ import { z } from 'zod';
 
 export const multiYearAgreementStatusSchema = z.enum([
   'draft',
+  'awaiting_signature',
+  'signed',
   'active',
   'renewal_due',
   'completed',
   'cancelled',
 ]);
+
+export const agreementPublicSignSchema = z.object({
+  token: z.string().min(8),
+  signedByName: z.string().min(1).max(200),
+  signatureData: z.string().max(50000).optional(),
+  ipAddress: z.string().max(100).optional(),
+  userAgent: z.string().max(500).optional(),
+});
 
 export const multiYearAgreementListFiltersSchema = z.object({
   page: z.number().int().min(1).default(1),

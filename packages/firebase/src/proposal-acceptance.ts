@@ -9,7 +9,7 @@ import { colGet, colList, colUpdate } from './firestore';
 import { createOrgJob } from './record-paths';
 import { createInvoice360, sendInvoice360 } from './invoices360';
 import { logCustomerActivity, updateCustomerPipelineStage } from './customer360';
-import { createMultiYearAgreement360, listMultiYearAgreements360 } from './agreements';
+import { createMultiYearAgreement360, listMultiYearAgreements360, sendAgreementForSignature360 } from './agreements';
 import { getProposal360 } from './proposals';
 import { getSeasonSettings } from './settings360';
 import { ensureProjectPrepFromJob } from './project-prep';
@@ -198,6 +198,20 @@ export async function runProposalAcceptedWorkflow(
       opts?.userId,
     );
     createdAgreement = true;
+    // Stamp proposalId outside the zod create schema
+    await getAdminFirestore()
+      .doc(`organizations/${orgId}/multiYearAgreements/${agreement.id}`)
+      .update({ proposalId });
+  }
+
+  // Send for customer signature (idempotent if already awaiting/signed)
+  if (agreement && (createdAgreement || agreement.status === 'draft')) {
+    try {
+      const sent = await sendAgreementForSignature360(orgId, agreement.id, opts?.userId);
+      if (sent) agreement = sent;
+    } catch {
+      // Signature send is best-effort
+    }
   }
 
   // --- Plan materials from proposal line items, then best-effort reserve ---

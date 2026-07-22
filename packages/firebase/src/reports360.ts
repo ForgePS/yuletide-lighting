@@ -32,6 +32,7 @@ import { getScheduleDashboard, getScheduleAnalytics, ensureCrews, listCalendarEv
 import { listMockups360 } from './mockups360';
 import { getStorageDashboard } from './storage360';
 import { listServiceIssues360 } from './service-issues';
+import { aggregateJobCostings } from './job-costing';
 
 function ts() {
   return Timestamp.now();
@@ -339,7 +340,7 @@ export async function getExecutiveDashboard(orgId: string, filters: ReportFilter
   const [customers, proposals, jobs, invoiceKpis, scheduleKpis] = await Promise.all([
     colList<{ id: string; createdAt?: Date }>(orgId, 'customers'),
     colList<{ status: string; subtotalCents?: number; acceptedAt?: Date; createdAt?: Date; approvedAt?: Date }>(orgId, 'proposals'),
-    colList<{ stage: string; subtotalCents?: number; completionDate?: Date; createdAt?: Date }>(orgId, 'jobs'),
+    colList<{ id: string; stage: string; subtotalCents?: number; completionDate?: Date; createdAt?: Date }>(orgId, 'jobs'),
     getInvoiceDashboard(orgId, filters),
     getScheduleDashboard(orgId),
   ]);
@@ -364,10 +365,14 @@ export async function getExecutiveDashboard(orgId: string, filters: ReportFilter
     ? proposals.filter((p) => inYear(p.createdAt, year))
     : proposals;
   const accepted = scopedProposals.filter((p) => p.status === 'accepted' || p.status === 'approved');
-  const grossProfit = Math.round(totalRevenue * 0.55);
   const scopedJobs = year != null
     ? jobs.filter((j) => inYear(j.completionDate ?? j.createdAt, year))
     : jobs;
+  const jobCosting = await aggregateJobCostings(orgId, { jobIds: scopedJobs.map((j) => j.id) });
+  const grossProfit =
+    jobCosting.revenueCents > 0
+      ? jobCosting.grossProfitCents
+      : totalRevenue - jobCosting.laborCostCents - jobCosting.materialCostCents;
   const completedJobs = scopedJobs.filter((j) => j.stage === 'complete' || j.stage === 'installed').length;
   const scopedCustomers = year != null
     ? customers.filter((c) => inYear(c.createdAt, year))
@@ -378,7 +383,7 @@ export async function getExecutiveDashboard(orgId: string, filters: ReportFilter
     revenueThisMonthCents: revenueThisMonth,
     revenueThisSeasonCents: revenueThisSeason,
     grossProfitCents: grossProfit,
-    grossMarginPercent: totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 100) : 0,
+    grossMarginPercent: totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 100) : jobCosting.marginPercent,
     activeCustomers: year != null ? scopedCustomers.length : customers.length,
     jobsScheduled: scheduleKpis.jobsScheduledToday + scopedJobs.filter((j) => j.stage === 'scheduled').length,
     jobsCompleted: completedJobs,
@@ -534,6 +539,16 @@ export async function getCustomerAnalytics(orgId: string, filters: ReportFilters
     .sort((a, b) => b.revenueCents - a.revenueCents)
     .slice(0, 10);
 
+  const jobCosting = await aggregateJobCostings(orgId);
+  const costingByCustomer = new Map<string, { profitCents: number; revenueCents: number }>();
+  for (const row of jobCosting.results) {
+    if (!row.customerId) continue;
+    const cur = costingByCustomer.get(row.customerId) ?? { profitCents: 0, revenueCents: 0 };
+    cur.profitCents += row.grossProfitCents;
+    cur.revenueCents += row.revenueCents;
+    costingByCustomer.set(row.customerId, cur);
+  }
+
   const newCustomers = year != null
     ? customers.filter((c) => inYear(c.createdAt, year)).length
     : customers.filter((c) => c.createdAt && c.createdAt >= new Date(new Date().setFullYear(new Date().getFullYear() - 1))).length;
@@ -550,7 +565,21 @@ export async function getCustomerAnalytics(orgId: string, filters: ReportFilters
     averageLifetimeValueCents: topCustomers.length ? Math.round(topCustomers.reduce((s, c) => s + c.revenueCents, 0) / topCustomers.length) : 0,
     averageSpendCents: paidInvoices.length ? Math.round(paidInvoices.reduce((s, i) => s + i.amountPaidCents, 0) / Math.max(byCustomer.size, 1)) : 0,
     topCustomers,
-    mostProfitable: topCustomers.map((c) => ({ ...c, profitCents: Math.round(c.revenueCents * 0.55), marginPercent: 55 })),
+    mostProfitable: topCustomers.map((c) => {
+      const cost = costingByCustomer.get(c.customerId);
+      if (cost && (cost.revenueCents > 0 || cost.profitCents !== 0)) {
+        const marginPercent =
+          cost.revenueCents > 0 ? Math.round((cost.profitCents / cost.revenueCents) * 100) : 0;
+        return { ...c, profitCents: cost.profitCents, marginPercent };
+      }
+      // No per-job costing yet — apply org-wide margin from job costing aggregates
+      const orgMargin = jobCosting.marginPercent / 100;
+      return {
+        ...c,
+        profitCents: Math.round(c.revenueCents * orgMargin),
+        marginPercent: jobCosting.marginPercent,
+      };
+    }),
     atRiskCustomers: topCustomers.filter((c) => c.jobCount === 1).map((c) => ({
       customerId: c.customerId,
       name: c.name,
@@ -644,6 +673,17 @@ export async function getCrewPerformanceAnalytics(orgId: string, filters: Report
   });
 
   const sorted = [...crewData].sort((a, b) => b.revenueProducedCents - a.revenueProducedCents);
+  const scheduledHours = crewData.reduce((s, c) => s + c.laborHours, 0);
+  const jobCosting = await aggregateJobCostings(orgId);
+  const totalHours = jobCosting.actualLaborHours > 0 ? jobCosting.actualLaborHours : scheduledHours;
+  const estimatedLaborFromProposals = jobCosting.results.reduce(
+    (s, r) => s + (r.estimatedLaborCostCents ?? 0),
+    0,
+  );
+  const laborCostCents =
+    jobCosting.laborCostCents > 0
+      ? jobCosting.laborCostCents
+      : estimatedLaborFromProposals;
 
   return {
     crews: crewData,
@@ -654,10 +694,10 @@ export async function getCrewPerformanceAnalytics(orgId: string, filters: Report
       value: c.revenueProducedCents,
     })),
     labor: {
-      totalHours: crewData.reduce((s, c) => s + c.laborHours, 0),
-      overtimeHours: Math.round(crewData.reduce((s, c) => s + c.laborHours, 0) * 0.08),
-      laborCostCents: crewData.reduce((s, c) => s + c.laborHours, 0) * 3500,
-      revenuePerLaborHourCents: schedule.revenuePerDayCents > 0 ? Math.round(schedule.revenuePerDayCents / Math.max(crewData.reduce((s, c) => s + c.laborHours, 0), 1)) : 0,
+      totalHours,
+      overtimeHours: Math.round(totalHours * 0.08),
+      laborCostCents,
+      revenuePerLaborHourCents: schedule.revenuePerDayCents > 0 ? Math.round(schedule.revenuePerDayCents / Math.max(totalHours, 1)) : 0,
       utilizationRatePercent: schedule.capacityUtilizationPercent,
       efficiencyRatePercent: schedule.scheduleEfficiencyPercent,
     },
@@ -710,6 +750,7 @@ export async function getFinancialAnalytics(orgId: string, filters: ReportFilter
       approvedAt?: Date;
     }>(orgId, 'proposals'),
     colList<{
+      id: string;
       stage: string;
       subtotalCents?: number;
       customerId?: string;
@@ -802,13 +843,25 @@ export async function getFinancialAnalytics(orgId: string, filters: ReportFilter
     })
     .reduce((s, i) => s + Math.min(i.amountPaidCents, i.depositCents ?? 0), 0);
 
-  const materialCostEstimateCents = Math.max(
-    Math.round(inventory.totalInventoryValueCents * 0.35),
-    Math.round(revenueCents * 0.32),
-  );
-  const laborCostCents = crewPerf.labor.laborCostCents;
+  const jobCostingMaterials = await aggregateJobCostings(orgId, {
+    jobIds: scopedJobs.map((j) => j.id),
+  });
+  const materialCostEstimateCents =
+    jobCostingMaterials.materialCostCents > 0
+      ? jobCostingMaterials.materialCostCents
+      : Math.max(
+          Math.round(inventory.totalInventoryValueCents * 0.35),
+          Math.round(revenueCents * 0.32),
+        );
+  const laborCostCents =
+    crewPerf.labor.laborCostCents > 0
+      ? crewPerf.labor.laborCostCents
+      : jobCostingMaterials.laborCostCents;
   const expensesCents = materialCostEstimateCents + laborCostCents + Math.round(revenueCents * 0.12);
-  const grossProfitCents = revenueCents - materialCostEstimateCents - laborCostCents;
+  const grossProfitCents =
+    jobCostingMaterials.revenueCents > 0
+      ? jobCostingMaterials.grossProfitCents
+      : revenueCents - materialCostEstimateCents - laborCostCents;
   const grossMarginEstimatePercent = revenueCents > 0 ? Math.round((grossProfitCents / revenueCents) * 100) : 0;
   const netProfitCents = revenueCents - expensesCents;
 

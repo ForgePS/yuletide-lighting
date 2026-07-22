@@ -142,6 +142,61 @@ export function JobDetail({ jobId }: { jobId: string }) {
       )}
 
       <MaterialRequirementsPanel materials={materials} />
+
+      <JobCostingPanel jobId={jobId} />
+    </div>
+  );
+}
+
+function JobCostingPanel({ jobId }: { jobId: string }) {
+  const { data, isLoading, isError } = trpc.jobs.costing.useQuery({ jobId });
+
+  if (isLoading) {
+    return (
+      <div className="card p-4">
+        <h2 className="font-semibold">Job costing</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Loading costing…</p>
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="card p-4">
+        <h2 className="font-semibold">Job costing</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Costing unavailable.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card space-y-3 p-4">
+      <h2 className="font-semibold">Job costing</h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <p className="text-xs text-muted-foreground">Revenue</p>
+          <p className="text-sm font-medium">{formatCurrency(data.revenueCents)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Labor cost</p>
+          <p className="text-sm font-medium">{formatCurrency(data.laborCostCents)}</p>
+          <p className="text-xs text-muted-foreground">{data.actualLaborHours.toFixed(1)} hrs</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Material cost</p>
+          <p className="text-sm font-medium">{formatCurrency(data.materialCostCents)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Gross profit</p>
+          <p className="text-sm font-medium">{formatCurrency(data.grossProfitCents)}</p>
+          <p className="text-xs text-muted-foreground">{data.marginPercent}% margin</p>
+        </div>
+      </div>
+      {data.estimatedLaborCostCents != null && data.estimatedLaborCostCents > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Estimated labor (proposal): {formatCurrency(data.estimatedLaborCostCents)}
+        </p>
+      )}
     </div>
   );
 }

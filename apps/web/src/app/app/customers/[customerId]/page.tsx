@@ -9,14 +9,21 @@ import {
   FollowUpRulesTable,
 } from '@/components/customers';
 import { formatServiceAddress, formatBillingAddress } from '@/components/customer-address-fields';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 
 export default function CustomerOverviewPage() {
   const customerId = useParams().customerId as string;
-  const { data, isLoading } = trpc.customer360.getById.useQuery({ customerId });
+  const { data, isLoading, isError, error, refetch } = trpc.customer360.getById.useQuery({ customerId });
 
-  if (isLoading || !data) return <LoadingState />;
-
+  if (isLoading) return <LoadingState />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load this customer.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
   const primary = data.properties?.[0] ?? null;
 
   return (

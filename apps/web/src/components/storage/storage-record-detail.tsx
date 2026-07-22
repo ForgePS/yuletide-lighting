@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency } from '@clcrm/ui';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 import { AuthenticatedImage } from '@/components/authenticated-image';
 import type { StoredItemCondition } from '@clcrm/types';
 
@@ -36,7 +36,7 @@ const CONDITION_OPTIONS = [
 export function StorageRecordDetail({ recordId }: { recordId: string }) {
   const { toast } = useToast();
   const utils = trpc.useUtils();
-  const { data, isLoading, refetch } = trpc.storage360.records.getById.useQuery({ recordId });
+  const { data, isLoading, isError, error, refetch } = trpc.storage360.records.getById.useQuery({ recordId });
   const updateRecord = trpc.storage360.records.update.useMutation({
     onSuccess: () => { toast('Storage record updated', 'success'); refetch(); },
     onError: () => toast('Could not update record', 'error'),
@@ -54,7 +54,15 @@ export function StorageRecordDetail({ recordId }: { recordId: string }) {
   const [uploading, setUploading] = useState(false);
   const [itemForm, setItemForm] = useState({ name: '', quantity: 1, condition: 'good' as StoredItemCondition, notes: '' });
 
-  if (isLoading || !data) return <LoadingState message="Loading storage record..." />;
+  if (isLoading) return <LoadingState message="Loading storage record..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load this storage record.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   const { record, items, customerName, propertyAddress } = data;
   const bin = binForm ?? {

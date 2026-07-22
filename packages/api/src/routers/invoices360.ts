@@ -47,7 +47,7 @@ import {
   updateInvoiceStatusSchema,
   reportFilterSchema,
 } from '@clcrm/validators';
-import { router, adminProcedure, officeProcedure, publicProcedure } from '../trpc';
+import { router, adminProcedure, officeProcedure, publicProcedure, permissionProcedure } from '../trpc';
 import { colUpdate } from '@yuletide/firebase';
 
 const invoiceFilterInput = reportFilterSchema.optional();
@@ -105,7 +105,7 @@ export const invoices360Router = router({
     .input(z.object({ invoiceId: z.string(), data: updateInvoice360Schema }))
     .mutation(({ ctx, input }) => updateInvoice360(ctx.auth.organizationId, input.invoiceId, input.data, ctx.auth.userId)),
 
-  delete: adminProcedure
+  delete: permissionProcedure('invoices', 'delete')
     .input(z.object({ invoiceId: z.string() }))
     .mutation(({ ctx, input }) => deleteInvoice360(ctx.auth.organizationId, input.invoiceId, ctx.auth.userId)),
 

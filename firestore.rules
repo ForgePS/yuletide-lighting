@@ -20,14 +20,27 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      // Users may update profile fields only — never organizationId, role, or settingsRole
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.firebaseUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.role == resource.data.role
+        && (!('settingsRole' in request.resource.data)
+          || request.resource.data.settingsRole == resource.data.settingsRole)
+        && (!('status' in request.resource.data)
+          || request.resource.data.status == resource.data.status);
+      allow delete: if false;
     }
 
     match /organizations/{orgId} {
       allow read: if belongsToOrg(orgId);
-      allow create: if isSignedIn();
+      // Organization create is Admin-SDK only (sign-up / provisioning)
+      allow create: if false;
       allow update: if hasRole(orgId, ['owner', 'admin']);
-
+      allow delete: if false;
       match /customers/{customerId} {
         allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
 
@@ -281,18 +294,51 @@ service cloud.firestore {
         allow read: if hasRole(orgId, ['owner', 'admin']);
         allow write: if false;
       }
+
+      // Phase 0: collections used by Admin SDK / future client — org-scoped deny-by-default catch-all
+      match /serviceIssues/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /contacts/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /projectPrepItems/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /timeEntries/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /storageRecords/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /commercialAccounts/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /multiYearAgreements/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /crmUiConfig/{docId} {
+        allow read: if belongsToOrg(orgId);
+        allow write: if hasRole(orgId, ['owner', 'admin']);
+      }
+      match /{document=**} {
+        allow read, write: if false;
+      }
     }
 
-    // Public proposal/invoice tokens validated server-side via Admin SDK
+    // Public token mirrors — Admin SDK serves portal; client SDK must not open-read
     match /publicProposals/{token} {
-      allow read: if true;
+      allow read, write: if false;
     }
     match /publicInvoices/{token} {
-      allow read: if true;
+      allow read, write: if false;
     }
 
     match /platform/{docId} {
       allow read, write: if false;
+      match /{document=**} {
+        allow read, write: if false;
+      }
     }
 
     match /platformAuditLogs/{logId} {

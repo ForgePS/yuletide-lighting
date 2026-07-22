@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import {
   Building2,
   CreditCard,
+  Globe,
   Layers,
   LayoutDashboard,
   LogOut,
@@ -24,6 +25,7 @@ import type { CreatorConsoleTab } from './creator-console';
 
 const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; tab: CreatorConsoleTab }> = [
   { href: '/creator', label: 'Overview', icon: LayoutDashboard, tab: 'overview' },
+  { href: '/creator/website', label: 'Website', icon: Globe, tab: 'website' },
   { href: '/creator/settings', label: 'Platform', icon: Settings, tab: 'platform' },
   { href: '/creator/subscriptions', label: 'Subscriptions', icon: CreditCard, tab: 'subscriptions' },
   { href: '/creator/modules', label: 'Modules', icon: Layers, tab: 'modules' },
@@ -34,17 +36,26 @@ const NAV: Array<{ href: string; label: string; icon: typeof LayoutDashboard; ta
 ];
 
 export function tabFromPath(pathname: string): CreatorConsoleTab {
+  if (pathname.startsWith('/creator/website')) return 'website';
   const match = NAV.find((item) => item.href !== '/creator' && pathname.startsWith(item.href));
-  if (match) return match.tab;
+  if (match) return match.tab as CreatorConsoleTab;
   if (pathname === '/creator' || pathname === '/creator/') return 'overview';
   if (pathname.startsWith('/creator/billing') || pathname.startsWith('/creator/audit')) return 'operations';
   return 'overview';
 }
 
-function CreatorNav({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function CreatorNav({
+  pathname,
+  onNavigate,
+  items = NAV,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+  items?: typeof NAV;
+}) {
   return (
     <>
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {items.map(({ href, label, icon: Icon, tab }) => {
         const active = href === '/creator' ? pathname === '/creator' : pathname.startsWith(href);
         return (
           <Link
@@ -54,10 +65,16 @@ function CreatorNav({ pathname, onNavigate }: { pathname: string; onNavigate?: (
             className={cn(
               'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
               active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white',
+              tab === 'website' && !active ? 'ring-1 ring-emerald-400/40' : null,
             )}
           >
             <Icon className="h-4 w-4 shrink-0" />
             {label}
+            {tab === 'website' ? (
+              <span className="ml-auto rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-300">
+                CMS
+              </span>
+            ) : null}
           </Link>
         );
       })}
@@ -122,7 +139,18 @@ export function CreatorShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-        <CreatorNav pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+        <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Content</p>
+        <CreatorNav
+          pathname={pathname}
+          onNavigate={() => setMobileOpen(false)}
+          items={NAV.filter((i) => i.tab === 'overview' || i.tab === 'website')}
+        />
+        <p className="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Platform</p>
+        <CreatorNav
+          pathname={pathname}
+          onNavigate={() => setMobileOpen(false)}
+          items={NAV.filter((i) => i.tab !== 'overview' && i.tab !== 'website')}
+        />
       </nav>
       <div className="space-y-2 border-t border-white/10 p-4">
         <Link href="/app" className="block rounded-lg bg-white/5 px-3 py-2 text-xs font-medium text-slate-300 hover:bg-white/10 hover:text-white">

@@ -1,5 +1,16 @@
+﻿const path = require('path');
+const { loadEnvConfig } = require('@next/env');
+
+// Load apps/web/.env* then monorepo root .env* so server secrets in the repo root
+// (e.g. FIREBASE_SERVICE_ACCOUNT_KEY) are available to Next locally.
+const appDir = __dirname;
+const repoRoot = path.join(__dirname, '../..');
+loadEnvConfig(appDir);
+loadEnvConfig(repoRoot);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingRoot: repoRoot,
   transpilePackages: ['@clcrm/api', '@clcrm/types', '@clcrm/ui', '@clcrm/validators', '@yuletide/firebase'],
   eslint: {
     ignoreDuringBuilds: true,
@@ -24,9 +35,6 @@ const nextConfig = {
       '1:928287362183:web:e0cca4d6e2f6d89cc3bc22',
     NEXT_PUBLIC_APP_URL:
       process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app',
-    NEXT_PUBLIC_TINA_CLIENT_ID:
-      process.env.NEXT_PUBLIC_TINA_CLIENT_ID ?? 'b17e495a-4dd4-4314-b4c8-7e816567433b',
-    NEXT_PUBLIC_TINA_BRANCH: process.env.NEXT_PUBLIC_TINA_BRANCH ?? 'main',
   },
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],

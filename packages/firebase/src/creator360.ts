@@ -55,6 +55,14 @@ function parseCreatorAllowList(raw: string | undefined) {
 export function isPlatformCreator(email: string, firebaseUid?: string | null) {
   const emails = parseCreatorAllowList(process.env.PLATFORM_CREATOR_EMAILS);
   const uids = parseCreatorAllowList(process.env.PLATFORM_CREATOR_UIDS);
+
+  // Local DX: if no allowlist is configured, treat every signed-in user as a creator
+  // so Website CMS / Creator Console are reachable without env setup.
+  if (emails.length === 0 && uids.length === 0) {
+    const isProd = process.env.NODE_ENV === 'production' || process.env.K_SERVICE;
+    if (!isProd) return true;
+  }
+
   if (emails.includes(email.trim().toLowerCase())) return true;
   if (firebaseUid && uids.includes(firebaseUid.trim().toLowerCase())) return true;
   return false;

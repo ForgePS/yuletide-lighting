@@ -94,11 +94,16 @@ export async function listCalendarEvents(
   end?: Date,
   opts?: { readOnly?: boolean },
 ): Promise<CalendarEvent[]> {
-  const rows = await colList<Record<string, unknown>>(orgId, 'calendarEvents');
+  const rows = await colList<Record<string, unknown>>(orgId, 'calendarEvents', 'createdAt', {
+    limit: opts?.readOnly ? 400 : undefined,
+  });
   let events = rows.map((r) => normalizeEvent({ ...r, organizationId: orgId }));
+  const hadAnyEvents = events.length > 0;
+  if (start) events = events.filter((e) => e.startAt >= start);
+  if (end) events = events.filter((e) => e.startAt <= end);
 
-  // Migrate legacy scheduleBlocks (skip on read-only dashboard paths to avoid timeouts)
-  if (!events.length) {
+  // Migrate legacy scheduleBlocks (never on read-only dashboard — that path must stay fast)
+  if (!hadAnyEvents && !opts?.readOnly) {
     const blocks = await colList<{ id: string; jobId: string; startAt: Date; endAt: Date }>(orgId, 'scheduleBlocks');
     if (blocks.length) {
       const jobs = await colList<{ id: string; title?: string; customerId?: string }>(orgId, 'jobs');

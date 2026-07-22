@@ -191,6 +191,7 @@ export const customer360BaseSchema = z.object({
   preferredContactMethod: preferredContactMethodSchema.default('email'),
   notes: z.string().max(10000).optional().or(z.literal('')),
   tags: z.array(z.string()).default([]),
+  customFields: z.record(z.unknown()).optional().default({}),
   smsOptIn: z.boolean().default(true),
   emailOptIn: z.boolean().default(true),
   gateCodesInstructions: z.string().max(5000).optional().or(z.literal('')),

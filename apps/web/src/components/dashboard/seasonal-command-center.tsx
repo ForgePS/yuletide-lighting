@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useAnalyticsYear } from '@/lib/analytics-year-context';
 import { formatCurrency } from '@clcrm/ui';
@@ -58,9 +58,34 @@ function formatTime(date: Date) {
 
 export function SeasonalCommandCenter() {
   const { filterInput, yearLabel } = useAnalyticsYear();
-  const { data, isLoading, isError, error, refetch } = trpc.reports360.commandCenter.useQuery(filterInput, { staleTime: 60_000 });
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const kick = () => {
+      if (!cancelled) setReady(true);
+    };
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleId = window.requestIdleCallback(kick, { timeout: 400 });
+    } else {
+      timeoutId = setTimeout(kick, 100);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    };
+  }, []);
 
-  if (isLoading || (!data && !isError)) {
+  const { data, isLoading, isError, error, refetch } = trpc.reports360.commandCenter.useQuery(filterInput, {
+    staleTime: 60_000,
+    enabled: ready,
+  });
+
+  if (!ready || isLoading || (!data && !isError)) {
     return (
       <div className="space-y-6">
         <div className="h-10 w-64 animate-pulse rounded-lg bg-muted/50" />
@@ -74,10 +99,17 @@ export function SeasonalCommandCenter() {
   }
 
   if (isError || !data) {
-    const code = (error as { data?: { code?: string } } | null)?.data?.code;
+    const code = (error as { data?: { code?: string }; message?: string } | null)?.data?.code;
+    const raw = (error as { message?: string } | null)?.message ?? '';
+    const looksLikeServerAuth =
+      /PERMISSION_DENIED|FIREBASE_SERVICE_ACCOUNT|createAuthContext|Missing or insufficient permissions/i.test(
+        raw,
+      );
     const message =
       code === 'UNAUTHORIZED'
-        ? 'Your session expired. Sign out and sign in again.'
+        ? looksLikeServerAuth
+          ? 'Server could not verify your account (Firebase Admin credentials). Check FIREBASE_SERVICE_ACCOUNT_PATH or FIREBASE_USE_ADC in .env, then restart the app.'
+          : 'Could not verify your session. Sign out and sign in again. If this keeps happening, local Firebase Admin credentials are missing or unauthorized.'
         : code === 'FORBIDDEN'
           ? 'Your account does not have access to the dashboard.'
           : 'The command center took too long or hit an error. Try again in a moment.';
@@ -85,9 +117,14 @@ export function SeasonalCommandCenter() {
       <div className="card mx-auto max-w-lg p-8 text-center">
         <h2 className="text-lg font-semibold">Could not load dashboard</h2>
         <p className="mt-2 text-sm text-muted-foreground">{message}</p>
-        <button type="button" onClick={() => refetch()} className="btn-primary mt-4">
-          Retry
-        </button>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <button type="button" onClick={() => refetch()} className="btn-primary">
+            Retry
+          </button>
+          <a href="/sign-in" className="btn-secondary">
+            Sign in again
+          </a>
+        </div>
       </div>
     );
   }

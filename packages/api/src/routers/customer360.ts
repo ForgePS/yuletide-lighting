@@ -59,7 +59,7 @@ import {
   updateCustomerNextActionSchema,
   propertyListFiltersSchema,
 } from '@clcrm/validators';
-import { router, officeProcedure, adminProcedure } from '../trpc';
+import { router, officeProcedure, adminProcedure, permissionProcedure } from '../trpc';
 
 function emptyToNull(value?: string | null) {
   return value?.trim() ? value.trim() : null;
@@ -435,9 +435,9 @@ export const customer360Router = router({
     return customer;
   }),
 
-  delete: adminProcedure.input(z.object({ customerId: z.string() })).mutation(({ ctx, input }) =>
-    deleteCustomer(ctx.auth.organizationId, input.customerId),
-  ),
+  delete: permissionProcedure('customers', 'delete')
+    .input(z.object({ customerId: z.string() }))
+    .mutation(({ ctx, input }) => deleteCustomer(ctx.auth.organizationId, input.customerId)),
 
   addNote: officeProcedure.input(addCustomerNoteSchema).mutation(async ({ ctx, input }) => {
     const orgId = ctx.auth.organizationId;

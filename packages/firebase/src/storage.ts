@@ -55,6 +55,27 @@ export async function uploadFromUrl(orgId: string, folder: string, url: string):
   return uploadFile(orgId, folder, buffer, contentType);
 }
 
-export function storagePath(orgId: string, folder: string, filename: string) {
-  return `organizations/${orgId}/${folder}/${filename}`;
+export async function uploadPlatformFile(
+  folder: string,
+  buffer: Buffer,
+  contentType: string,
+  filename?: string,
+): Promise<{ path: string; url: string }> {
+  const bucket = getAdminStorage().bucket();
+  const safeName = (filename ?? `${nanoid()}-${Date.now()}`).replace(/[^\w.\-]+/g, '_');
+  const path = `platform/website/${folder}/${safeName}`;
+  const file = bucket.file(path);
+
+  await file.save(buffer, {
+    metadata: { contentType },
+  });
+
+  return { path, url: toFileProxyUrl(path) };
+}
+
+export async function deleteStoragePath(path: string): Promise<void> {
+  const bucket = getAdminStorage().bucket();
+  const file = bucket.file(path);
+  const [exists] = await file.exists();
+  if (exists) await file.delete();
 }

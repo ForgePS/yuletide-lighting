@@ -6,7 +6,6 @@ import { createTRPCReact } from '@trpc/react-query';
 import superjson from 'superjson';
 import { useState, type ReactNode } from 'react';
 import type { AppRouter } from '@clcrm/api';
-import { useAuth } from '@/lib/firebase-auth';
 import { getCachedAuthToken } from '@/lib/auth-token';
 import { auth } from '@/lib/firebase';
 
@@ -59,8 +58,6 @@ function createTrpcLinks() {
 }
 
 function TRPCInner({ children }: { children: ReactNode }) {
-  const { loading } = useAuth();
-
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -69,7 +66,7 @@ function TRPCInner({ children }: { children: ReactNode }) {
             staleTime: 60_000,
             gcTime: 5 * 60_000,
             refetchOnWindowFocus: false,
-            retry: 1,
+            retry: false,
           },
         },
       }),
@@ -80,14 +77,6 @@ function TRPCInner({ children }: { children: ReactNode }) {
       links: [createTrpcLinks()],
     }),
   );
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
-        Loading...
-      </div>
-    );
-  }
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>

@@ -10,7 +10,6 @@ import {
   inviteOrgUser,
   listRoles,
   updateRolePermissions,
-  getUserPermissions,
   getNotificationSettings,
   updateNotificationSettings,
   updateNotificationRule,
@@ -68,40 +67,51 @@ import {
   auditLogFilterSchema,
   settingsRoleSchema,
 } from '@clcrm/validators';
-import { router, adminProcedure, officeProcedure } from '../trpc';
+import { router, adminProcedure, officeProcedure, permissionProcedure } from '../trpc';
 
 export const settings360Router = router({
   dashboard: officeProcedure.query(({ ctx }) => getSettingsDashboard(ctx.auth.organizationId)),
 
   company: officeProcedure.query(({ ctx }) => getCompanySettings(ctx.auth.organizationId)),
-  updateCompany: adminProcedure.input(companySettingsSchema).mutation(({ ctx, input }) =>
-    updateCompanySettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
-  ),
+  updateCompany: permissionProcedure('settings', 'edit')
+    .input(companySettingsSchema)
+    .mutation(({ ctx, input }) =>
+      updateCompanySettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
+    ),
 
   branding: officeProcedure.query(({ ctx }) => getBrandingSettings(ctx.auth.organizationId)),
-  updateBranding: adminProcedure.input(brandingSettingsSchema).mutation(({ ctx, input }) =>
-    updateBrandingSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
-  ),
+  updateBranding: permissionProcedure('settings', 'edit')
+    .input(brandingSettingsSchema)
+    .mutation(({ ctx, input }) =>
+      updateBrandingSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
+    ),
 
   users: officeProcedure.query(({ ctx }) => listOrgUsers(ctx.auth.organizationId)),
-  updateUser: officeProcedure.input(updateUserSchema).mutation(({ ctx, input }) => {
+  updateUser: permissionProcedure('settings', 'edit').input(updateUserSchema).mutation(({ ctx, input }) => {
     const { userId, ...fields } = input;
     return updateOrgUser(ctx.auth.organizationId, userId, fields, ctx.auth.userId, ctx.auth.email);
   }),
-  inviteUser: officeProcedure.input(inviteUserSchema).mutation(({ ctx, input }) =>
-    inviteOrgUser(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
-  ),
+  inviteUser: permissionProcedure('settings', 'edit')
+    .input(inviteUserSchema)
+    .mutation(({ ctx, input }) =>
+      inviteOrgUser(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
+    ),
 
   roles: officeProcedure.query(({ ctx }) => listRoles(ctx.auth.organizationId)),
-  updateRolePermissions: adminProcedure.input(updateRolePermissionsSchema).mutation(({ ctx, input }) =>
-    updateRolePermissions(ctx.auth.organizationId, input.roleId, input.permissions as import('@clcrm/types').PermissionMatrix, ctx.auth.userId, ctx.auth.email),
-  ),
+  updateRolePermissions: permissionProcedure('settings', 'edit')
+    .input(updateRolePermissionsSchema)
+    .mutation(({ ctx, input }) =>
+      updateRolePermissions(
+        ctx.auth.organizationId,
+        input.roleId,
+        input.permissions as import('@clcrm/types').PermissionMatrix,
+        ctx.auth.userId,
+        ctx.auth.email,
+      ),
+    ),
 
   myPermissions: officeProcedure.query(async ({ ctx }) => {
-    const users = await listOrgUsers(ctx.auth.organizationId);
-    const me = users.find((u) => u.id === ctx.auth.userId);
-    const role = me?.role ?? 'read_only';
-    return getUserPermissions(ctx.auth.organizationId, role);
+    return ctx.auth.permissions;
   }),
 
   notifications: officeProcedure.query(({ ctx }) => getNotificationSettings(ctx.auth.organizationId)),

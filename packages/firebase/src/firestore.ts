@@ -18,6 +18,8 @@ export type UserRecord = {
   lastName?: string | null;
   role: UserRole;
   settingsRole?: string | null;
+  /** active | suspended | pending | archived — missing treated as active for legacy docs */
+  status?: 'active' | 'suspended' | 'pending' | 'archived' | null;
   pushToken?: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -305,6 +307,9 @@ export async function deleteCustomer(orgId: string, id: string) {
 }
 
 export async function createProperty(orgId: string, data: Omit<PropertyRecord, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>) {
+  if (!data.customerId?.trim()) {
+    throw new Error('createProperty requires customerId (Phase 0 relationship freeze)');
+  }
   const db = getAdminFirestore();
   const ref = db.collection(`organizations/${orgId}/properties`).doc();
   const now = ts();
@@ -320,12 +325,20 @@ export async function updateProperty(orgId: string, id: string, data: Partial<Pr
   return mapTimestamps({ id: snap.id, ...snap.data()! }) as PropertyRecord;
 }
 
-export async function colList<T>(orgId: string, collection: string, orderField = 'createdAt'): Promise<T[]> {
+export async function colList<T>(
+  orgId: string,
+  collection: string,
+  orderField = 'createdAt',
+  opts?: { limit?: number },
+): Promise<T[]> {
   const db = getAdminFirestore();
-  const snap = await db
+  let query = db
     .collection(`organizations/${orgId}/${collection}`)
-    .orderBy(orderField, 'desc')
-    .get();
+    .orderBy(orderField, 'desc');
+  if (opts?.limit && opts.limit > 0) {
+    query = query.limit(opts.limit);
+  }
+  const snap = await query.get();
   return snap.docs.map((d) => mapTimestamps({ id: d.id, ...d.data() }) as T);
 }
 

@@ -32,11 +32,16 @@ export const sendBulkSms360Schema = z.object({
 });
 
 export const receiveSms360Schema = z.object({
-  organizationId: z.string().optional(),
+  /** Required for public Twilio webhook; ignored when org comes from auth context. */
+  toPhone: z.string().min(5).max(40).optional(),
   customerId: z.string().optional(),
   fromPhone: z.string().max(40).optional(),
   body: z.string().min(1).max(5000),
   providerMessageId: z.string().max(200).optional(),
+});
+
+export const receiveSmsPublicSchema = receiveSms360Schema.extend({
+  toPhone: z.string().min(5).max(40),
 });
 
 export const updateConversationSchema = z.object({

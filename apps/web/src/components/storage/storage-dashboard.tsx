@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency } from '@clcrm/ui';
-import { LoadingState, EmptyState } from '@/components/ui/states';
+import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 import { StoragePullSheetView } from './storage-pull-sheet';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -16,9 +16,16 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function StorageStatsCards() {
-  const { data, isLoading } = trpc.storage360.dashboard.useQuery();
-  if (isLoading || !data) return <LoadingState message="Loading storage stats..." />;
-
+  const { data, isLoading, isError, error, refetch } = trpc.storage360.dashboard.useQuery();
+  if (isLoading) return <LoadingState message="Loading storage stats..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load storage stats.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
   const cards = [
     { label: 'Total records', value: String(data.totalRecords) },
     { label: 'In storage', value: String(data.stored) },

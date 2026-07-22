@@ -21,6 +21,7 @@ import { mapTimestampsFromData } from './firestore-utils';
 import { colCreate, colDelete, colGet, colList, colUpdate, getByPublicToken, getOrganization, updateCustomer } from './firestore';
 import { updateCustomerPipelineStage } from './customer360';
 import { getBrandingForCustomerFacing, getProposalSettings, getSeasonSettings } from './settings360';
+import { createOrgJob } from './record-paths';
 
 function ts() {
   return Timestamp.now();
@@ -308,7 +309,7 @@ export async function createProposal360(
     await colUpdate(orgId, 'proposals', proposal.id, { selectedPackageId: recommended.id, subtotalCents: recommended.subtotalCents });
   }
 
-  await colCreate(orgId, 'jobs', {
+  await createOrgJob(orgId, {
     customerId: input.customerId,
     propertyId: input.propertyId,
     proposalId: proposal.id,

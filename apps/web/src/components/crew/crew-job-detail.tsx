@@ -2,13 +2,21 @@
 
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 import { AuthenticatedImage } from '@/components/authenticated-image';
 
 export function CrewJobDetail({ jobId }: { jobId: string }) {
-  const { data, isLoading } = trpc.crew360.jobs.detail.useQuery({ jobId });
+  const { data, isLoading, isError, error, refetch } = trpc.crew360.jobs.detail.useQuery({ jobId });
 
-  if (isLoading || !data) return <LoadingState message="Loading crew job..." />;
+  if (isLoading) return <LoadingState message="Loading crew job..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load this crew job.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

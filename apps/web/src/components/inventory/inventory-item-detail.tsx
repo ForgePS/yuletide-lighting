@@ -5,14 +5,14 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency, formatMultiPrice } from '@/lib/inventory-utils';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 import { InventoryEditDialog } from './inventory-table';
 import { QRGenerator } from './warehouse-map';
 import { computeAvailable } from '@clcrm/types';
 
 export function InventoryItemDetail({ itemId }: { itemId: string }) {
   const { toast } = useToast();
-  const { data, isLoading, refetch } = trpc.inventory360.items.getById.useQuery({ itemId });
+  const { data, isLoading, isError, error, refetch } = trpc.inventory360.items.getById.useQuery({ itemId });
   const markDamaged = trpc.inventory360.items.markDamaged.useMutation({
     onSuccess: () => { toast('Damage recorded', 'success'); refetch(); setDamageQty(''); },
     onError: () => toast('Could not record damage', 'error'),
@@ -21,7 +21,15 @@ export function InventoryItemDetail({ itemId }: { itemId: string }) {
   const [damageQty, setDamageQty] = useState('');
   const [damageStatus, setDamageStatus] = useState<'repair' | 'replace' | 'dispose'>('repair');
 
-  if (isLoading || !data) return <LoadingState message="Loading item..." />;
+  if (isLoading) return <LoadingState message="Loading item..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load this inventory item.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   const { item, allocations } = data;
   const available = computeAvailable(item);

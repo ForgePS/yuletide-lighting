@@ -2,6 +2,8 @@ import { initializeApp, getApps, cert, applicationDefault, type App } from 'fire
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getStorage, type Storage } from 'firebase-admin/storage';
+import { existsSync, readFileSync } from 'fs';
+import { resolve } from 'path';
 
 let app: App;
 let auth: Auth;
@@ -18,7 +20,20 @@ function isGoogleCloudRuntime() {
 }
 
 function readServiceAccountJson() {
-  return process.env.CLCRM_FIREBASE_ADMIN_KEY ?? process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  const inline = process.env.CLCRM_FIREBASE_ADMIN_KEY ?? process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (inline?.trim()) return inline.trim();
+
+  const filePath =
+    process.env.FIREBASE_SERVICE_ACCOUNT_PATH ??
+    process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (!filePath?.trim()) return null;
+
+  const absolute = resolve(filePath.trim());
+  if (!existsSync(absolute)) {
+    console.error(`[firebase-admin] Service account file not found: ${absolute}`);
+    return null;
+  }
+  return readFileSync(absolute, 'utf8');
 }
 
 function initAdmin() {
@@ -40,7 +55,8 @@ function initAdmin() {
     return;
   }
 
-  if (isGoogleCloudRuntime()) {
+  // Cloud runtimes, or local `gcloud auth application-default login`
+  if (isGoogleCloudRuntime() || process.env.FIREBASE_USE_ADC === '1') {
     app = initializeApp({
       credential: applicationDefault(),
       projectId,
@@ -49,6 +65,27 @@ function initAdmin() {
     return;
   }
 
+  // Last resort: try ADC without the flag (works after gcloud ADC login)
+  try {
+    app = initializeApp({
+      credential: applicationDefault(),
+      projectId,
+      storageBucket,
+    });
+    return;
+  } catch {
+    // fall through to unauthenticated init + warning
+  }
+
+  if (!(globalThis as unknown as { __clcrmAdminCredWarned?: boolean }).__clcrmAdminCredWarned) {
+    (globalThis as unknown as { __clcrmAdminCredWarned?: boolean }).__clcrmAdminCredWarned = true;
+    console.error(
+      '[firebase-admin] No Admin credentials found. Local sign-in will fail.\n' +
+        '  Option A: Download a service account JSON and set FIREBASE_SERVICE_ACCOUNT_PATH=C:\\\\path\\\\to\\\\key.json\n' +
+        '  Option B: Paste JSON one-line into FIREBASE_SERVICE_ACCOUNT_KEY in root .env\n' +
+        '  Option C: Run `gcloud auth application-default login` then set FIREBASE_USE_ADC=1',
+    );
+  }
   app = initializeApp({ projectId, storageBucket });
 }
 

@@ -5,6 +5,8 @@ dist
 .env
 .env.local
 .env.*.local
+secrets/
+*-firebase-adminsdk*.json
 *.log
 .DS_Store
 .expo
@@ -23,7 +25,3 @@ apps/web/package.json.workspace-backup
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
-
-# TinaCMS build output
-apps/web/tina/__generated__/
-apps/web/public/admin/

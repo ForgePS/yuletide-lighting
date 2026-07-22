@@ -7,13 +7,21 @@ import { trpc } from '@/lib/trpc';
 import { formatCurrency, riskColor } from '@/lib/invoice-utils';
 import { formatDate } from '@clcrm/ui';
 import { useToast } from '@/lib/toast';
-import { LoadingState, EmptyState } from '@/components/ui/states';
+import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 import { useAnalyticsYear } from '@/lib/analytics-year-context';
 import { recordInYear } from '@/lib/year-filter-utils';
 
 export function CollectionsQueue() {
-  const { data, isLoading } = trpc.invoices360.collections.list.useQuery();
+  const { data, isLoading, isError, error, refetch } = trpc.invoices360.collections.list.useQuery();
   if (isLoading) return <LoadingState />;
+  if (isError) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load collections queue.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
   if (!data?.length) return <EmptyState title="Collection queue empty" description="Invoices 30+ days overdue are automatically queued." />;
 
   return (

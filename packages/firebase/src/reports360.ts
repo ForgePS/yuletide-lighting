@@ -239,15 +239,25 @@ export async function getSeasonalCommandCenter(orgId: string, filters: ReportFil
       createdAt?: Date;
       nextActionDue?: Date;
       nextAction?: string | null;
-    }>(orgId, 'customers'),
-    colList<{ status: string; subtotalCents?: number; viewCount?: number; createdAt?: Date }>(orgId, 'proposals'),
-    colList<{ stage: string; subtotalCents?: number }>(orgId, 'jobs'),
-    listCalendarEvents(orgId, undefined, undefined, { readOnly: true }),
-    colList<{ balanceDueCents?: number }>(orgId, 'invoices'),
-    listLowStockInventory360(orgId),
-    listServiceIssues360(orgId, { pageSize: 25 }),
+    }>(orgId, 'customers', 'createdAt', { limit: 500 }),
+    colList<{ status: string; subtotalCents?: number; viewCount?: number; createdAt?: Date }>(
+      orgId,
+      'proposals',
+      'createdAt',
+      { limit: 500 },
+    ),
+    colList<{ stage: string; subtotalCents?: number }>(orgId, 'jobs', 'createdAt', { limit: 500 }),
+    listCalendarEvents(orgId, weekStartDate, weekEndDate, { readOnly: true }),
+    colList<{ balanceDueCents?: number }>(orgId, 'invoices', 'createdAt', { limit: 300 }),
+    listLowStockInventory360(orgId, { limit: 200 }),
+    listServiceIssues360(orgId, { pageSize: 25, maxScan: 150 }),
     listCrewProfiles(orgId),
-    colList<{ customerId?: string; customerName?: string; status: string; projectedValueCents?: number }>(orgId, 'rebookingRecords'),
+    colList<{ customerId?: string; customerName?: string; status: string; projectedValueCents?: number }>(
+      orgId,
+      'rebookingRecords',
+      'createdAt',
+      { limit: 300 },
+    ),
   ]);
 
   const sales = commandCenterSalesSnapshot(proposals, filters);

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatDate } from '@clcrm/ui';
-import { LoadingState, EmptyState } from '@/components/ui/states';
+import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
@@ -23,9 +23,16 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function ReviewsStatsCards() {
-  const { data, isLoading } = trpc.reviews360.dashboard.useQuery();
-  if (isLoading || !data) return <LoadingState message="Loading review stats..." />;
-
+  const { data, isLoading, isError, error, refetch } = trpc.reviews360.dashboard.useQuery();
+  if (isLoading) return <LoadingState message="Loading review stats..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load review stats.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
   const cards = [
     { label: 'Requests sent', value: String(data.requestsSent) },
     { label: 'Google reviews', value: String(data.reviewsCompleted) },

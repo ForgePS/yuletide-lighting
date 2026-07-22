@@ -671,8 +671,14 @@ export async function markItemDamaged(orgId: string, itemId: string, quantity: n
   }, userId);
 }
 
-export async function listLowStockInventory360(orgId: string) {
-  const items = await listInventoryItems360(orgId);
+export async function listLowStockInventory360(
+  orgId: string,
+  opts?: { limit?: number },
+) {
+  const rows = await colList<Record<string, unknown>>(orgId, 'inventoryItems', 'createdAt', {
+    limit: opts?.limit,
+  });
+  const items = rows.map((i) => normalizeItem({ ...i, organizationId: orgId }));
   return items
     .map((item) => ({
       id: item.id,

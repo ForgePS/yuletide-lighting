@@ -1,23 +1,23 @@
-import { loadPricingContent } from '@/lib/tina-content';
-import { PricingPageClient } from '@/components/marketing/pricing-page-client';
-import { PricingPageView } from '@/components/marketing/pricing-page-view';
-import type { PricingContent } from '@/lib/marketing-content-types';
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { loadCmsPageBundle } from '@/lib/cms-content';
+import { CmsPageView } from '@/components/cms/cms-page-view';
 
-export const revalidate = 60;
+export async function generateMetadata(): Promise<Metadata> {
+  const { page, globals } = await loadCmsPageBundle('pricing');
+  if (!page) return { title: 'Pricing' };
+  return {
+    title: page.seo.title || globals.defaultSeo.title,
+    description: page.seo.description || globals.defaultSeo.description,
+    robots: {
+      index: !page.seo.noIndex,
+      follow: !page.seo.noFollow,
+    },
+  };
+}
 
 export default async function PricingPage() {
-  const payload = await loadPricingContent();
-  const pricing = payload.data.pricing as PricingContent;
-
-  if (!payload.query) {
-    return <PricingPageView pricing={pricing} />;
-  }
-
-  return (
-    <PricingPageClient
-      query={payload.query}
-      variables={payload.variables}
-      data={{ pricing }}
-    />
-  );
+  const { page, globals } = await loadCmsPageBundle('pricing');
+  if (!page) notFound();
+  return <CmsPageView page={page} globals={globals} />;
 }

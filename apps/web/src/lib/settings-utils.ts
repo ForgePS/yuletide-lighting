@@ -4,6 +4,7 @@ export const SETTINGS_NAV = [
   { href: '/app/settings/users', label: 'Users' },
   { href: '/app/settings/roles', label: 'Roles' },
   { href: '/app/settings/branding', label: 'Branding' },
+  { href: '/app/settings/ui', label: 'Navigation & UI' },
   { href: '/app/settings/templates', label: 'Templates' },
   { href: '/app/settings/season', label: 'Season' },
   { href: '/app/settings/notifications', label: 'Notifications' },

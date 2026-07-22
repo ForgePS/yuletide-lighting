@@ -12,6 +12,7 @@ import {
   getCustomerTimeline,
   sendBulkSms360,
   receiveSms360,
+  resolveOrganizationIdByTwilioToPhone,
   ensureMessageTemplates,
   createMessageTemplate,
   ensureAutomations,
@@ -34,6 +35,7 @@ import {
   sendMessage360Schema,
   sendBulkSms360Schema,
   receiveSms360Schema,
+  receiveSmsPublicSchema,
   updateConversationSchema,
   createTemplate360Schema,
   createCampaignSchema,
@@ -144,8 +146,15 @@ export const messages360Router = router({
       // Portal messages require org context from customer lookup — simplified for demo
       throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'Use customer portal auth endpoint' });
     }),
-    receiveSms: publicProcedure.input(receiveSms360Schema.extend({ organizationId: z.string().min(1) })).mutation(({ input }) =>
-      receiveSms360(input.organizationId, input),
-    ),
+    receiveSms: publicProcedure.input(receiveSmsPublicSchema).mutation(async ({ input }) => {
+      const orgId = await resolveOrganizationIdByTwilioToPhone(input.toPhone);
+      if (!orgId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'No organization mapped to this inbound phone number',
+        });
+      }
+      return receiveSms360(orgId, input);
+    }),
   }),
 });

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency } from '@clcrm/ui';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 
 const STATUS_COLORS: Record<string, string> = {
   not_sent: 'bg-muted text-muted-foreground',
@@ -16,9 +16,16 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function RebookingForecastCards() {
-  const { data, isLoading } = trpc.rebooking360.dashboard.useQuery();
-  if (isLoading || !data) return <LoadingState message="Loading rebooking stats..." />;
-
+  const { data, isLoading, isError, error, refetch } = trpc.rebooking360.dashboard.useQuery();
+  if (isLoading) return <LoadingState message="Loading rebooking stats..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load rebooking stats.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
   const cards = [
     { label: 'Target customers', value: String(data.totalTargets) },
     { label: 'Not contacted', value: String(data.notSent) },

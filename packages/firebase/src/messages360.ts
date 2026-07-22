@@ -296,6 +296,40 @@ export async function sendBulkSms360(
   };
 }
 
+function normalizePhoneDigits(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
+export function phonesMatchForTwilio(configured: string, inbound: string): boolean {
+  const configuredDigits = normalizePhoneDigits(configured);
+  const digits = normalizePhoneDigits(inbound);
+  if (configuredDigits.length < 7 || digits.length < 7) return false;
+  return (
+    configuredDigits === digits ||
+    configuredDigits.endsWith(digits) ||
+    digits.endsWith(configuredDigits)
+  );
+}
+
+/**
+ * Resolve tenant from Twilio inbound "To" number. Fail closed — never trust client organizationId.
+ */
+export async function resolveOrganizationIdByTwilioToPhone(toPhone: string): Promise<string | null> {
+  const digits = normalizePhoneDigits(toPhone);
+  if (digits.length < 7) return null;
+
+  const db = getAdminFirestore();
+  const snap = await db.collection('organizations').where('twilioPhoneNumber', '!=', null).get();
+  for (const doc of snap.docs) {
+    const configured = doc.data()?.twilioPhoneNumber;
+    if (typeof configured !== 'string') continue;
+    if (phonesMatchForTwilio(configured, toPhone)) {
+      return doc.id;
+    }
+  }
+  return null;
+}
+
 export async function receiveSms360(
   orgId: string,
   input: { customerId?: string | null; fromPhone?: string | null; body: string; providerMessageId?: string | null },

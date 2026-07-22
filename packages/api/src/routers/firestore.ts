@@ -66,6 +66,9 @@ import { crew360Router, crewMobileRouter } from './crew360';
 import { reviews360Router } from './reviews360';
 import { automation360Router } from './automation360';
 import { creator360Router } from './creator360';
+import { websiteCmsRouter } from './website-cms';
+import { crmUiConfigRouter } from './crm-ui-config';
+import { siteCmsExtendedRouter } from './site-cms-extended';
 import { router, protectedProcedure, officeProcedure, adminProcedure, publicProcedure } from '../trpc';
 
 type InvoiceRow = {
@@ -761,6 +764,9 @@ export const appRouter = router({
   reviews360: reviews360Router,
   automation360: automation360Router,
   creator360: creator360Router,
+  websiteCms: websiteCmsRouter,
+  siteCms: siteCmsExtendedRouter,
+  crmUiConfig: crmUiConfigRouter,
   reports: reportsRouter,
   settings: settingsRouter,
   reviews: reviewsRouter,

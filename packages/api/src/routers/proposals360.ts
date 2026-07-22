@@ -30,7 +30,7 @@ import {
   updateProposalTemplateSchema,
   depositPaymentSchema,
 } from '@clcrm/validators';
-import { router, adminProcedure, officeProcedure, publicProcedure } from '../trpc';
+import { router, adminProcedure, officeProcedure, publicProcedure, permissionProcedure } from '../trpc';
 
 export const proposals360Router = router({
   list: officeProcedure.query(({ ctx }) => listProposals360(ctx.auth.organizationId)),
@@ -52,7 +52,7 @@ export const proposals360Router = router({
     .input(z.object({ proposalId: z.string(), data: updateProposal360Schema }))
     .mutation(({ ctx, input }) => updateProposal360(ctx.auth.organizationId, input.proposalId, input.data, ctx.auth.userId)),
 
-  delete: adminProcedure
+  delete: permissionProcedure('proposals', 'delete')
     .input(z.object({ proposalId: z.string() }))
     .mutation(({ ctx, input }) => deleteProposal360(ctx.auth.organizationId, input.proposalId)),
 

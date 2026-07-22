@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency } from '@clcrm/ui';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 
 export function CommercialAccountDetail({ accountId }: { accountId: string }) {
   const { toast } = useToast();
-  const { data, isLoading, refetch } = trpc.commercial360.accounts.getById.useQuery({ accountId });
+  const { data, isLoading, isError, error, refetch } = trpc.commercial360.accounts.getById.useQuery({ accountId });
   const updateAccount = trpc.commercial360.accounts.update.useMutation({
     onSuccess: () => { toast('Account updated', 'success'); refetch(); },
   });
@@ -39,7 +39,15 @@ export function CommercialAccountDetail({ accountId }: { accountId: string }) {
     name: '', startDate: '', endDate: '', amountCents: '',
   });
 
-  if (isLoading || !data) return <LoadingState message="Loading commercial account..." />;
+  if (isLoading) return <LoadingState message="Loading commercial account..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load this commercial account.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   function toggleLocation(id: string) {
     setSelectedLocationIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency } from '@clcrm/ui';
-import { LoadingState, EmptyState } from '@/components/ui/states';
+import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-100 text-green-800',
@@ -15,9 +15,16 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function CommercialStatsCards() {
-  const { data, isLoading } = trpc.commercial360.dashboard.useQuery();
-  if (isLoading || !data) return <LoadingState message="Loading commercial stats..." />;
-
+  const { data, isLoading, isError, error, refetch } = trpc.commercial360.dashboard.useQuery();
+  if (isLoading) return <LoadingState message="Loading commercial stats..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load commercial stats.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
   const cards = [
     { label: 'Accounts', value: String(data.totalAccounts) },
     { label: 'Locations', value: String(data.totalLocations) },

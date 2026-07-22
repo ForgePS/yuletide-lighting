@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import type { UserRole } from '@clcrm/validators';
+import type { CustomerStage } from '@clcrm/types';
 import {
   getAdminFirestore,
   getAdminAuth,
@@ -87,8 +88,8 @@ export type CustomerRecord = {
   portalInviteSentAt?: Date | null;
   portalLastLoginAt?: Date | null;
   archivedAt?: Date | null;
-  pipelineStage?: 'new_lead' | 'contacted' | 'needs_estimate' | 'mockup_needed' | 'proposal_sent' | 'proposal_viewed' | 'approved' | 'deposit_paid' | 'scheduled' | 'installed' | 'balance_due' | 'paid' | 'removal_scheduled' | 'removed' | 'stored' | 'rebook_next_season' | 'lost' | null;
-  previousPipelineStage?: 'new_lead' | 'contacted' | 'needs_estimate' | 'mockup_needed' | 'proposal_sent' | 'proposal_viewed' | 'approved' | 'deposit_paid' | 'scheduled' | 'installed' | 'balance_due' | 'paid' | 'removal_scheduled' | 'removed' | 'stored' | 'rebook_next_season' | 'lost' | null;
+  pipelineStage?: CustomerStage | null;
+  previousPipelineStage?: CustomerStage | null;
   stageUpdatedAt?: Date | null;
   pipelineAssignedTo?: string | null;
   pipelineEstimatedValueCents?: number | null;

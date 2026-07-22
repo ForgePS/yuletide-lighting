@@ -18,14 +18,21 @@ export type CustomerStatus =
   | 'at_risk'
   | 'archived';
 
-/** Lifecycle pipeline stage (Sprint 1) */
+/** Lifecycle pipeline stage (Sprint 1 + Phase 1 lead stages) */
 export type CustomerStage =
   | 'new_lead'
+  | 'attempting_contact'
   | 'contacted'
+  | 'qualified'
+  | 'consultation_scheduled'
+  | 'consultation_completed'
+  | 'design_in_progress'
   | 'needs_estimate'
   | 'mockup_needed'
+  | 'proposal_draft'
   | 'proposal_sent'
   | 'proposal_viewed'
+  | 'follow_up_required'
   | 'approved'
   | 'deposit_paid'
   | 'scheduled'
@@ -36,6 +43,7 @@ export type CustomerStage =
   | 'removed'
   | 'stored'
   | 'rebook_next_season'
+  | 'deferred'
   | 'lost';
 
 export type PreferredContactMethod = 'phone' | 'email' | 'sms';
@@ -63,6 +71,7 @@ export type PropertyPhotoType =
 export type ActivityType =
   | 'lead_created'
   | 'consultation_scheduled'
+  | 'consultation_completed'
   | 'estimate_sent'
   | 'estimate_approved'
   | 'design_created'
@@ -78,7 +87,9 @@ export type ActivityType =
   | 'email_sent'
   | 'sms_sent'
   | 'phone_call_logged'
-  | 'note_added';
+  | 'note_added'
+  | 'proposal_accepted'
+  | 'job_created';
 
 export type DesignStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'archived';
 

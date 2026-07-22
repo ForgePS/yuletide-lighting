@@ -32,3 +32,5 @@ export * from './crm-ui-config';
 export * from './site-cms-extended';
 export * from './csv-import';
 export * from './record-paths';
+export * from './proposal-acceptance';
+export * from './consultations360';

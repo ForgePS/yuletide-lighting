@@ -299,6 +299,9 @@ service cloud.firestore {
       match /serviceIssues/{docId} {
         allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
       }
+      match /consultations/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
       match /contacts/{docId} {
         allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
       }

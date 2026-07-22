@@ -864,11 +864,18 @@ export async function listCustomers360(
 
 export const PIPELINE_STAGE_ORDER: CustomerStage[] = [
   'new_lead',
+  'attempting_contact',
   'contacted',
+  'qualified',
+  'consultation_scheduled',
+  'consultation_completed',
+  'design_in_progress',
   'needs_estimate',
   'mockup_needed',
+  'proposal_draft',
   'proposal_sent',
   'proposal_viewed',
+  'follow_up_required',
   'approved',
   'deposit_paid',
   'scheduled',
@@ -879,6 +886,7 @@ export const PIPELINE_STAGE_ORDER: CustomerStage[] = [
   'removed',
   'stored',
   'rebook_next_season',
+  'deferred',
   'lost',
 ];
 

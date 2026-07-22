@@ -37,6 +37,10 @@ import {
   updateCustomerNextAction,
   logCustomerActivity,
   seedCustomer360Demo,
+  listConsultations360,
+  createConsultation360,
+  completeConsultation360,
+  getCustomerTimeline,
 } from '@yuletide/firebase';
 import {
   customerListFiltersSchema,
@@ -544,6 +548,34 @@ export const customer360Router = router({
     list: officeProcedure.input(z.object({ customerId: z.string() })).query(({ ctx, input }) =>
       listActivities(ctx.auth.organizationId, input.customerId),
     ),
+    /** Unified timeline: CRM activities + messaging events */
+    unified: officeProcedure.input(z.object({ customerId: z.string() })).query(async ({ ctx, input }) => {
+      const [activities, messageEvents] = await Promise.all([
+        listActivities(ctx.auth.organizationId, input.customerId),
+        getCustomerTimeline(ctx.auth.organizationId, input.customerId).catch(() => []),
+      ]);
+      const fromActivities = activities.map((a) => ({
+        id: a.id,
+        source: 'activity' as const,
+        occurredAt: a.occurredAt,
+        title: a.activityType,
+        description: a.description,
+        userName: a.userName ?? null,
+        relatedRecordLabel: a.relatedRecordLabel ?? null,
+      }));
+      const fromMessages = messageEvents.map((e) => ({
+        id: e.id,
+        source: 'message' as const,
+        occurredAt: e.occurredAt,
+        title: e.title ?? e.type ?? 'message',
+        description: e.description ?? '',
+        userName: null as string | null,
+        relatedRecordLabel: null as string | null,
+      }));
+      return [...fromActivities, ...fromMessages].sort(
+        (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
+      );
+    }),
     create: officeProcedure
       .input(z.object({ customerId: z.string(), data: createActivitySchema }))
       .mutation(async ({ ctx, input }) => {
@@ -562,6 +594,52 @@ export const customer360Router = router({
           },
           ctx.auth.userId,
         );
+      }),
+  }),
+
+  consultations: router({
+    list: officeProcedure
+      .input(z.object({ customerId: z.string().optional() }).optional())
+      .query(({ ctx, input }) => listConsultations360(ctx.auth.organizationId, input?.customerId)),
+    create: officeProcedure
+      .input(
+        z.object({
+          customerId: z.string().min(1),
+          propertyId: z.string().nullable().optional(),
+          consultationType: z.enum(['phone', 'virtual', 'on_site', 'returning_customer', 'commercial_site_survey']),
+          scheduledAt: z.coerce.date().nullable().optional(),
+          assignedUserName: z.string().nullable().optional(),
+          customerGoals: z.string().nullable().optional(),
+          budgetRange: z.string().nullable().optional(),
+          notes: z.string().nullable().optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) =>
+        createConsultation360(
+          ctx.auth.organizationId,
+          {
+            ...input,
+            assignedUserId: ctx.auth.userId,
+            assignedUserName: input.assignedUserName ?? ctx.auth.email,
+          },
+          ctx.auth.userId,
+        ),
+      ),
+    complete: officeProcedure
+      .input(
+        z.object({
+          consultationId: z.string().min(1),
+          notes: z.string().nullable().optional(),
+          measurementsNotes: z.string().nullable().optional(),
+          followUpAction: z.string().nullable().optional(),
+          customerGoals: z.string().nullable().optional(),
+          budgetRange: z.string().nullable().optional(),
+          safetyConcerns: z.string().nullable().optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) => {
+        const { consultationId, ...fields } = input;
+        return completeConsultation360(ctx.auth.organizationId, consultationId, fields, ctx.auth.userId);
       }),
   }),
 

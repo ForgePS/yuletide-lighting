@@ -396,6 +396,15 @@ export async function updateProposalStatus(orgId: string, proposalId: string, st
     // Best-effort automations
   }
 
+  if (normalized === 'approved') {
+    try {
+      const { runProposalAcceptedWorkflow } = await import('./proposal-acceptance');
+      await runProposalAcceptedWorkflow(orgId, proposalId, { userId, userName: 'Office' });
+    } catch (err) {
+      console.error('[updateProposalStatus] acceptance workflow failed', proposalId, err);
+    }
+  }
+
   return getProposal360(orgId, proposalId);
 }
 
@@ -514,6 +523,25 @@ export async function recordPublicApproval(
     await syncCustomerPipelineFromProposal(orgId, proposal.customerId, 'approved', {
       estimatedValueCents: subtotal,
     });
+    try {
+      const { runProposalAcceptedWorkflow } = await import('./proposal-acceptance');
+      await runProposalAcceptedWorkflow(orgId, proposal.id, {
+        userId: null,
+        userName: input.customerName,
+      });
+    } catch (err) {
+      console.error('[recordPublicApproval] acceptance workflow failed', proposal.id, err);
+    }
+    try {
+      const { fireAutomationTrigger } = await import('./automation360');
+      await fireAutomationTrigger(orgId, 'proposal_accepted', {
+        customerId: proposal.customerId,
+        customerName: input.customerName,
+        proposalId: proposal.id,
+      });
+    } catch {
+      /* best-effort */
+    }
   } else if (input.action === 'rejected') {
     await syncCustomerPipelineFromProposal(orgId, proposal.customerId, 'rejected');
   }

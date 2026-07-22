@@ -579,8 +579,8 @@ export async function recordPublicApproval(
     }
     patch.depositAmountCents = Math.round((patch.subtotalCents as number ?? proposal.subtotalCents) * (proposal.depositPercent / 100));
     patch.contractGeneratedAt = new Date();
-    patch.contractUrl = `/p/${token}?signed=1`;
-    patch.signedDocumentUrl = `/p/${token}?signed=1`;
+    patch.contractUrl = `/p/${token}/receipt?signed=1`;
+    patch.signedDocumentUrl = `/p/${token}/receipt?signed=1`;
   }
   await colUpdate(orgId, 'proposals', proposal.id, patch);
   await subCreate(orgId, proposal.id, 'approvals', {

@@ -100,7 +100,29 @@ export function RoutePlanner() {
                   <span className="font-medium text-muted-foreground">{stop.order}.</span>
                   <div>
                     <p>{stop.customerName ?? 'Stop'}</p>
-                    <p className="text-muted-foreground">{stop.address ?? '—'} · {stop.travelMinutes} min travel</p>
+                    <p className="text-muted-foreground">
+                      {stop.address ?? '—'} · {stop.travelMinutes} min travel
+                    </p>
+                    {stop.address ? (
+                      <p className="mt-1 flex flex-wrap gap-3 text-xs">
+                        <a
+                          className="text-primary hover:underline"
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(stop.address)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Google Maps
+                        </a>
+                        <a
+                          className="text-primary hover:underline"
+                          href={`http://maps.apple.com/?daddr=${encodeURIComponent(stop.address)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Apple Maps
+                        </a>
+                      </p>
+                    ) : null}
                   </div>
                 </li>
               ))}

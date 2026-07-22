@@ -1,6 +1,11 @@
 export const SETTINGS_NAV = [
   { href: '/app/settings', label: 'Overview' },
   { href: '/app/settings/company', label: 'Company' },
+  { href: '/app/settings/locations', label: 'Locations & service area' },
+  { href: '/app/settings/warehouses', label: 'Warehouses' },
+  { href: '/app/settings/vendors', label: 'Vendors' },
+  { href: '/app/settings/numbering', label: 'Document numbering' },
+  { href: '/app/settings/audit', label: 'Audit log' },
   { href: '/app/settings/users', label: 'Users' },
   { href: '/app/settings/roles', label: 'Roles' },
   { href: '/app/settings/branding', label: 'Branding' },

@@ -18,6 +18,13 @@ export {
   SeasonSettingsPage,
 } from './settings-sections';
 export {
+  LocationsPage,
+  WarehousesPage,
+  VendorsPage,
+  NumberingPage,
+  AuditPage,
+} from './settings-ops-pages';
+export {
   UserManagerPage,
   RolePermissionMatrixPage,
   IntegrationCenterPage,

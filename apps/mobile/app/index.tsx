@@ -14,6 +14,7 @@ import * as Location from 'expo-location';
 import { ScreenContainer } from '@/components/screen-container';
 import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import { trpcQuery, trpcMutation } from '../lib/api';
+import { flushOfflineQueue, getLastSyncAt, getOfflineQueue } from '../lib/offline-queue';
 
 type ScheduleItem = {
   job: {
@@ -38,11 +39,20 @@ export default function CrewHomeScreen() {
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [lastSync, setLastSync] = useState<string | null>(null);
   const { isTablet, scheduleColumns } = useResponsiveLayout();
 
   useEffect(() => {
     loadSchedule();
+    refreshSyncStatus();
   }, []);
+
+  async function refreshSyncStatus() {
+    const [queue, syncAt] = await Promise.all([getOfflineQueue(), getLastSyncAt()]);
+    setPendingCount(queue.length);
+    setLastSync(syncAt);
+  }
 
   async function loadSchedule() {
     try {
@@ -52,7 +62,19 @@ export default function CrewHomeScreen() {
       Alert.alert('Error', 'Could not load schedule. Check your connection.');
     } finally {
       setLoading(false);
+      void refreshSyncStatus();
     }
+  }
+
+  async function syncNow() {
+    const result = await flushOfflineQueue();
+    await refreshSyncStatus();
+    Alert.alert(
+      'Sync',
+      result.remaining
+        ? `Sent ${result.sent}. ${result.remaining} still pending.`
+        : `All caught up (${result.sent} sent).`,
+    );
   }
 
   async function clockIn(jobId: string) {
@@ -99,6 +121,15 @@ export default function CrewHomeScreen() {
   return (
     <ScreenContainer>
       <Text style={[styles.heading, isTablet && styles.headingTablet]}>Today&apos;s schedule</Text>
+      <View style={styles.syncBar}>
+        <Text style={styles.syncText}>
+          {pendingCount > 0 ? `${pendingCount} queued offline` : 'Queue clear'}
+          {lastSync ? ` · last sync ${new Date(lastSync).toLocaleTimeString()}` : ''}
+        </Text>
+        <TouchableOpacity style={styles.btnOutline} onPress={syncNow}>
+          <Text style={styles.btnOutlineText}>Sync now</Text>
+        </TouchableOpacity>
+      </View>
       <FlatList
         data={schedule}
         key={scheduleColumns}
@@ -159,6 +190,19 @@ const styles = StyleSheet.create({
   listContent: { paddingBottom: 24 },
   heading: { fontSize: 22, fontWeight: '700', marginBottom: 16, color: '#0F172A' },
   headingTablet: { fontSize: 28, marginBottom: 24 },
+  syncBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  syncText: { flex: 1, fontSize: 12, color: '#64748B' },
   empty: { textAlign: 'center', color: '#64748B', marginTop: 40, fontSize: 16 },
   columnWrapper: { gap: 16 },
   card: {

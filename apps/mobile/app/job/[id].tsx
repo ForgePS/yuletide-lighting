@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { JobPhotoCapture } from '@/components/job-photo-capture';
 import { ScreenContainer } from '@/components/screen-container';
 import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
-import { trpcQuery, trpcMutation } from '@/lib/api';
+import { trpcQuery } from '@/lib/api';
+import { mutateWithOfflineFallback } from '@/lib/offline-queue';
 
 type JobDetail = {
   job: { id: string; title: string; stage: string };
@@ -45,22 +46,25 @@ export default function JobDetailScreen() {
 
   async function reportIssue() {
     if (!id || !issueTitle.trim()) return;
-    await trpcMutation('crew.reportIssue', {
+    const result = await mutateWithOfflineFallback('crew.reportIssue', {
       jobId: id,
       title: issueTitle.trim(),
       description: issueNotes.trim() || issueTitle.trim(),
       priority: 'normal',
       category: 'other',
     });
-    Alert.alert('Reported', 'Service issue submitted.');
+    Alert.alert(result.queued ? 'Saved offline' : 'Reported', result.queued ? 'Will sync when online.' : 'Service issue submitted.');
     setIssueTitle('');
     setIssueNotes('');
   }
 
   async function markCustomerNotHome() {
     if (!id) return;
-    await trpcMutation('crew.customerNotHome', { jobId: id, notes: 'Customer not home at scheduled time' });
-    Alert.alert('Logged', 'Customer not home note saved.');
+    const result = await mutateWithOfflineFallback('crew.customerNotHome', {
+      jobId: id,
+      notes: 'Customer not home at scheduled time',
+    });
+    Alert.alert(result.queued ? 'Saved offline' : 'Logged', result.queued ? 'Will sync when online.' : 'Customer not home note saved.');
   }
 
   async function submitSignature() {
@@ -68,15 +72,15 @@ export default function JobDetailScreen() {
       Alert.alert('Required', 'Enter customer name and signature.');
       return;
     }
-    await trpcMutation('crew.submitSignature', {
+    const result = await mutateWithOfflineFallback('crew.submitSignature', {
       jobId: id,
       customerName: customerName.trim(),
       signatureData: signature.trim(),
     });
-    Alert.alert('Saved', 'Customer signature recorded.');
+    Alert.alert(result.queued ? 'Saved offline' : 'Saved', result.queued ? 'Signature queued for sync.' : 'Customer signature recorded.');
     setCustomerName('');
     setSignature('');
-    reload();
+    if (!result.queued) reload();
   }
 
   const mockupUrls =

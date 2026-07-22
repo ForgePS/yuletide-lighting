@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { trpc } from '@/lib/trpc';
 import { LoadingState, ErrorState } from '@/components/ui/states';
+import { SignaturePad } from '@/components/ui/signature-pad';
 import { isAgreementSignedStatus } from '@clcrm/types';
 
 function formatCurrency(cents: number) {
@@ -103,14 +104,9 @@ export default function PublicAgreementSignPage() {
               onChange={(e) => setSignedByName(e.target.value)}
               className="input"
             />
-            <input
-              placeholder="Type your name as signature"
-              value={signature}
-              onChange={(e) => setSignature(e.target.value)}
-              className="input"
-            />
+            <SignaturePad value={signature} onChange={setSignature} />
             <p className="text-xs text-muted-foreground">
-              By signing, you agree to the terms above. Your name, IP, and timestamp will be recorded.
+              By signing, you agree to the terms above. Your name, drawn signature, IP, and timestamp will be recorded.
             </p>
             <button type="submit" className="btn-primary w-full" disabled={sign.isPending}>
               {sign.isPending ? 'Signing…' : 'Sign agreement'}

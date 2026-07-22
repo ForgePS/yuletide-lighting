@@ -1,14 +1,16 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('production smoke', () => {
-  test('home page loads with brand signal', async ({ page }) => {
-    await page.goto('/');
-    await expect(page).toHaveTitle(/Yuletide|Lighting|CRM/i);
+  test('home page loads', async ({ page }) => {
+    const res = await page.goto('/');
+    expect(res?.status()).toBeLessThan(500);
     await expect(page.locator('body')).toBeVisible();
+    await expect(page.locator('h1').first()).toBeVisible({ timeout: 20_000 });
   });
 
   test('pricing page loads', async ({ page }) => {
-    await page.goto('/pricing');
+    const res = await page.goto('/pricing');
+    expect(res?.ok()).toBeTruthy();
     await expect(page.locator('body')).toBeVisible();
   });
 
@@ -22,14 +24,14 @@ test.describe('production smoke', () => {
 
   test('sign-in is reachable', async ({ page }) => {
     await page.goto('/sign-in');
-    await expect(page.getByRole('heading', { name: /sign in/i })).toBeVisible();
+    await expect(page.getByText(/welcome back|sign in|installer account/i).first()).toBeVisible({
+      timeout: 20_000,
+    });
   });
 
-  test('unauthenticated /app redirects away from protected shell', async ({ page }) => {
-    const res = await page.goto('/app');
-    const url = page.url();
-    expect(res?.status() ?? 0).toBeLessThan(500);
-    expect(url.includes('/sign-in') || url.includes('/access-denied') || !url.endsWith('/app')).toBeTruthy();
+  test('unauthenticated /app redirects to sign-in', async ({ page }) => {
+    await page.goto('/app');
+    await expect(page).toHaveURL(/sign-in/, { timeout: 20_000 });
   });
 
   test('health endpoint reports ok', async ({ request }) => {

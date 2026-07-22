@@ -46,6 +46,13 @@ async function loadCmsPageBundleUncached(slug: string): Promise<{
         globals: bundle.globals,
       };
     }
+    // Published CMS empty — use built-in marketing defaults for home/pricing
+    if (slug === 'pricing') {
+      return { page: applySeasonToCmsPage(buildDefaultPricingPage(), season), globals: bundle.globals };
+    }
+    if (slug === 'home') {
+      return { page: applySeasonToCmsPage(buildDefaultHomePage(), season), globals: bundle.globals };
+    }
     return { page: null, globals: bundle.globals };
   } catch (err) {
     console.warn('[cms] Falling back to default content for', slug, err);

@@ -15,6 +15,9 @@ deploy-log.txt
 **/.expo-export-test2*/
 coverage
 drizzle/meta
+playwright-report/
+test-results/
+blob-report/
 
 # Firebase Hosting (Next.js web app)
 .firebase/

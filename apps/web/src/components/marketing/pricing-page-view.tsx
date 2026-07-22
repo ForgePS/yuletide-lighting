@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Check } from 'lucide-react';
 import { MarketingHeader } from '@/components/marketing-header';
+import { MarketingLegalFooter } from '@/components/marketing/legal-footer';
 import type { PricingContent } from '@/lib/marketing-content-types';
 
 export function PricingPageView({ pricing }: { pricing: PricingContent }) {
@@ -62,6 +63,7 @@ export function PricingPageView({ pricing }: { pricing: PricingContent }) {
           })}
         </div>
       </main>
+      <MarketingLegalFooter />
     </div>
   );
 }

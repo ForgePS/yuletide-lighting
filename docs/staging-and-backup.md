@@ -2,10 +2,18 @@
 
 ## Environments
 
-| Env | Firebase project | Hosting URL |
-|-----|------------------|-------------|
-| Production | `yuletide-lighting` | https://yuletide-lighting.web.app |
-| Staging | create `yuletide-lighting-staging` (recommended) | TBD |
+| Env | Firebase project | Hosting URL | Switch |
+|-----|------------------|-------------|--------|
+| Production | `yuletide-lighting` | https://yuletide-lighting.web.app | `firebase use production` |
+| Staging | `yuletide-lighting-staging` | create in Firebase console, then add hosting site | `firebase use staging` |
+
+### Create staging (one-time)
+
+1. Create Firebase project `yuletide-lighting-staging`
+2. Enable Auth, Firestore, Storage, Hosting (mirror production)
+3. Copy rules from this repo; use a separate service account JSON
+4. Set staging secrets in Hosting/Functions env
+5. Deploy: `npm run deploy:staging` (after `firebase use staging` works)
 
 Keep separate `.env.staging` / `.env.production`. Never point staging Admin SDK at production Firestore.
 

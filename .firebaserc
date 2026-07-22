@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "yuletide-lighting"
+    "default": "yuletide-lighting",
+    "production": "yuletide-lighting",
+    "staging": "yuletide-lighting-staging"
   }
 }

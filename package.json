@@ -10,19 +10,25 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "test": "vitest run packages/firebase/src",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "deploy:firebase": "node scripts/deploy-firebase.mjs",
     "deploy:hosting": "node scripts/deploy-firebase.mjs --hosting-only",
+    "deploy:staging": "firebase use staging && node scripts/deploy-firebase.mjs",
     "deploy:rules": "firebase deploy --only firestore:rules,storage",
     "shift-payments-2025": "node scripts/shift-2026-payments-to-2025.mjs",
     "shift-payments-2025:apply": "node scripts/shift-2026-payments-to-2025.mjs --apply"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.1",
     "firebase-tools": "^13.29.1",
     "next": "^15.1.3",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
   },
   "packageManager": "npm@10.9.2",
   "engines": {

@@ -49,7 +49,9 @@ Go-live gates for Yuletide CRM against the Production Readiness blueprint.
 - [ ] Primary modules show loading / empty / error / retry
 - [ ] Navigation sections persist collapse state
 - [ ] Mobile crew can open today’s jobs
-- [ ] Privacy Policy, Terms, subscription terms published
+- [ ] Privacy Policy, Terms, subscription terms, accessibility pages published
+- [ ] `/api/health` returns `{ status: "ok" }`
+- [ ] `npm run test:e2e` smoke passes against production or staging
 
 ## Rollback
 

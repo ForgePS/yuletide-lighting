@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useAuth } from '@/lib/firebase-auth';
 import { MarketingHeader } from '@/components/marketing-header';
+import { MarketingLegalFooter } from '@/components/marketing/legal-footer';
 import { marketingIcon } from '@/lib/marketing-icons';
 import type { HomeContent } from '@/lib/marketing-content-types';
 import { ArrowRight, Sparkles } from 'lucide-react';
@@ -121,9 +122,7 @@ export function HomePageView({ home }: { home: HomeContent }) {
         </section>
       </main>
 
-      <footer className="border-t border-border py-8 text-center text-sm text-muted-foreground">
-        © {new Date().getFullYear()} Yuletide Lighting. {home.footerText}
-      </footer>
+      <MarketingLegalFooter note={home.footerText ?? undefined} />
     </div>
   );
 }

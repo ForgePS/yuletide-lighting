@@ -20,8 +20,8 @@ describe('invoices360 calculations', () => {
 
   it('assigns aging bucket', () => {
     const due = new Date('2026-01-01');
-    const now = new Date('2026-02-15');
-    expect(computeAgingBucket(due, 5000, now)).toBe('1_30');
+    expect(computeAgingBucket(due, 5000, new Date('2026-01-15'))).toBe('1_30');
+    expect(computeAgingBucket(due, 5000, new Date('2026-02-15'))).toBe('31_60');
   });
 
   it('normalizes legacy status', () => {

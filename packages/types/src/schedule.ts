@@ -125,6 +125,8 @@ export type RoutePlan = ScheduleAuditFields & {
     eventId: string;
     customerName?: string | null;
     address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     arrivalAt?: Date | null;
     travelMinutes: number;
     order: number;
@@ -345,23 +347,4 @@ export function aiSchedulingQuery(question: string, events: CalendarEvent[], cre
   }
 
   return { answer: `Found ${filtered.length} relevant schedule item(s) for "${question}".`, events: filtered.slice(0, 20), recommendations };
-}
-
-export function mockWeatherForecast(days = 5): WeatherForecast[] {
-  const forecasts: WeatherForecast[] = [];
-  for (let i = 0; i < days; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() + i);
-    const rain = Math.round(Math.random() * 80);
-    const wind = Math.round(5 + Math.random() * 25);
-    forecasts.push({
-      date,
-      condition: rain > 50 ? 'Rain likely' : wind > 20 ? 'Windy' : 'Clear',
-      rainProbability: rain,
-      windSpeedMph: wind,
-      temperatureF: Math.round(35 + Math.random() * 30),
-      riskLevel: rain > 60 || wind > 25 ? 'high' : rain > 30 ? 'medium' : 'low',
-    });
-  }
-  return forecasts;
 }

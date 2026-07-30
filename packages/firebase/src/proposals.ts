@@ -17,7 +17,7 @@ import type {
 } from '@clcrm/types';
 import { normalizeProposalStatus, PROPOSAL_PIPELINE_STATUSES } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
-import { mapTimestampsFromData } from './firestore-utils';
+import { mapTimestampsFromData, stripUndefinedDeep } from './firestore-utils';
 import { colCreate, colDelete, colGet, colList, colUpdate, getByPublicToken, getOrganization, updateCustomer } from './firestore';
 import { updateCustomerPipelineStage } from './customer360';
 import { getBrandingForCustomerFacing, getProposalSettings, getSeasonSettings } from './settings360';
@@ -234,6 +234,8 @@ export async function createProposal360(
     removalDate?: Date | null;
     termsAndConditions?: string | null;
     packages?: Array<Omit<ProposalPackage, 'id' | 'proposalId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy' | 'subtotalCents' | 'materialCostCents' | 'laborCostCents' | 'grossProfitCents' | 'grossMarginPercent'>>;
+    /** Manual total. Used when no line items; line items always win. */
+    subtotalCents?: number;
   },
   userId?: string | null,
 ) {
@@ -251,9 +253,17 @@ export async function createProposal360(
   const season = input.season ?? String(seasonSettings.seasonYear);
 
   const pricing = input.pricing ?? DEFAULT_PRICING;
-  const lineItems = (input.lineItems ?? []).map((li) => ({ ...li, id: li.id ?? nanoid() }));
+  const lineItems = (input.lineItems ?? []).map((li) =>
+    stripUndefinedDeep({ ...li, id: li.id ?? nanoid() }),
+  );
   const calc = calculatePricingFromComponents(pricing);
-  const subtotalCents = lineItems.length > 0 ? lineItems.reduce((s, i) => s + i.quantity * i.unitPriceCents, 0) : calc.salesPriceCents;
+  const hasManualTotal = typeof input.subtotalCents === 'number';
+  const subtotalCents =
+    lineItems.length > 0
+      ? lineItems.reduce((s, i) => s + i.quantity * i.unitPriceCents, 0)
+      : hasManualTotal
+        ? input.subtotalCents!
+        : calc.salesPriceCents;
   const upsells = calculateUpsells({ pricing, subtotalCents }, input.installType);
 
   const proposal = await colCreate(orgId, 'proposals', {
@@ -306,7 +316,12 @@ export async function createProposal360(
 
   const recommended = createdPackages.find((p) => p.isRecommended) ?? createdPackages[1];
   if (recommended) {
-    await colUpdate(orgId, 'proposals', proposal.id, { selectedPackageId: recommended.id, subtotalCents: recommended.subtotalCents });
+    const packagePatch: Record<string, unknown> = { selectedPackageId: recommended.id };
+    // Keep line-item or manually typed totals; only sync package price when neither was set.
+    if (lineItems.length === 0 && !hasManualTotal) {
+      packagePatch.subtotalCents = recommended.subtotalCents;
+    }
+    await colUpdate(orgId, 'proposals', proposal.id, packagePatch);
   }
 
   await createOrgJob(orgId, {
@@ -339,18 +354,25 @@ export async function updateProposal360(orgId: string, proposalId: string, data:
     );
   }
   const patch: Record<string, unknown> = { ...data, updatedBy: userId ?? null };
-  if (data.pricing) {
+  const lineItems = Array.isArray(data.lineItems)
+    ? (data.lineItems as Array<{ quantity: number; unitPriceCents: number }>)
+    : undefined;
+  if (lineItems && lineItems.length > 0) {
+    patch.subtotalCents = lineItems.reduce((s, i) => s + i.quantity * i.unitPriceCents, 0);
+  } else if (typeof data.subtotalCents === 'number') {
+    patch.subtotalCents = data.subtotalCents;
+  } else if (data.pricing && lineItems === undefined) {
+    // Pricing-only update with no explicit total — recalculate from components.
     const calc = calculatePricingFromComponents(data.pricing as PricingComponents);
-    if (!data.lineItems) patch.subtotalCents = calc.salesPriceCents;
+    patch.subtotalCents = calc.salesPriceCents;
+  } else if (data.pricing && lineItems && lineItems.length === 0 && typeof data.subtotalCents !== 'number') {
+    const calc = calculatePricingFromComponents(data.pricing as PricingComponents);
+    patch.subtotalCents = calc.salesPriceCents;
   }
-  if (data.lineItems && Array.isArray(data.lineItems)) {
-    patch.subtotalCents = (data.lineItems as Array<{ quantity: number; unitPriceCents: number }>).reduce(
-      (s, i) => s + i.quantity * i.unitPriceCents,
-      0,
-    );
-    if (data.depositPercent != null) {
-      patch.depositAmountCents = Math.round((patch.subtotalCents as number) * (Number(data.depositPercent) / 100));
-    }
+  if (typeof patch.subtotalCents === 'number' && data.depositPercent != null) {
+    patch.depositAmountCents = Math.round((patch.subtotalCents as number) * (Number(data.depositPercent) / 100));
+  } else if (typeof patch.subtotalCents === 'number' && existing.depositPercent != null && data.depositPercent === undefined) {
+    patch.depositAmountCents = Math.round((patch.subtotalCents as number) * (existing.depositPercent / 100));
   }
   await colUpdate(orgId, 'proposals', proposalId, patch);
   return getProposal360(orgId, proposalId);
@@ -452,6 +474,20 @@ export async function updateProposalStatus(orgId: string, proposalId: string, st
     if (normalized === 'approved') await fireAutomationTrigger(orgId, 'proposal_accepted', ctx, userId);
   } catch {
     // Best-effort automations
+  }
+
+  if (normalized === 'sent') {
+    try {
+      const { notifyPortalCustomer } = await import('./portal360');
+      await notifyPortalCustomer(orgId, proposal.customerId, {
+        category: 'proposals',
+        title: 'New proposal ready',
+        body: 'A proposal is ready for you to review.',
+        actionUrl: '/proposals',
+      });
+    } catch {
+      // Best-effort portal notify
+    }
   }
 
   if (normalized === 'approved') {

@@ -28,17 +28,29 @@ export default function PortalRebookPage() {
 
   if (isLoading) return <LoadingState message="Loading..." />;
 
+  if (!info) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-stone-100 p-4">
+        <div className="max-w-md rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-sm">
+          <h1 className="text-lg font-semibold">Rebooking unavailable</h1>
+          <p className="mt-2 text-sm text-stone-600">This feature is not enabled for your portal, or your access link is invalid.</p>
+          <Link href={`/portal/${token}`} className="mt-4 inline-block text-sm text-primary hover:underline">← Back to portal</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="mesh-bg min-h-screen py-8">
-      <div className="card mx-auto max-w-lg p-6">
+    <div className="min-h-screen bg-gradient-to-b from-stone-100 via-stone-50 to-red-50/40 py-8">
+      <div className="mx-auto max-w-lg rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <Link href={`/portal/${token}`} className="text-sm text-primary hover:underline">← Back to portal</Link>
-        <h1 className="mt-4 text-xl font-bold">Rebook next season</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {info?.hasPreviousSeason
+        <h1 className="mt-4 text-xl font-bold text-stone-900">Rebook next season</h1>
+        <p className="mt-1 text-sm text-stone-600">
+          {info.hasPreviousSeason
             ? `Rebook "${info.previousProposalTitle}" with one click — same great display for next year.`
             : 'Let us know you\'d like lighting again this season.'}
         </p>
-        {info?.projectedValueCents ? (
+        {info.projectedValueCents ? (
           <p className="mt-2 text-sm">Last season: {formatCurrency(info.projectedValueCents)}</p>
         ) : null}
 
@@ -62,7 +74,7 @@ export default function PortalRebookPage() {
         </div>
 
         <form
-          className="mt-6 space-y-4 border-t pt-6"
+          className="mt-6 space-y-4 border-t border-stone-100 pt-6"
           onSubmit={(e) => {
             e.preventDefault();
             submit.mutate({ token, preferredMonth, notes: notes || undefined });

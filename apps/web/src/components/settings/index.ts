@@ -6,6 +6,7 @@ export {
   NotificationSettingsPage,
   AutomationSettingsPage,
   ProposalSettingsPage,
+  AgreementSettingsPage,
   InvoiceSettingsPage,
   JobSettingsPage,
   InventorySettingsPage,
@@ -31,3 +32,4 @@ export {
 } from './settings-managers';
 export { DataImportPage } from './data-import';
 export { SubscriptionSettingsPage } from './subscription-settings-page';
+export { PortalQrManagementPage } from './portal-qr-management-page';

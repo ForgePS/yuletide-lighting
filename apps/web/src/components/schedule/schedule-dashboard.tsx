@@ -50,20 +50,32 @@ export function ScheduleDashboardPage() {
           </ul>
         </div>
       )}
-      {weather && (
+      {weather ? (
         <div className="card p-6">
           <h2 className="font-semibold">Weather outlook</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-5">
-            {weather.map((w) => (
-              <div key={w.date.toISOString()} className={`rounded-lg border p-3 text-sm ${w.riskLevel === 'high' ? 'border-red-300 bg-red-50' : ''}`}>
-                <p className="font-medium">{w.date.toLocaleDateString(undefined, { weekday: 'short' })}</p>
-                <p className="text-muted-foreground">{w.condition}</p>
-                <p className="text-xs">Rain {w.rainProbability}% · Wind {w.windSpeedMph}mph</p>
-              </div>
-            ))}
-          </div>
+          {weather && typeof weather === 'object' && 'available' in weather && (weather as { available: boolean }).available === false ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Weather data is unavailable
+              {'reason' in weather && (weather as { reason?: string }).reason
+                ? ` — ${(weather as { reason: string }).reason}`
+                : ''}
+              . Configure a live weather provider and enable the weather_forecast feature before forecasts appear here.
+            </p>
+          ) : Array.isArray(weather) && weather.length > 0 ? (
+            <div className="mt-4 grid gap-3 sm:grid-cols-5">
+              {(weather as Array<{ date: Date; condition: string; rainProbability: number; windSpeedMph: number; riskLevel: string }>).map((w) => (
+                <div key={w.date.toISOString()} className={`rounded-lg border p-3 text-sm ${w.riskLevel === 'high' ? 'border-red-300 bg-red-50' : ''}`}>
+                  <p className="font-medium">{w.date.toLocaleDateString(undefined, { weekday: 'short' })}</p>
+                  <p className="text-muted-foreground">{w.condition}</p>
+                  <p className="text-xs">Rain {w.rainProbability}% · Wind {w.windSpeedMph}mph</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">Weather data is unavailable.</p>
+          )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -6,9 +6,38 @@ import { fileURLToPath } from 'url';
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const webRoot = path.join(repoRoot, 'apps/web');
 const rootEnvPath = path.join(repoRoot, '.env');
+const stagingEnvPath = path.join(repoRoot, '.env.staging');
 const webEnvPath = path.join(webRoot, '.env');
 const webEnvBackupPath = path.join(webRoot, '.env.deploy-backup');
 const only = process.argv.includes('--hosting-only') ? '--only hosting' : '';
+const force = process.argv.includes('--force') || !process.argv.includes('--hosting-only')
+  ? '--force'
+  : '';
+
+const projectArgIdx = process.argv.findIndex((a) => a === '--project');
+const projectFromFlag =
+  projectArgIdx >= 0 ? process.argv[projectArgIdx + 1] : null;
+const projectAlias = process.env.FIREBASE_DEPLOY_PROJECT
+  || projectFromFlag
+  || (process.argv.includes('--staging') ? 'staging' : null)
+  || 'production';
+
+const PROJECT_BY_ALIAS = {
+  production: 'yuletide-lighting',
+  staging: 'yuletide-lighting-staging',
+  default: 'yuletide-lighting',
+};
+
+const firebaseProject =
+  PROJECT_BY_ALIAS[projectAlias] || projectAlias || 'yuletide-lighting';
+
+const isStaging = firebaseProject === 'yuletide-lighting-staging';
+const publicAppUrl = isStaging
+  ? (process.env.STAGING_APP_URL || 'https://yuletide-lighting-staging.web.app')
+  : 'https://yuletide-lighting.web.app';
+const envSourcePath = isStaging && fs.existsSync(stagingEnvPath)
+  ? stagingEnvPath
+  : rootEnvPath;
 
 const RESERVED_ENV_PREFIXES = ['X_GOOGLE_', 'FIREBASE_', 'EXT_'];
 
@@ -25,11 +54,14 @@ function parseEnvValue(lines, key) {
 }
 
 function prepareEnv() {
-  if (!fs.existsSync(rootEnvPath)) return;
+  if (!fs.existsSync(envSourcePath)) {
+    console.warn(`No env file at ${envSourcePath}; continuing without copied secrets.`);
+    return;
+  }
   if (fs.existsSync(webEnvPath) && !fs.existsSync(webEnvBackupPath)) {
     fs.copyFileSync(webEnvPath, webEnvBackupPath);
   }
-  const lines = fs.readFileSync(rootEnvPath, 'utf8').split(/\r?\n/);
+  const lines = fs.readFileSync(envSourcePath, 'utf8').split(/\r?\n/);
   const kept = lines.filter((line) => {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) return true;
@@ -42,15 +74,24 @@ function prepareEnv() {
   }
   let env = kept.join('\n');
   if (!/^NEXT_PUBLIC_APP_URL=/m.test(env)) {
-    env += '\nNEXT_PUBLIC_APP_URL=https://yuletide-lighting.web.app\n';
+    env += `\nNEXT_PUBLIC_APP_URL=${publicAppUrl}\n`;
   } else {
     env = env.replace(
       /^NEXT_PUBLIC_APP_URL=.*/m,
-      'NEXT_PUBLIC_APP_URL=https://yuletide-lighting.web.app',
+      `NEXT_PUBLIC_APP_URL=${publicAppUrl}`,
     );
   }
+  if (isStaging) {
+    env = env.replace(
+      /^NEXT_PUBLIC_FIREBASE_PROJECT_ID=.*/m,
+      'NEXT_PUBLIC_FIREBASE_PROJECT_ID=yuletide-lighting-staging',
+    );
+    if (!/^NEXT_PUBLIC_FIREBASE_PROJECT_ID=/m.test(env)) {
+      env += '\nNEXT_PUBLIC_FIREBASE_PROJECT_ID=yuletide-lighting-staging\n';
+    }
+  }
   fs.writeFileSync(webEnvPath, env.endsWith('\n') ? env : `${env}\n`);
-  console.log('Copied root .env to apps/web for Firebase build (server secrets filtered).');
+  console.log(`Copied ${path.basename(envSourcePath)} to apps/web for Firebase build (project=${firebaseProject}).`);
 }
 
 function restoreEnv() {
@@ -74,7 +115,7 @@ if (nodeMajor > 20) {
 try {
   prepareEnv();
   execSync('node scripts/prepare-firebase-deps.mjs', { cwd: webRoot, stdio: 'inherit' });
-  execSync(`firebase deploy ${only} --project yuletide-lighting`.trim(), {
+  execSync(`firebase deploy ${only} ${force} --project ${firebaseProject}`.replace(/\s+/g, ' ').trim(), {
     cwd: repoRoot,
     stdio: 'inherit',
   });

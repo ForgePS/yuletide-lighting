@@ -61,8 +61,15 @@ export const platformSettingsSchema = z.object({
   availableModules: z.array(z.enum([
     'pipeline', 'customers', 'proposals', 'invoices', 'inventory', 'jobs', 'crew',
     'schedule', 'messages', 'mockups', 'reports', 'automation', 'commercial',
-    'storage', 'rebooking', 'reviews', 'time_clock', 'routes',
+    'storage', 'rebooking', 'reviews', 'sign_tracker', 'time_clock', 'routes',
+    'customer_portal',
   ])).min(1),
+  availablePortalFeatures: z.array(z.enum([
+    'dashboard', 'properties', 'consultations', 'mockups', 'proposals', 'agreements',
+    'e_sign', 'billing', 'online_payments', 'scheduling', 'install_tracking',
+    'service_requests', 'takedowns', 'storage', 'messaging', 'documents',
+    'reviews', 'referrals', 'rebooking',
+  ])),
   signupEnabled: z.boolean(),
   maintenanceMode: z.boolean(),
   maintenanceMessage: z.string().max(500),
@@ -83,7 +90,8 @@ export const creatorOrgModulesSchema = z.object({
   enabledModules: z.array(z.enum([
     'pipeline', 'customers', 'proposals', 'invoices', 'inventory', 'jobs', 'crew',
     'schedule', 'messages', 'mockups', 'reports', 'automation', 'commercial',
-    'storage', 'rebooking', 'reviews', 'time_clock', 'routes',
+    'storage', 'rebooking', 'reviews', 'sign_tracker', 'time_clock', 'routes',
+    'customer_portal',
   ])),
   note: z.string().max(2000).optional(),
 });

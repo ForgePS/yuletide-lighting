@@ -3,32 +3,16 @@ import { loadHomeContent } from '@/lib/marketing-content';
 import { CmsPageView } from '@/components/cms/cms-page-view';
 import { HomePageView } from '@/components/marketing/home-page-view';
 
-async function loadSeason() {
-  try {
-    const { getPublicSeasonConfig } = await import('@yuletide/firebase');
-    const config = await getPublicSeasonConfig();
-    if (!config) return null;
-    return {
-      seasonYear: config.publicMarketingYear ?? config.seasonYear,
-      publicMarketingYear: config.publicMarketingYear ?? config.seasonYear,
-      installCutoffDate: config.installCutoffDate,
-      installCutoff: config.installCutoffDate,
-    };
-  } catch {
-    return null;
-  }
-}
+/** Cache HTML at the edge; CMS edits show within a minute. */
+export const revalidate = 60;
 
-export async function generateMetadata(): Promise<Metadata> {
-  const home = loadHomeContent(await loadSeason());
-  return {
-    title: 'Yuletide Lighting | Christmas Light CRM',
-    description: home.subheadline || 'Christmas light installation CRM',
-  };
-}
+export const metadata: Metadata = {
+  title: 'Yuletide Lighting | Christmas Light CRM',
+  description:
+    'Proposals, invoicing, inventory, crew scheduling, and customer messaging for Christmas light installers.',
+};
 
 export default async function HomePage() {
-  const season = await loadSeason();
   try {
     const { getPublishedPageBundle } = await import('@yuletide/firebase');
     const bundle = await getPublishedPageBundle('home');
@@ -38,5 +22,5 @@ export default async function HomePage() {
   } catch {
     // fall through to static marketing
   }
-  return <HomePageView home={loadHomeContent(season)} />;
+  return <HomePageView home={loadHomeContent(null)} />;
 }

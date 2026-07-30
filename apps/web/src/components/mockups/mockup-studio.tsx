@@ -103,7 +103,13 @@ export function MockupStudio({ mockupId }: { mockupId: string }) {
     onSuccess: () => { toast('Saved', 'success'); utils.mockups360.getById.invalidate({ mockupId }); },
     onError: (e) => toast(e.message, 'error'),
   });
-  const detect = trpc.mockups360.ai.detect.useMutation({ onSuccess: () => { toast('AI detection complete', 'success'); utils.mockups360.getById.invalidate({ mockupId }); } });
+  const detect = trpc.mockups360.ai.detect.useMutation({
+    onSuccess: () => {
+      toast('AI detection complete', 'success');
+      utils.mockups360.getById.invalidate({ mockupId });
+    },
+    onError: (e) => toast(e.message.includes('AI_') ? 'AI provider not configured' : e.message, 'error'),
+  });
   const version = trpc.mockups360.versions.create.useMutation({ onSuccess: () => toast('Version saved', 'success') });
 
   const [compareMode, setCompareMode] = useState<'side' | 'slider'>('slider');

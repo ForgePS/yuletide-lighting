@@ -35,6 +35,8 @@ type FormState = {
   depositPercent: number;
   notes: string;
   lineItems: ProposalLineItem[];
+  /** Typeable proposal total in dollars (optional when line items set the total). */
+  proposalPriceDollars: string;
   installDate: string;
   removalDate: string;
   termsAndConditions: string;
@@ -44,6 +46,12 @@ function dateInputValue(d: unknown): string {
   if (!d) return '';
   const date = d instanceof Date ? d : new Date(String(d));
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+function dollarsFromCents(cents: unknown): string {
+  const n = Number(cents);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return (n / 100).toFixed(2);
 }
 
 function defaultForm(initial?: Record<string, unknown>, prefillCustomerId?: string): FormState {
@@ -64,6 +72,7 @@ function defaultForm(initial?: Record<string, unknown>, prefillCustomerId?: stri
     depositPercent: Number(initial?.depositPercent ?? 50),
     notes: String(initial?.notes ?? ''),
     lineItems: (initial?.lineItems as ProposalLineItem[]) ?? [],
+    proposalPriceDollars: dollarsFromCents(initial?.subtotalCents),
     installDate: dateInputValue(initial?.installDate),
     removalDate: dateInputValue(initial?.removalDate),
     termsAndConditions: String(initial?.termsAndConditions ?? DEFAULT_PROPOSAL_TERMS),
@@ -131,6 +140,7 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
       materialCostCents: 0,
       laborCostCents: 0,
     };
+    const typedCents = Math.round(parseFloat(form.proposalPriceDollars || '0') * 100);
     const payload = {
       customerId: form.customerId,
       propertyId: form.propertyId,
@@ -147,10 +157,17 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
       depositPercent: form.depositPercent,
       notes: form.notes || undefined,
       lineItems: form.lineItems.map((item) => ({
-        ...item,
-        inventoryItemId: item.inventoryItemId ?? undefined,
-        agreementCode: item.agreementCode ?? undefined,
+        id: item.id,
+        description: item.description,
+        quantity: item.quantity,
+        unitPriceCents: item.unitPriceCents,
+        ...(item.category ? { category: item.category } : {}),
+        ...(item.inventoryItemId ? { inventoryItemId: item.inventoryItemId } : {}),
+        ...(item.agreementCode ? { agreementCode: item.agreementCode } : {}),
       })),
+      ...(Number.isFinite(typedCents) && typedCents >= 0 && form.proposalPriceDollars.trim() !== ''
+        ? { subtotalCents: typedCents }
+        : {}),
       installDate: form.installDate ? new Date(form.installDate) : null,
       removalDate: form.removalDate ? new Date(form.removalDate) : null,
       termsAndConditions: form.termsAndConditions || undefined,
@@ -165,8 +182,9 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
         toast('Proposal created', 'success');
         router.push(`/app/proposals/${result?.id}`);
       }
-    } catch {
-      toast('Could not save proposal', 'error');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not save proposal';
+      toast(message, 'error');
     }
   }
 
@@ -325,11 +343,29 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
         </button>
       </Section>
 
-      <Section title="Line items">
-        <p className="mb-3 text-sm text-muted-foreground">
-          Optional itemized pricing. When line items are added, they override auto-calculated package pricing.
-        </p>
-        <ProposalLineItemsEditor value={form.lineItems} onChange={(lineItems) => setForm({ ...form, lineItems })} />
+      <Section title="Pricing">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Proposal price ($)</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="input w-full"
+              placeholder="0.00"
+              value={form.proposalPriceDollars}
+              onChange={(e) => setForm({ ...form, proposalPriceDollars: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Type the total here. Line items below override this when filled in.
+            </p>
+          </label>
+        </div>
+        <div className="mt-4">
+          <p className="mb-3 text-sm text-muted-foreground">
+            Optional itemized pricing. When line items are added, they set the proposal total.
+          </p>
+          <ProposalLineItemsEditor value={form.lineItems} onChange={(lineItems) => setForm({ ...form, lineItems })} />
+        </div>
       </Section>
 
       <Section title="Schedule & terms">

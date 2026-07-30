@@ -10,8 +10,14 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    function isActiveUser() {
+      return isSignedIn()
+        && userDoc().data.keys().hasAll(['organizationId', 'role'])
+        && (!userDoc().data.keys().hasAny(['status']) || userDoc().data.status == 'active');
+    }
+
     function belongsToOrg(orgId) {
-      return isSignedIn() && userDoc().data.organizationId == orgId;
+      return isActiveUser() && userDoc().data.organizationId == orgId;
     }
 
     function hasRole(orgId, roles) {
@@ -293,6 +299,40 @@ service cloud.firestore {
       match /subscriptionPayments/{paymentId} {
         allow read: if hasRole(orgId, ['owner', 'admin']);
         allow write: if false;
+      }
+      match /signLocations/{docId} {
+        allow read: if belongsToOrg(orgId);
+        allow create, update: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+        allow delete: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /signTrackerSettings/{docId} {
+        allow read: if belongsToOrg(orgId);
+        allow write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+
+      match /portalAccounts/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalUsers/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalTimelineEvents/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalNotifications/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalQrCodes/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalQrScans/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalQrVerifications/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalQrAuditEvents/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
       }
 
       // Phase 0: collections used by Admin SDK / future client — org-scoped deny-by-default catch-all

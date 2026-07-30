@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import type { CmsSiteGlobals } from '@clcrm/types';
 import { useAuth } from '@/lib/firebase-auth';
-import { SidebarLogo } from '@/components/sidebar-logo';
+import { Logo } from '@/components/logo';
 
 export function CmsMarketingChrome({ globals }: { globals: CmsSiteGlobals }) {
   const { user } = useAuth();
   const { header } = globals;
   const bar = header.announcementBar;
+  const logoSrc = header.logoUrl || globals.branding.primaryLogoUrl || '/logo.svg';
 
   return (
     <>
@@ -16,7 +17,7 @@ export function CmsMarketingChrome({ globals }: { globals: CmsSiteGlobals }) {
         <div
           className="px-4 py-2 text-center text-sm font-medium"
           style={{
-            background: bar.background ?? 'var(--primary)',
+            background: bar.background ?? 'hsl(var(--primary))',
             color: bar.textColor ?? '#fff',
           }}
         >
@@ -31,17 +32,17 @@ export function CmsMarketingChrome({ globals }: { globals: CmsSiteGlobals }) {
       ) : null}
       <header className={`${header.sticky ? 'sticky top-0 z-50' : ''} glass-nav`}>
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          {header.logoUrl ? (
-            <Link href="/">
+          {logoSrc ? (
+            <Link href="/" className="inline-flex shrink-0 items-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={header.logoUrl}
+                src={logoSrc}
                 alt={header.logoAlt || globals.branding.companyName}
-                className="h-12 sm:h-14"
+                className="h-12 w-auto object-contain sm:h-14"
               />
             </Link>
           ) : (
-            <SidebarLogo href="/" imageClassName="h-12 sm:h-14" />
+            <Logo href="/" imageClassName="h-12 sm:h-14" />
           )}
           <nav className="flex items-center gap-2 sm:gap-3">
             {header.navItems

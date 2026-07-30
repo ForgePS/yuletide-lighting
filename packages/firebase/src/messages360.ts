@@ -185,6 +185,20 @@ export async function sendMessage360(
     sentAt: now,
   });
 
+  if (input.channel === 'portal') {
+    try {
+      const { notifyPortalCustomer } = await import('./portal360');
+      await notifyPortalCustomer(orgId, input.customerId, {
+        category: 'messaging',
+        title: input.subject ?? 'New message',
+        body: input.body.slice(0, 160),
+        actionUrl: '/messages',
+      });
+    } catch {
+      // Best-effort
+    }
+  }
+
   return { conversation, message };
 }
 
@@ -483,8 +497,45 @@ export async function ensureMessageTemplates(orgId: string): Promise<MessageTemp
 }
 
 export async function createMessageTemplate(orgId: string, input: Omit<MessageTemplate, keyof import('@clcrm/types').MessageAuditFields | 'id' | 'organizationId' | 'variables'>, userId?: string | null) {
-  const created = await colCreate(orgId, 'templates', { organizationId: orgId, ...input, variables: [], createdBy: userId, updatedBy: userId });
+  const variables = extractTemplateVariables(input.subject, input.body);
+  const created = await colCreate(orgId, 'templates', {
+    organizationId: orgId,
+    ...input,
+    variables,
+    createdBy: userId,
+    updatedBy: userId,
+  });
   return mapDoc<MessageTemplate>(created as Record<string, unknown>);
+}
+
+export async function updateMessageTemplate(
+  orgId: string,
+  templateId: string,
+  input: Partial<{
+    name: string;
+    category: MessageTemplate['category'];
+    channel: MessageTemplate['channel'];
+    subject: string | null;
+    body: string;
+    isActive: boolean;
+  }>,
+  userId?: string | null,
+) {
+  const patch: Record<string, unknown> = { ...input, updatedBy: userId ?? null };
+  if (input.body !== undefined || input.subject !== undefined) {
+    const current = await colGet<MessageTemplate>(orgId, 'templates', templateId);
+    patch.variables = extractTemplateVariables(
+      input.subject !== undefined ? input.subject : current?.subject,
+      input.body !== undefined ? input.body : current?.body ?? '',
+    );
+  }
+  await colUpdate(orgId, 'templates', templateId, patch);
+  return colGet<MessageTemplate>(orgId, 'templates', templateId);
+}
+
+function extractTemplateVariables(subject: string | null | undefined, body: string | null | undefined) {
+  const text = `${subject ?? ''}\n${body ?? ''}`;
+  return [...new Set([...text.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1]))];
 }
 
 export async function ensureAutomations(orgId: string): Promise<Automation[]> {
@@ -512,6 +563,22 @@ export async function createAutomation(orgId: string, input: Omit<Automation, ke
 
 export async function toggleAutomation(orgId: string, automationId: string, isActive: boolean, userId?: string | null) {
   await colUpdate(orgId, 'automations', automationId, { isActive, updatedBy: userId });
+  return colGet<Automation>(orgId, 'automations', automationId);
+}
+
+export async function updateAutomation(
+  orgId: string,
+  automationId: string,
+  input: Partial<{
+    name: string;
+    subject: string | null;
+    body: string;
+    delayDays: number;
+    isActive: boolean;
+  }>,
+  userId?: string | null,
+) {
+  await colUpdate(orgId, 'automations', automationId, { ...input, updatedBy: userId ?? null });
   return colGet<Automation>(orgId, 'automations', automationId);
 }
 

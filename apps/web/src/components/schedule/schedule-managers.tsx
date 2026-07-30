@@ -6,6 +6,7 @@ import { DISPATCH_STATUS_COLORS, formatCurrency } from '@/lib/schedule-utils';
 import { formatDate } from '@clcrm/ui';
 import { useToast } from '@/lib/toast';
 import { LoadingState, EmptyState } from '@/components/ui/states';
+import { RouteMap } from './route-map';
 
 export function DispatchBoard() {
   const { toast } = useToast();
@@ -94,6 +95,9 @@ export function RoutePlanner() {
               <h3 className="font-semibold">{route.crewName ?? 'Route'} — {formatDate(route.routeDate)}</h3>
               <span className="text-sm">Efficiency: {route.efficiencyScore}% · {route.totalDistanceMiles} mi · {route.totalTravelMinutes} min travel</span>
             </div>
+            <div className="mt-4 overflow-hidden rounded-xl border">
+              <RouteMap stops={route.stops} />
+            </div>
             <ol className="mt-4 space-y-2 text-sm">
               {route.stops.map((stop) => (
                 <li key={stop.id} className="flex gap-3 border-b py-2">
@@ -111,7 +115,7 @@ export function RoutePlanner() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Google Maps
+                          Open in Google Maps
                         </a>
                         <a
                           className="text-primary hover:underline"
@@ -119,7 +123,7 @@ export function RoutePlanner() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Apple Maps
+                          Open in Apple Maps
                         </a>
                       </p>
                     ) : null}

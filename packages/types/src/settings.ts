@@ -30,9 +30,19 @@ export type PermissionResource =
   | 'invoices'
   | 'inventory'
   | 'reports'
-  | 'settings';
+  | 'settings'
+  | 'sign_tracker';
 
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'export' | 'approve';
+export type PermissionAction =
+  | 'view'
+  | 'create'
+  | 'edit'
+  | 'delete'
+  | 'export'
+  | 'approve'
+  | 'archive'
+  | 'restore'
+  | 'manage';
 
 export type PermissionMatrix = Record<PermissionResource, Record<PermissionAction, boolean>>;
 
@@ -199,6 +209,18 @@ export type ProposalSettings = SettingsAuditFields & {
   layout: ProposalLayoutSettings;
 };
 
+export type AgreementSettings = SettingsAuditFields & {
+  organizationId: string;
+  /** Customer-facing terms shown on the public signing page. Supports {{companyName}}. */
+  termsBody: string;
+  termsVersion: string;
+};
+
+export const DEFAULT_AGREEMENT_TERMS_BODY =
+  'By signing this agreement you authorize {{companyName}} to provide seasonal lighting services for the seasons listed above at the agreed annual value. Work will be scheduled according to weather and crew availability. Cancellations and renewals are subject to the company\'s standard policies.';
+
+export const DEFAULT_AGREEMENT_TERMS_VERSION = '2026.1';
+
 export type InvoiceSettingsConfig = SettingsAuditFields & {
   organizationId: string;
   numberFormat: string;
@@ -280,6 +302,8 @@ export type CustomerPortalSettings = SettingsAuditFields & {
   allowSelfScheduling: boolean;
   allowOnlinePayments: boolean;
   allowServiceRequests: boolean;
+  /** Tenant-enabled portal features (must be subset of Creator availablePortalFeatures). */
+  enabledFeatures: import('./portal').PortalFeatureKey[];
   permissions: {
     viewProposals: boolean;
     viewInvoices: boolean;
@@ -288,13 +312,19 @@ export type CustomerPortalSettings = SettingsAuditFields & {
   };
 };
 
+export type IntegrationAvailability = 'available' | 'configured' | 'connected' | 'degraded' | 'unavailable' | 'planned';
+
 export type IntegrationConfig = {
   id: string;
   name: string;
-  category: 'crm' | 'accounting' | 'payments' | 'communications' | 'maps' | 'storage';
+  category: 'crm' | 'accounting' | 'payments' | 'communications' | 'maps' | 'storage' | 'platform' | 'background';
+  /** Operational state — only available/configured/connected may be toggled on. */
+  availability: IntegrationAvailability;
   enabled: boolean;
   configured: boolean;
   apiKeySet: boolean;
+  /** When false, UI must not show Connect / API key fields. */
+  connectable: boolean;
 };
 
 export type IntegrationsSettings = SettingsAuditFields & {
@@ -358,52 +388,86 @@ export type BackupRecord = SettingsAuditFields & {
   sizeMb: number;
 };
 
+function emptyActions(view = false): Record<PermissionAction, boolean> {
+  return {
+    view,
+    create: false,
+    edit: false,
+    delete: false,
+    export: false,
+    approve: false,
+    archive: false,
+    restore: false,
+    manage: false,
+  };
+}
+
 export const DEFAULT_PERMISSION_MATRIX: PermissionMatrix = {
-  customers: { view: true, create: true, edit: true, delete: false, export: true, approve: false },
-  mockups: { view: true, create: true, edit: true, delete: false, export: true, approve: false },
-  proposals: { view: true, create: true, edit: true, delete: false, export: true, approve: true },
-  jobs: { view: true, create: true, edit: true, delete: false, export: true, approve: false },
-  invoices: { view: true, create: true, edit: true, delete: false, export: true, approve: true },
-  inventory: { view: true, create: true, edit: true, delete: false, export: true, approve: false },
-  reports: { view: true, create: false, edit: false, delete: false, export: true, approve: false },
-  settings: { view: false, create: false, edit: false, delete: false, export: false, approve: false },
+  customers: { ...emptyActions(true), create: true, edit: true, export: true },
+  mockups: { ...emptyActions(true), create: true, edit: true, export: true },
+  proposals: { ...emptyActions(true), create: true, edit: true, export: true, approve: true },
+  jobs: { ...emptyActions(true), create: true, edit: true, export: true },
+  invoices: { ...emptyActions(true), create: true, edit: true, export: true, approve: true },
+  inventory: { ...emptyActions(true), create: true, edit: true, export: true },
+  reports: { ...emptyActions(true), export: true },
+  settings: emptyActions(false),
+  sign_tracker: { ...emptyActions(true), create: true, edit: true, export: true, archive: true },
 };
 
 export const SYSTEM_ROLES: Array<{ slug: SettingsRole; name: string; description: string; permissions: PermissionMatrix }> = [
   { slug: 'owner', name: 'Owner', description: 'Full access to all features', permissions: fullPermissions(true) },
   { slug: 'administrator', name: 'Administrator', description: 'Manage users and settings', permissions: fullPermissions(true) },
-  { slug: 'sales_manager', name: 'Sales Manager', description: 'Sales team oversight', permissions: resourcePermissions(['customers', 'mockups', 'proposals', 'reports'], true) },
-  { slug: 'sales_rep', name: 'Sales Rep', description: 'Create proposals and manage customers', permissions: resourcePermissions(['customers', 'mockups', 'proposals'], false) },
-  { slug: 'operations_manager', name: 'Operations Manager', description: 'Scheduling and production', permissions: resourcePermissions(['jobs', 'inventory', 'reports'], true) },
-  { slug: 'dispatcher', name: 'Dispatcher', description: 'Schedule and dispatch crews', permissions: resourcePermissions(['jobs'], false) },
-  { slug: 'crew_leader', name: 'Crew Leader', description: 'Lead installation crews', permissions: resourcePermissions(['jobs'], false) },
-  { slug: 'installer', name: 'Installer', description: 'Field installer access', permissions: viewOnly(['jobs']) },
+  { slug: 'sales_manager', name: 'Sales Manager', description: 'Sales team oversight', permissions: resourcePermissions(['customers', 'mockups', 'proposals', 'reports', 'sign_tracker'], true) },
+  { slug: 'sales_rep', name: 'Sales Rep', description: 'Create proposals and manage customers', permissions: resourcePermissions(['customers', 'mockups', 'proposals', 'sign_tracker'], false) },
+  { slug: 'operations_manager', name: 'Operations Manager', description: 'Scheduling and production', permissions: resourcePermissions(['jobs', 'inventory', 'reports', 'sign_tracker'], true) },
+  { slug: 'dispatcher', name: 'Dispatcher', description: 'Schedule and dispatch crews', permissions: resourcePermissions(['jobs', 'sign_tracker'], false) },
+  { slug: 'crew_leader', name: 'Crew Leader', description: 'Lead installation crews', permissions: resourcePermissions(['jobs', 'sign_tracker'], false) },
+  { slug: 'installer', name: 'Installer', description: 'Field installer access', permissions: (() => {
+    const matrix = viewOnly(['jobs']);
+    matrix.sign_tracker = {
+      view: true,
+      create: true,
+      edit: true,
+      delete: false,
+      export: false,
+      approve: false,
+      archive: false,
+      restore: false,
+      manage: false,
+    };
+    return matrix;
+  })() },
   { slug: 'warehouse_staff', name: 'Warehouse Staff', description: 'Inventory management', permissions: resourcePermissions(['inventory'], false) },
-  { slug: 'office_staff', name: 'Office Staff', description: 'Office administration', permissions: resourcePermissions(['customers', 'invoices', 'jobs'], false) },
-  { slug: 'read_only', name: 'Read Only', description: 'View-only access', permissions: viewOnly(['customers', 'proposals', 'jobs', 'invoices', 'reports']) },
+  { slug: 'office_staff', name: 'Office Staff', description: 'Office administration', permissions: resourcePermissions(['customers', 'invoices', 'jobs', 'sign_tracker'], false) },
+  { slug: 'read_only', name: 'Read Only', description: 'View-only access', permissions: viewOnly(['customers', 'proposals', 'jobs', 'invoices', 'reports', 'sign_tracker']) },
 ];
 
 export const DEFAULT_INTEGRATIONS: IntegrationConfig[] = [
-  { id: 'hubspot', name: 'HubSpot', category: 'crm', enabled: false, configured: false, apiKeySet: false },
-  { id: 'salesforce', name: 'Salesforce', category: 'crm', enabled: false, configured: false, apiKeySet: false },
-  { id: 'quickbooks', name: 'QuickBooks Online', category: 'accounting', enabled: false, configured: false, apiKeySet: false },
-  { id: 'xero', name: 'Xero', category: 'accounting', enabled: false, configured: false, apiKeySet: false },
-  { id: 'stripe', name: 'Stripe', category: 'payments', enabled: false, configured: false, apiKeySet: false },
-  { id: 'square', name: 'Square', category: 'payments', enabled: false, configured: false, apiKeySet: false },
-  { id: 'twilio', name: 'Twilio', category: 'communications', enabled: false, configured: false, apiKeySet: false },
-  { id: 'sendgrid', name: 'SendGrid', category: 'communications', enabled: false, configured: false, apiKeySet: false },
-  { id: 'google_maps', name: 'Google Maps', category: 'maps', enabled: false, configured: false, apiKeySet: false },
-  { id: 'google_drive', name: 'Google Drive', category: 'storage', enabled: false, configured: false, apiKeySet: false },
-  { id: 'dropbox', name: 'Dropbox', category: 'storage', enabled: false, configured: false, apiKeySet: false },
+  { id: 'firebase', name: 'Firebase', category: 'platform', availability: 'available', enabled: true, configured: true, apiKeySet: true, connectable: false },
+  { id: 'stripe', name: 'Stripe', category: 'payments', availability: 'available', enabled: false, configured: false, apiKeySet: false, connectable: true },
+  { id: 'twilio', name: 'Twilio', category: 'communications', availability: 'available', enabled: false, configured: false, apiKeySet: false, connectable: true },
+  { id: 'resend', name: 'Resend', category: 'communications', availability: 'available', enabled: false, configured: false, apiKeySet: false, connectable: true },
+  { id: 'mapbox', name: 'Mapbox', category: 'maps', availability: 'available', enabled: false, configured: false, apiKeySet: false, connectable: true },
+  { id: 'inngest', name: 'Inngest', category: 'background', availability: 'available', enabled: false, configured: false, apiKeySet: false, connectable: false },
+  { id: 'hubspot', name: 'HubSpot', category: 'crm', availability: 'planned', enabled: false, configured: false, apiKeySet: false, connectable: false },
+  { id: 'salesforce', name: 'Salesforce', category: 'crm', availability: 'planned', enabled: false, configured: false, apiKeySet: false, connectable: false },
+  { id: 'quickbooks', name: 'QuickBooks Online', category: 'accounting', availability: 'planned', enabled: false, configured: false, apiKeySet: false, connectable: false },
+  { id: 'xero', name: 'Xero', category: 'accounting', availability: 'planned', enabled: false, configured: false, apiKeySet: false, connectable: false },
+  { id: 'square', name: 'Square', category: 'payments', availability: 'planned', enabled: false, configured: false, apiKeySet: false, connectable: false },
+  { id: 'sendgrid', name: 'SendGrid', category: 'communications', availability: 'planned', enabled: false, configured: false, apiKeySet: false, connectable: false },
+  { id: 'google_maps', name: 'Google Maps', category: 'maps', availability: 'planned', enabled: false, configured: false, apiKeySet: false, connectable: false },
+  { id: 'google_drive', name: 'Google Drive', category: 'storage', availability: 'planned', enabled: false, configured: false, apiKeySet: false, connectable: false },
+  { id: 'dropbox', name: 'Dropbox', category: 'storage', availability: 'planned', enabled: false, configured: false, apiKeySet: false, connectable: false },
 ];
 
 export const DEFAULT_FEATURE_FLAGS: Array<Omit<FeatureFlag, keyof SettingsAuditFields | 'id' | 'organizationId'>> = [
-  { key: 'ai_features', label: 'AI Features', enabled: true, description: 'Enable AI assistants across the platform' },
+  { key: 'ai_features', label: 'AI Features', enabled: false, description: 'Enable AI assistants when an approved provider is configured' },
   { key: 'customer_portal', label: 'Customer Portal', enabled: true, description: 'Allow customers to access the portal' },
   { key: 'online_payments', label: 'Online Payments', enabled: true, description: 'Accept online payments via Stripe' },
   { key: 'inventory_tracking', label: 'Inventory Tracking', enabled: true, description: 'Track inventory across warehouses' },
   { key: 'advanced_reporting', label: 'Advanced Reporting', enabled: true, description: 'Enable reports360 analytics' },
   { key: 'route_optimization', label: 'Route Optimization', enabled: false, description: 'Optimize crew routes automatically' },
+  { key: 'weather_forecast', label: 'Weather Forecast', enabled: false, description: 'Show live weather when a provider is configured' },
 ];
 
 export const DEFAULT_AUTOMATION_RULES: AutomationRuleSettings['rules'] = [
@@ -417,8 +481,28 @@ export const DEFAULT_AUTOMATION_RULES: AutomationRuleSettings['rules'] = [
 ];
 
 function fullPermissions(all: boolean): PermissionMatrix {
-  const resources: PermissionResource[] = ['customers', 'mockups', 'proposals', 'jobs', 'invoices', 'inventory', 'reports', 'settings'];
-  const actions: PermissionAction[] = ['view', 'create', 'edit', 'delete', 'export', 'approve'];
+  const resources: PermissionResource[] = [
+    'customers',
+    'mockups',
+    'proposals',
+    'jobs',
+    'invoices',
+    'inventory',
+    'reports',
+    'settings',
+    'sign_tracker',
+  ];
+  const actions: PermissionAction[] = [
+    'view',
+    'create',
+    'edit',
+    'delete',
+    'export',
+    'approve',
+    'archive',
+    'restore',
+    'manage',
+  ];
   const matrix = {} as PermissionMatrix;
   for (const r of resources) {
     matrix[r] = {} as Record<PermissionAction, boolean>;
@@ -434,7 +518,13 @@ function resourcePermissions(resources: PermissionResource[], manager: boolean):
     matrix[r].create = true;
     matrix[r].edit = true;
     matrix[r].export = true;
-    if (manager) matrix[r].approve = true;
+    matrix[r].archive = true;
+    matrix[r].restore = manager;
+    if (manager) {
+      matrix[r].approve = true;
+      matrix[r].manage = true;
+      matrix[r].delete = true;
+    }
   }
   return matrix;
 }

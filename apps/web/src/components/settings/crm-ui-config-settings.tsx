@@ -166,7 +166,7 @@ export function CrmUiConfigSettingsPage() {
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={draft.theme.useOrgBrandingInApp ?? true}
+            checked={draft.theme.useOrgBrandingInApp ?? false}
             onChange={(e) =>
               setDraft({
                 ...draft,
@@ -174,7 +174,7 @@ export function CrmUiConfigSettingsPage() {
               })
             }
           />
-          Apply organization branding colors in the CRM shell
+          Use organization accent color in the CRM (sidebar stays light unless you set a sidebar background below)
         </label>
         <div className="grid gap-3 sm:grid-cols-3">
           {(
@@ -200,6 +200,73 @@ export function CrmUiConfigSettingsPage() {
             </label>
           ))}
         </div>
+        <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium">Sidebar logo size</span>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={28}
+                max={96}
+                step={2}
+                className="w-full"
+                value={draft.theme.sidebarLogoSizePx ?? 44}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    theme: {
+                      ...draft.theme,
+                      sidebarLogoSizePx: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <input
+                type="number"
+                min={28}
+                max={96}
+                className="w-16 rounded border border-border px-2 py-1.5"
+                value={draft.theme.sidebarLogoSizePx ?? 44}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setDraft({
+                    ...draft,
+                    theme: {
+                      ...draft.theme,
+                      sidebarLogoSizePx: Number.isFinite(n)
+                        ? Math.min(96, Math.max(28, Math.round(n)))
+                        : 44,
+                    },
+                  });
+                }}
+              />
+              <span className="text-xs text-muted-foreground">px</span>
+            </div>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium">Sidebar logo position</span>
+            <select
+              className="w-full rounded border border-border px-2 py-1.5"
+              value={draft.theme.sidebarLogoAlign ?? 'left'}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  theme: {
+                    ...draft.theme,
+                    sidebarLogoAlign: e.target.value as 'left' | 'center' | 'right',
+                  },
+                })
+              }
+            >
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </label>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Logo size and position apply to the CRM left nav header only.
+        </p>
       </div>
 
       <div className="card space-y-3 p-5">

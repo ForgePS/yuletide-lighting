@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/lib/firebase-auth';
-import { SidebarLogo } from '@/components/sidebar-logo';
+import { Logo } from '@/components/logo';
 
 export function MarketingHeader() {
   const { user } = useAuth();
@@ -10,7 +10,7 @@ export function MarketingHeader() {
   return (
     <header className="glass-nav sticky top-0 z-50">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <SidebarLogo href="/" imageClassName="h-12 sm:h-14" />
+        <Logo href="/" imageClassName="h-12 sm:h-14" priority />
         <nav className="flex items-center gap-2 sm:gap-3">
           <Link href="/pricing" className="btn-ghost hidden px-3 py-2 sm:inline-flex">
             Pricing

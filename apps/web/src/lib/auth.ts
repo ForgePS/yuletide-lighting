@@ -112,7 +112,10 @@ function readTokenFromRequest(): Promise<string | null> {
     const headerStore = await headers();
     const cookieStore = await cookies();
     const authHeader = headerStore.get('authorization');
-    return authHeader?.replace(/^Bearer\s+/i, '') ?? cookieStore.get('firebase-token')?.value ?? null;
+    const fromHeader = authHeader?.replace(/^Bearer\s+/i, '') ?? null;
+    if (fromHeader) return fromHeader;
+    // Firebase Hosting only forwards `__session` to the SSR backend.
+    return cookieStore.get('__session')?.value ?? cookieStore.get('firebase-token')?.value ?? null;
   })();
 }
 
@@ -128,7 +131,12 @@ export async function resolveAppAccess(): Promise<AppAccessResult> {
   }
 
   try {
-    const decoded = await verifyIdToken(token);
+    const decoded = await Promise.race([
+      verifyIdToken(token),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Token verification timed out')), 8_000);
+      }),
+    ]);
     let user = await getUserByFirebaseUid(decoded.uid);
 
     if (!user) {
@@ -209,6 +217,12 @@ export async function requireAppSession(opts?: { allowLockedSubscription?: boole
   const result = await resolveAppAccess();
   if (result.status === 'denied') {
     if (result.reason === 'unauthenticated') {
+      // Prefer access-denied when a cookie was present but verification failed,
+      // so client Firebase persistence cannot bounce forever against /sign-in.
+      const token = await readTokenFromRequest();
+      if (token) {
+        redirect('/access-denied?reason=unauthenticated');
+      }
       redirect('/sign-in');
     }
     redirect(`/access-denied?reason=${result.reason}`);

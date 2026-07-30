@@ -15,9 +15,11 @@ import {
   resolveOrganizationIdByTwilioToPhone,
   ensureMessageTemplates,
   createMessageTemplate,
+  updateMessageTemplate,
   ensureAutomations,
   createAutomation,
   toggleAutomation,
+  updateAutomation,
   triggerAutomation,
   listCampaigns,
   createCampaign,
@@ -38,6 +40,8 @@ import {
   receiveSmsPublicSchema,
   updateConversationSchema,
   createTemplate360Schema,
+  updateTemplate360Schema,
+  updateAutomation360Schema,
   createCampaignSchema,
   createAutomationSchema,
   sendInternalMessageSchema,
@@ -95,6 +99,11 @@ export const messages360Router = router({
     create: officeProcedure.input(createTemplate360Schema).mutation(({ ctx, input }) =>
       createMessageTemplate(ctx.auth.organizationId, { ...input, isActive: true } as never, ctx.auth.userId),
     ),
+    update: officeProcedure
+      .input(z.object({ templateId: z.string(), data: updateTemplate360Schema }))
+      .mutation(({ ctx, input }) =>
+        updateMessageTemplate(ctx.auth.organizationId, input.templateId, input.data, ctx.auth.userId),
+      ),
   }),
 
   automations: router({
@@ -105,6 +114,11 @@ export const messages360Router = router({
     toggle: officeProcedure.input(z.object({ automationId: z.string(), isActive: z.boolean() })).mutation(({ ctx, input }) =>
       toggleAutomation(ctx.auth.organizationId, input.automationId, input.isActive, ctx.auth.userId),
     ),
+    update: officeProcedure
+      .input(z.object({ automationId: z.string(), data: updateAutomation360Schema }))
+      .mutation(({ ctx, input }) =>
+        updateAutomation(ctx.auth.organizationId, input.automationId, input.data, ctx.auth.userId),
+      ),
     trigger: officeProcedure.input(triggerAutomationSchema).mutation(({ ctx, input }) =>
       triggerAutomation(ctx.auth.organizationId, input.trigger, input.customerId, input.vars, ctx.auth.userId),
     ),

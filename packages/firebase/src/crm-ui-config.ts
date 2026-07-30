@@ -1,7 +1,7 @@
 import type { CrmUiConfig } from '@clcrm/types';
 import { DEFAULT_CRM_UI_CONFIG, DEFAULT_CRM_NAV_ITEMS } from '@clcrm/types';
 import { getAdminFirestore, Timestamp, orgPath } from './admin';
-import { mapTimestampsFromData } from './firestore-utils';
+import { mapTimestampsFromData, stripUndefinedDeep } from './firestore-utils';
 import { getOrganization } from './firestore';
 
 function docPath(orgId: string) {
@@ -51,13 +51,15 @@ export async function updateCrmUiConfig(
   input: Omit<CrmUiConfig, 'updatedAt'>,
 ): Promise<CrmUiConfig> {
   const next = mergeWithDefaults({ ...input, updatedAt: new Date() });
-  await getAdminFirestore().doc(docPath(orgId)).set(
-    {
-      ...next,
-      updatedAt: ts(),
-    },
-    { merge: true },
-  );
+  await getAdminFirestore()
+    .doc(docPath(orgId))
+    .set(
+      stripUndefinedDeep({
+        ...next,
+        updatedAt: ts(),
+      }),
+      { merge: true },
+    );
   return next;
 }
 

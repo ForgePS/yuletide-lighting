@@ -15,6 +15,7 @@ import type {
   OrgUserProfile,
   PermissionMatrix,
   ProposalSettings,
+  AgreementSettings,
   RoleDefinition,
   SeasonSettings,
   SecuritySettings,
@@ -28,7 +29,10 @@ import {
   DEFAULT_INTEGRATIONS,
   DEFAULT_INVOICE_LAYOUT,
   DEFAULT_PROPOSAL_LAYOUT,
+  DEFAULT_AGREEMENT_TERMS_BODY,
+  DEFAULT_AGREEMENT_TERMS_VERSION,
   DEFAULT_SEASON_SETTINGS,
+  DEFAULT_PERMISSION_MATRIX,
   SYSTEM_ROLES,
   mapLegacyRole,
   SUBSCRIPTION_PRICING,
@@ -48,8 +52,28 @@ function settingsPath(orgId: string, section: string) {
 }
 
 function normalizePermissions(perms: Partial<PermissionMatrix> | undefined, fallback: PermissionMatrix): PermissionMatrix {
-  const resources: Array<keyof PermissionMatrix> = ['customers', 'mockups', 'proposals', 'jobs', 'invoices', 'inventory', 'reports', 'settings'];
-  const actions = ['view', 'create', 'edit', 'delete', 'export', 'approve'] as const;
+  const resources: Array<keyof PermissionMatrix> = [
+    'customers',
+    'mockups',
+    'proposals',
+    'jobs',
+    'invoices',
+    'inventory',
+    'reports',
+    'settings',
+    'sign_tracker',
+  ];
+  const actions = [
+    'view',
+    'create',
+    'edit',
+    'delete',
+    'export',
+    'approve',
+    'archive',
+    'restore',
+    'manage',
+  ] as const;
   const matrix = { ...fallback };
   for (const resource of resources) {
     matrix[resource] = { ...fallback[resource] };
@@ -517,7 +541,11 @@ export async function updateRolePermissions(orgId: string, roleId: string, permi
 export async function getUserPermissions(orgId: string, settingsRole: string) {
   const roles = await listRoles(orgId);
   const role = roles.find((r) => r.slug === settingsRole) ?? roles.find((r) => r.slug === 'read_only');
-  return role?.permissions ?? SYSTEM_ROLES.find((r) => r.slug === 'read_only')!.permissions;
+  const fallback =
+    SYSTEM_ROLES.find((r) => r.slug === settingsRole)?.permissions ??
+    SYSTEM_ROLES.find((r) => r.slug === 'read_only')!.permissions ??
+    DEFAULT_PERMISSION_MATRIX;
+  return normalizePermissions(role?.permissions, fallback);
 }
 
 export async function getNotificationSettings(orgId: string, userId?: string | null): Promise<NotificationSettings> {
@@ -597,6 +625,40 @@ export async function updateProposalSettings(orgId: string, input: Partial<Propo
   const current = await getProposalSettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'proposals', { ...current, ...input }, userId);
   await logAudit(orgId, { action: 'update', resource: 'settings/proposals', userId, userEmail, details: { fields: Object.keys(input) } });
+  return updated;
+}
+
+export async function getAgreementSettings(orgId: string, userId?: string | null): Promise<AgreementSettings> {
+  const existing = await getSettingsDoc<AgreementSettings>(orgId, 'agreements');
+  if (existing) {
+    return {
+      ...existing,
+      termsBody: existing.termsBody || DEFAULT_AGREEMENT_TERMS_BODY,
+      termsVersion: existing.termsVersion || DEFAULT_AGREEMENT_TERMS_VERSION,
+    };
+  }
+  return saveSettingsDoc(orgId, 'agreements', {
+    organizationId: orgId,
+    termsBody: DEFAULT_AGREEMENT_TERMS_BODY,
+    termsVersion: DEFAULT_AGREEMENT_TERMS_VERSION,
+  }, userId);
+}
+
+export async function updateAgreementSettings(
+  orgId: string,
+  input: Partial<Pick<AgreementSettings, 'termsBody' | 'termsVersion'>>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
+  const current = await getAgreementSettings(orgId, userId);
+  const updated = await saveSettingsDoc(orgId, 'agreements', { ...current, ...input }, userId);
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/agreements',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
@@ -694,7 +756,15 @@ export async function updateInventorySettings(orgId: string, input: Partial<Inve
 
 export async function getPortalSettings(orgId: string, userId?: string | null): Promise<CustomerPortalSettings> {
   const existing = await getSettingsDoc<CustomerPortalSettings>(orgId, 'portal');
-  if (existing) return existing;
+  const { PHASE1_ACTIVE_PORTAL_FEATURES } = await import('@clcrm/types');
+  if (existing) {
+    return {
+      ...existing,
+      enabledFeatures: existing.enabledFeatures?.length
+        ? existing.enabledFeatures
+        : [...PHASE1_ACTIVE_PORTAL_FEATURES],
+    };
+  }
   return saveSettingsDoc(orgId, 'portal', {
     organizationId: orgId,
     enabled: true,
@@ -703,35 +773,97 @@ export async function getPortalSettings(orgId: string, userId?: string | null): 
     allowSelfScheduling: false,
     allowOnlinePayments: true,
     allowServiceRequests: true,
+    enabledFeatures: [...PHASE1_ACTIVE_PORTAL_FEATURES],
     permissions: { viewProposals: true, viewInvoices: true, approveDesigns: true, requestService: true },
   }, userId);
 }
 
 export async function updatePortalSettings(orgId: string, input: Partial<CustomerPortalSettings>, userId?: string | null, userEmail?: string | null) {
   const current = await getPortalSettings(orgId, userId);
-  const updated = await saveSettingsDoc(orgId, 'portal', { ...current, ...input }, userId);
+  const platform = await import('./creator360').then((m) => m.getPlatformSettings());
+  const available = new Set(platform.availablePortalFeatures ?? []);
+  const next = { ...current, ...input };
+  if (input.enabledFeatures) {
+    next.enabledFeatures = input.enabledFeatures.filter((f) => available.size === 0 || available.has(f));
+  }
+  const updated = await saveSettingsDoc(orgId, 'portal', next, userId);
   await logAudit(orgId, { action: 'update', resource: 'settings/portal', userId, userEmail, details: { fields: Object.keys(input) } });
   return updated;
 }
 
 export async function getIntegrationsSettings(orgId: string, userId?: string | null): Promise<IntegrationsSettings> {
   const existing = await getSettingsDoc<IntegrationsSettings>(orgId, 'integrations');
-  if (existing) return existing;
-
   const org = await getOrganization(orgId);
-  const integrations = DEFAULT_INTEGRATIONS.map((i) => {
-    if (i.id === 'stripe') return { ...i, enabled: !!org?.stripeConnectAccountId, configured: !!org?.stripeConnectAccountId, apiKeySet: !!org?.stripeConnectAccountId };
-    if (i.id === 'twilio') return { ...i, enabled: !!org?.twilioPhoneNumber, configured: !!org?.twilioPhoneNumber, apiKeySet: !!org?.twilioPhoneNumber };
-    return i;
-  });
+  const defaultsById = new Map(DEFAULT_INTEGRATIONS.map((i) => [i.id, i]));
 
+  function normalize(list: typeof DEFAULT_INTEGRATIONS) {
+    const byId = new Map(list.map((i) => [i.id, i]));
+    return DEFAULT_INTEGRATIONS.map((def) => {
+      const prev = byId.get(def.id);
+      const merged = {
+        ...def,
+        ...prev,
+        availability: def.availability,
+        connectable: def.connectable,
+      };
+      if (def.availability === 'planned' || def.availability === 'unavailable') {
+        return { ...merged, enabled: false, configured: false, apiKeySet: false, connectable: false };
+      }
+      if (def.id === 'stripe' && org?.stripeConnectAccountId) {
+        return { ...merged, enabled: true, configured: true, apiKeySet: true, availability: 'connected' as const };
+      }
+      if (def.id === 'twilio' && org?.twilioPhoneNumber) {
+        return { ...merged, enabled: true, configured: true, apiKeySet: true, availability: 'connected' as const };
+      }
+      if (def.id === 'mapbox' && (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.MAPBOX_TOKEN)) {
+        return { ...merged, configured: true, apiKeySet: true, availability: 'configured' as const };
+      }
+      if (def.id === 'resend' && process.env.RESEND_API_KEY) {
+        return { ...merged, configured: true, apiKeySet: true, availability: 'configured' as const };
+      }
+      if (def.id === 'inngest' && process.env.INNGEST_EVENT_KEY) {
+        return { ...merged, configured: true, apiKeySet: true, availability: 'configured' as const };
+      }
+      if (def.id === 'firebase') {
+        return { ...merged, enabled: true, configured: true, apiKeySet: true, availability: 'connected' as const };
+      }
+      return merged;
+    });
+  }
+
+  if (existing?.integrations?.length) {
+    const integrations = normalize(existing.integrations as typeof DEFAULT_INTEGRATIONS);
+    return { ...existing, integrations };
+  }
+
+  void defaultsById;
+  const integrations = normalize([]);
   return saveSettingsDoc(orgId, 'integrations', { organizationId: orgId, integrations }, userId);
 }
 
 export async function updateIntegration(orgId: string, integrationId: string, input: { enabled: boolean; apiKey?: string }, userId?: string | null, userEmail?: string | null) {
   const current = await getIntegrationsSettings(orgId, userId);
+  const target = current.integrations.find((i) => i.id === integrationId);
+  if (!target) throw new Error('Integration not found');
+  if (target.availability === 'planned' || target.availability === 'unavailable' || target.connectable === false) {
+    if (integrationId !== 'stripe' && integrationId !== 'twilio' && integrationId !== 'resend' && integrationId !== 'mapbox') {
+      throw new Error('Integration is not available to enable');
+    }
+  }
+  if (target.availability === 'planned' || target.availability === 'unavailable') {
+    throw new Error('Integration is not available to enable');
+  }
+
   const integrations = current.integrations.map((i) =>
-    i.id === integrationId ? { ...i, enabled: input.enabled, configured: input.enabled, apiKeySet: !!input.apiKey || i.apiKeySet } : i,
+    i.id === integrationId
+      ? {
+          ...i,
+          enabled: input.enabled,
+          configured: input.enabled || i.configured,
+          apiKeySet: !!input.apiKey || i.apiKeySet,
+          availability: input.enabled ? ('connected' as const) : i.availability === 'connected' ? ('configured' as const) : i.availability,
+        }
+      : i,
   );
   const updated = await saveSettingsDoc(orgId, 'integrations', { ...current, integrations }, userId);
 

@@ -11,7 +11,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { getCachedAuthToken, setCachedAuthToken, writeAuthCookie } from '@/lib/auth-token';
+import { getCachedAuthToken, setCachedAuthToken, writeAuthCookie, clearServerSession, establishServerSession } from '@/lib/auth-token';
 
 type AuthState = {
   user: User | null;
@@ -29,6 +29,8 @@ async function syncSession(user: User, forceRefresh = false) {
   const token = await user.getIdToken(forceRefresh);
   setCachedAuthToken(token);
   writeAuthCookie(token);
+  // Don't block sign-in on the session API — sign-in page establishes it with a timeout.
+  void establishServerSession(token).catch(() => {});
   return token;
 }
 
@@ -44,22 +46,24 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
     }
 
     const unsub = onIdTokenChanged(auth, async (nextUser) => {
-      setUser(nextUser);
       try {
         if (nextUser) {
           const token = await nextUser.getIdToken(!getCachedAuthToken());
-          setIdToken(token);
           setCachedAuthToken(token);
           writeAuthCookie(token);
+          setIdToken(token);
+          setUser(nextUser);
         } else {
           setIdToken(null);
           setCachedAuthToken(null);
           writeAuthCookie(null);
+          setUser(null);
         }
       } catch {
         setIdToken(null);
         setCachedAuthToken(null);
         writeAuthCookie(null);
+        setUser(null);
       } finally {
         setLoading(false);
       }
@@ -95,8 +99,7 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
 
   async function signOut() {
     if (!auth) return;
-    setCachedAuthToken(null);
-    writeAuthCookie(null);
+    await clearServerSession();
     await firebaseSignOut(auth);
   }
 

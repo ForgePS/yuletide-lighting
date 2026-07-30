@@ -16,6 +16,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ title: 'Yuletide Lighting Crew' }} />
         <Stack.Screen name="job/[id]" options={{ title: 'Job Details' }} />
+        <Stack.Screen name="(tabs)/signs" options={{ title: 'Sign pickup' }} />
       </Stack>
     </SafeAreaProvider>
   );

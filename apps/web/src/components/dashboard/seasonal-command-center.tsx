@@ -39,7 +39,7 @@ function SectionCard({
   return (
     <div className="card p-6">
       <div className="mb-4 flex items-start justify-between gap-3">
-        <h3 className="font-semibold">{title}</h3>
+        <h3 className="text-base font-semibold tracking-tight text-foreground">{title}</h3>
         {href && linkLabel ? (
           <Link href={href} className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:underline">
             {linkLabel}
@@ -121,9 +121,9 @@ export function SeasonalCommandCenter() {
           <button type="button" onClick={() => refetch()} className="btn-primary">
             Retry
           </button>
-          <a href="/sign-in" className="btn-secondary">
+          <Link href="/sign-in" className="btn-secondary">
             Sign in again
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -160,13 +160,13 @@ export function SeasonalCommandCenter() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {cards.map(({ label, value, icon: Icon, href, color }) => (
-          <Link key={label} href={href} className="card-hover group block p-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link key={label} href={href} className="stat-card group">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{label}</p>
-                <p className="mt-2 text-2xl font-bold tracking-tight">{value}</p>
+                <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">{value}</p>
               </div>
-              <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${color}`}>
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${color}`}>
                 <Icon className="h-4 w-4" />
               </span>
             </div>

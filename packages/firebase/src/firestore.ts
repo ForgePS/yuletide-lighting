@@ -8,7 +8,7 @@ import {
   Timestamp,
   docToData,
 } from './admin';
-import { stripUndefined } from './firestore-utils';
+import { stripUndefined, stripUndefinedDeep } from './firestore-utils';
 
 export type UserRecord = {
   id: string;
@@ -374,14 +374,14 @@ export async function colCreate<T extends Record<string, unknown>>(
   const db = getAdminFirestore();
   const ref = db.collection(`organizations/${orgId}/${collection}`).doc();
   const now = ts();
-  await ref.set({ organizationId: orgId, ...data, createdAt: now, updatedAt: now });
+  await ref.set(stripUndefinedDeep({ organizationId: orgId, ...data, createdAt: now, updatedAt: now }));
   const snap = await ref.get();
   return mapTimestamps({ id: snap.id, ...snap.data()! }) as T & { id: string };
 }
 
 export async function colUpdate(orgId: string, collection: string, id: string, data: Record<string, unknown>) {
   const db = getAdminFirestore();
-  await db.doc(`organizations/${orgId}/${collection}/${id}`).update({ ...data, updatedAt: ts() });
+  await db.doc(`organizations/${orgId}/${collection}/${id}`).update(stripUndefinedDeep({ ...data, updatedAt: ts() }));
   return colGet(orgId, collection, id);
 }
 

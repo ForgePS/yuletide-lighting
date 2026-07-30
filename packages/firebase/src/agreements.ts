@@ -34,7 +34,8 @@ function normalizeAgreementInput(input: MultiYearAgreementInput | UpdateMultiYea
       : undefined;
   return stripUndefined({
     customerId: emptyToNull(input.customerId),
-    customerName: input.customerName?.trim(),
+    customerName:
+      input.customerName !== undefined ? input.customerName.trim() || 'Unassigned' : undefined,
     propertyId: emptyToNull(input.propertyId),
     propertyLabel: emptyToNull(input.propertyLabel),
     title: input.title?.trim(),
@@ -52,6 +53,7 @@ function normalizeAgreementInput(input: MultiYearAgreementInput | UpdateMultiYea
     linkedProjectIds: input.linkedProjectIds,
     notes: emptyToNull(input.notes),
     source: emptyToNull(input.source),
+    signedDocumentUrl: emptyToNull(input.signedDocumentUrl),
     signedAt: input.signedAt ?? undefined,
     cancelledAt: input.cancelledAt ?? undefined,
     nextRenewalDate: input.nextRenewalDate ?? undefined,
@@ -127,6 +129,7 @@ export async function createMultiYearAgreement360(
       autoGenerateProjects: input.autoGenerateProjects ?? true,
       linkedProjectIds: input.linkedProjectIds ?? [],
       source: input.source || 'manual',
+      customerName: input.customerName?.trim() || 'Unassigned',
     }),
     createdAt: now,
     updatedAt: now,
@@ -194,18 +197,40 @@ export async function sendAgreementForSignature360(
   }
 
   const publicToken = agreement.publicToken?.trim() || nanoid(32);
+  let termsVersion = agreement.termsVersion ?? AGREEMENT_TERMS_VERSION;
+  try {
+    const { getAgreementSettings } = await import('./settings360');
+    const settings = await getAgreementSettings(orgId);
+    termsVersion = agreement.termsVersion ?? settings.termsVersion ?? AGREEMENT_TERMS_VERSION;
+  } catch {
+    /* keep default */
+  }
   const db = getAdminFirestore();
   const ref = db.doc(`${agreementsPath(orgId)}/${agreementId}`);
   const patch = {
     status: 'awaiting_signature' as const,
     publicToken,
-    termsVersion: agreement.termsVersion ?? AGREEMENT_TERMS_VERSION,
+    termsVersion,
     updatedAt: ts(),
     updatedBy: userId ?? null,
   };
   await ref.update(patch);
   const updated = await ref.get();
-  return mapDoc({ id: updated.id, ...updated.data()! });
+  const mapped = mapDoc({ id: updated.id, ...updated.data()! });
+  if (agreement.customerId) {
+    try {
+      const { notifyPortalCustomer } = await import('./portal360');
+      await notifyPortalCustomer(orgId, agreement.customerId, {
+        category: 'agreements',
+        title: 'Agreement ready to sign',
+        body: `${agreement.title} is ready for your signature.`,
+        actionUrl: '/sign',
+      });
+    } catch {
+      // Best-effort
+    }
+  }
+  return mapped;
 }
 
 export async function getAgreementByPublicToken(token: string) {
@@ -218,11 +243,20 @@ export async function getAgreementByPublicToken(token: string) {
   const orgId = agreement.organizationId;
   const organization = await getOrganization(orgId);
   let branding: { companyName?: string; brandColor?: string; logoUrl?: string | null } | null = null;
+  let termsVersion = agreement.termsVersion ?? AGREEMENT_TERMS_VERSION;
+  let termsBody =
+    "By signing this agreement you authorize the company to provide seasonal lighting services for the seasons listed above at the agreed annual value. Work will be scheduled according to weather and crew availability. Cancellations and renewals are subject to the company's standard policies.";
   try {
-    const { getBrandingForCustomerFacing } = await import('./settings360');
+    const { getBrandingForCustomerFacing, getAgreementSettings } = await import('./settings360');
     branding = await getBrandingForCustomerFacing(orgId);
+    const agreementSettings = await getAgreementSettings(orgId);
+    termsVersion = agreement.termsVersion ?? agreementSettings.termsVersion ?? AGREEMENT_TERMS_VERSION;
+    const companyName = branding?.companyName || organization?.companyName || 'the company';
+    termsBody = (agreementSettings.termsBody || termsBody).replace(/\{\{\s*companyName\s*\}\}/g, companyName);
   } catch {
     branding = null;
+    const companyName = organization?.companyName || 'the company';
+    termsBody = termsBody.replace(/the company/g, companyName);
   }
 
   return {
@@ -240,7 +274,8 @@ export async function getAgreementByPublicToken(token: string) {
       totalValueCents: agreement.totalValueCents,
       depositPercent: agreement.depositPercent,
       notes: agreement.notes ?? null,
-      termsVersion: agreement.termsVersion ?? AGREEMENT_TERMS_VERSION,
+      termsVersion,
+      termsBody,
       signedAt: agreement.signedAt ?? null,
       signedByName: agreement.signedByName ?? null,
       propertyLabel: agreement.propertyLabel ?? null,

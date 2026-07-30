@@ -1,21 +1,45 @@
 'use client';
 
 import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { trpc } from '@/lib/trpc';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { formatCurrency } from '@/lib/proposal-utils';
 import { formatDate } from '@/lib/customer360-utils';
 import { labelProposalStatus } from '@/lib/proposal-utils';
+import { useToast } from '@/lib/toast';
 
 export default function CustomerSalesPage() {
   const customerId = useParams().customerId as string;
+  const { toast } = useToast();
   const proposalsQuery = trpc.proposals360.list.useQuery();
   const contactsQuery = trpc.contacts360.list.useQuery({ customerId, pageSize: 100 });
   const agreementsQuery = trpc.agreements360.list.useQuery({ customerId, pageSize: 100 });
+  const unassignedQuery = trpc.agreements360.list.useQuery({ page: 1, pageSize: 100 });
+  const customerQuery = trpc.customer360.getById.useQuery({ customerId });
+  const [selectedUnassignedId, setSelectedUnassignedId] = useState('');
+  const updateAgreement = trpc.agreements360.update.useMutation();
+  const createDocument = trpc.customer360.documents.create.useMutation();
 
-  const loading = proposalsQuery.isLoading || contactsQuery.isLoading || agreementsQuery.isLoading;
-  const errored = proposalsQuery.isError || contactsQuery.isError || agreementsQuery.isError;
+  const loading =
+    proposalsQuery.isLoading ||
+    contactsQuery.isLoading ||
+    agreementsQuery.isLoading ||
+    customerQuery.isLoading;
+  const errored =
+    proposalsQuery.isError || contactsQuery.isError || agreementsQuery.isError || customerQuery.isError;
+
+  const unassigned = useMemo(
+    () => (unassignedQuery.data?.items ?? []).filter((item) => !item.customerId),
+    [unassignedQuery.data?.items],
+  );
+
+  const customerName = useMemo(() => {
+    const customer = customerQuery.data;
+    if (!customer) return 'Customer';
+    return customer.businessName || `${customer.firstName} ${customer.lastName}`.trim() || 'Customer';
+  }, [customerQuery.data]);
 
   if (loading) return <LoadingState message="Loading sales..." />;
   if (errored) {
@@ -25,12 +49,14 @@ export default function CustomerSalesPage() {
           proposalsQuery.error?.message ??
           contactsQuery.error?.message ??
           agreementsQuery.error?.message ??
+          customerQuery.error?.message ??
           'Could not load sales data.'
         }
         onRetry={() => {
           void proposalsQuery.refetch();
           void contactsQuery.refetch();
           void agreementsQuery.refetch();
+          void customerQuery.refetch();
         }}
       />
     );
@@ -39,6 +65,38 @@ export default function CustomerSalesPage() {
   const proposals = (proposalsQuery.data ?? []).filter((p) => p.customerId === customerId);
   const contacts = contactsQuery.data?.items ?? [];
   const agreements = agreementsQuery.data?.items ?? [];
+
+  async function attachUnassigned() {
+    if (!selectedUnassignedId) {
+      toast('Select an uploaded agreement', 'error');
+      return;
+    }
+    const agreement = unassigned.find((item) => item.id === selectedUnassignedId);
+    if (!agreement) return;
+    try {
+      await updateAgreement.mutateAsync({
+        agreementId: agreement.id,
+        data: { customerId, customerName },
+      });
+      if (agreement.signedDocumentUrl) {
+        await createDocument.mutateAsync({
+          customerId,
+          title: agreement.title,
+          category: 'agreement',
+          url: agreement.signedDocumentUrl,
+          notes: `Linked to agreement ${agreement.id}`,
+          relatedRecordType: 'agreement',
+          relatedRecordId: agreement.id,
+        });
+      }
+      toast('Agreement attached to customer', 'success');
+      setSelectedUnassignedId('');
+      void agreementsQuery.refetch();
+      void unassignedQuery.refetch();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Could not attach agreement', 'error');
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -99,10 +157,40 @@ export default function CustomerSalesPage() {
             Manage agreements
           </Link>
         </div>
+
+        {unassigned.length > 0 ? (
+          <div className="card flex flex-wrap items-end gap-3 p-4">
+            <label className="min-w-[240px] flex-1 text-sm">
+              <span className="mb-1 block font-medium">Attach uploaded agreement</span>
+              <select
+                className="input"
+                value={selectedUnassignedId}
+                onChange={(e) => setSelectedUnassignedId(e.target.value)}
+              >
+                <option value="">Select unassigned agreement</option>
+                {unassigned.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title} · {item.startSeason}-{item.endSeason}
+                    {item.signedDocumentUrl ? ' · has file' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              disabled={updateAgreement.isPending || !selectedUnassignedId}
+              onClick={() => void attachUnassigned()}
+            >
+              {updateAgreement.isPending ? 'Attaching…' : 'Attach to customer'}
+            </button>
+          </div>
+        ) : null}
+
         {!agreements.length ? (
           <EmptyState
             title="No agreements yet"
-            description="Agreements are created when a proposal is accepted, or added manually."
+            description="Import a signed agreement from Agreements, or attach an unassigned upload here."
           />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
@@ -113,6 +201,7 @@ export default function CustomerSalesPage() {
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Seasons</th>
                   <th className="px-4 py-3 font-medium">Annual</th>
+                  <th className="px-4 py-3 font-medium">File</th>
                   <th className="px-4 py-3 font-medium">Sign link</th>
                 </tr>
               </thead>
@@ -130,6 +219,20 @@ export default function CustomerSalesPage() {
                       {agreement.endSeason !== agreement.startSeason ? `–${agreement.endSeason}` : ''}
                     </td>
                     <td className="px-4 py-3">{formatCurrency(agreement.annualValueCents)}</td>
+                    <td className="px-4 py-3">
+                      {agreement.signedDocumentUrl ? (
+                        <a
+                          href={agreement.signedDocumentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          View file
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {agreement.status === 'awaiting_signature' && agreement.publicToken ? (
                         <Link

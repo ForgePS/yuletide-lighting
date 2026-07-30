@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { Plus, Search, Upload, FileText } from 'lucide-react';
+import { Plus, Search, Upload, FileText, ExternalLink } from 'lucide-react';
 import type { MultiYearAgreement, MultiYearAgreementStatus } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
@@ -33,6 +33,16 @@ function statusClass(status: MultiYearAgreementStatus) {
   if (status === 'renewal_due') return 'bg-amber-500/10 text-amber-700';
   if (status === 'cancelled') return 'bg-red-500/10 text-red-700';
   return 'bg-muted text-muted-foreground';
+}
+
+async function uploadAgreementFile(file: File) {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('folder', 'agreements');
+  const res = await fetch('/api/upload', { method: 'POST', body: form, credentials: 'include' });
+  const data = (await res.json()) as { url?: string; path?: string; error?: string };
+  if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+  return (data.url ?? data.path) as string;
 }
 
 function AgreementForm({ onCancel, onSaved }: { onCancel: () => void; onSaved: () => void }) {
@@ -123,12 +133,240 @@ function AgreementForm({ onCancel, onSaved }: { onCancel: () => void; onSaved: (
   );
 }
 
-function AgreementsTable({ agreements }: { agreements: MultiYearAgreement[] }) {
+function ImportExistingAgreementForm({ onCancel, onSaved }: { onCancel: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
+  const year = new Date().getFullYear();
+  const { data: customers } = trpc.customer360.list.useQuery({ page: 1, pageSize: 100, enrich: 'none' });
+  const [customerId, setCustomerId] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [title, setTitle] = useState(`${year} Holiday Lighting Agreement`);
+  const [optionCode, setOptionCode] = useState('A');
+  const [optionLabel, setOptionLabel] = useState('Imported agreement');
+  const [startSeason, setStartSeason] = useState(year);
+  const [endSeason, setEndSeason] = useState(year + 2);
+  const [annualValue, setAnnualValue] = useState('');
+  const [signedDate, setSignedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [file, setFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const createAgreement = trpc.agreements360.create.useMutation();
+  const createDocument = trpc.customer360.documents.create.useMutation();
+
+  const selectedCustomerName = useMemo(() => {
+    if (!customerId) return customerName.trim() || 'Unassigned';
+    const customer = customers?.items.find((item) => item.id === customerId);
+    if (!customer) return customerName.trim() || 'Unassigned';
+    return customer.businessName || `${customer.firstName} ${customer.lastName}`.trim();
+  }, [customerId, customerName, customers?.items]);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!file) {
+      toast('Choose the signed agreement file to upload', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const signedDocumentUrl = await uploadAgreementFile(file);
+      const signedAt = signedDate ? new Date(`${signedDate}T12:00:00`) : new Date();
+      const agreement = await createAgreement.mutateAsync({
+        customerId: customerId || '',
+        customerName: selectedCustomerName,
+        propertyId: '',
+        propertyLabel: '',
+        title,
+        status: 'active',
+        optionCode,
+        optionLabel,
+        startSeason,
+        endSeason,
+        annualValueCents: Math.round((Number(annualValue) || 0) * 100),
+        depositPercent: 50,
+        autoGenerateProjects: true,
+        linkedProjectIds: [],
+        notes: `Imported from existing file: ${file.name}`,
+        source: 'imported',
+        signedDocumentUrl,
+        signedAt,
+        cancelledAt: null,
+        nextRenewalDate: new Date(`${endSeason}-08-01T12:00:00`),
+      });
+      if (customerId) {
+        await createDocument.mutateAsync({
+          customerId,
+          title,
+          category: 'agreement',
+          url: signedDocumentUrl,
+          notes: `Linked to agreement ${agreement.id}`,
+          relatedRecordType: 'agreement',
+          relatedRecordId: agreement.id,
+        });
+      }
+      toast(customerId ? 'Agreement imported' : 'Agreement uploaded — assign a customer when ready', 'success');
+      onSaved();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Could not import agreement', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="card mt-4 grid gap-4 p-4 md:grid-cols-2" onSubmit={(e) => void handleSubmit(e)}>
+      <div className="md:col-span-2">
+        <h2 className="font-semibold">Import existing agreement</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Upload a signed PDF now. Customer is optional — you can assign it later from Agreements or the customer Sales tab.
+        </p>
+      </div>
+      <select
+        className="input"
+        value={customerId}
+        onChange={(event) => {
+          const value = event.target.value;
+          setCustomerId(value);
+          const customer = customers?.items.find((item) => item.id === value);
+          setCustomerName(customer?.businessName || (customer ? `${customer.firstName} ${customer.lastName}` : ''));
+        }}
+      >
+        <option value="">No customer yet (assign later)</option>
+        {customers?.items.map((customer) => (
+          <option key={customer.id} value={customer.id}>
+            {customer.businessName || `${customer.firstName} ${customer.lastName}`}
+          </option>
+        ))}
+      </select>
+      <input
+        className="input"
+        placeholder="Customer name (optional)"
+        value={customerName}
+        onChange={(e) => setCustomerName(e.target.value)}
+      />
+      <input className="input md:col-span-2" placeholder="Agreement title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      <input className="input" placeholder="Option code (A-E)" value={optionCode} onChange={(e) => setOptionCode(e.target.value)} required />
+      <input className="input" placeholder="Option label" value={optionLabel} onChange={(e) => setOptionLabel(e.target.value)} required />
+      <input className="input" type="number" placeholder="Start season" value={startSeason} onChange={(e) => setStartSeason(Number(e.target.value))} required />
+      <input className="input" type="number" placeholder="End season" value={endSeason} onChange={(e) => setEndSeason(Number(e.target.value))} required />
+      <input className="input" type="number" min="0" step="0.01" placeholder="Annual value" value={annualValue} onChange={(e) => setAnnualValue(e.target.value)} />
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-muted-foreground">Signed date</span>
+        <input className="input" type="date" value={signedDate} onChange={(e) => setSignedDate(e.target.value)} />
+      </label>
+      <label className="block text-sm md:col-span-2">
+        <span className="mb-1 block font-medium text-muted-foreground">Signed agreement file</span>
+        <input
+          className="input"
+          type="file"
+          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,application/pdf,image/*"
+          required
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+        {file ? <p className="mt-1 text-xs text-muted-foreground">{file.name}</p> : null}
+      </label>
+      <div className="flex gap-2 md:col-span-2">
+        <button type="submit" className="btn-primary" disabled={submitting}>
+          {submitting ? 'Importing...' : 'Import agreement'}
+        </button>
+        <button type="button" className="btn-secondary" onClick={onCancel} disabled={submitting}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function AssignCustomerControl({
+  agreement,
+  onAssigned,
+}: {
+  agreement: MultiYearAgreement;
+  onAssigned: () => void;
+}) {
+  const { toast } = useToast();
+  const { data: customers } = trpc.customer360.list.useQuery({ page: 1, pageSize: 100, enrich: 'none' });
+  const [customerId, setCustomerId] = useState('');
+  const [open, setOpen] = useState(false);
+  const update = trpc.agreements360.update.useMutation();
+  const createDocument = trpc.customer360.documents.create.useMutation();
+
+  if (agreement.customerId) return null;
+
+  async function assign() {
+    if (!customerId) {
+      toast('Select a customer', 'error');
+      return;
+    }
+    const customer = customers?.items.find((item) => item.id === customerId);
+    const name =
+      customer?.businessName ||
+      (customer ? `${customer.firstName} ${customer.lastName}`.trim() : '') ||
+      'Customer';
+    try {
+      await update.mutateAsync({
+        agreementId: agreement.id,
+        data: { customerId, customerName: name },
+      });
+      if (agreement.signedDocumentUrl) {
+        await createDocument.mutateAsync({
+          customerId,
+          title: agreement.title,
+          category: 'agreement',
+          url: agreement.signedDocumentUrl,
+          notes: `Linked to agreement ${agreement.id}`,
+          relatedRecordType: 'agreement',
+          relatedRecordId: agreement.id,
+        });
+      }
+      toast('Agreement assigned to customer', 'success');
+      setOpen(false);
+      onAssigned();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Could not assign agreement', 'error');
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="text-sm font-medium text-primary hover:underline" onClick={() => setOpen(true)}>
+        Assign
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex min-w-[200px] flex-col gap-2">
+      <select className="input text-sm" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+        <option value="">Select customer</option>
+        {customers?.items.map((customer) => (
+          <option key={customer.id} value={customer.id}>
+            {customer.businessName || `${customer.firstName} ${customer.lastName}`}
+          </option>
+        ))}
+      </select>
+      <div className="flex gap-1">
+        <button type="button" className="btn-primary px-2 py-1 text-xs" disabled={update.isPending} onClick={() => void assign()}>
+          Save
+        </button>
+        <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AgreementsTable({
+  agreements,
+  onChanged,
+}: {
+  agreements: MultiYearAgreement[];
+  onChanged: () => void;
+}) {
   if (agreements.length === 0) {
     return (
       <EmptyState
         title="No agreements found"
-        description="Create multi-year agreements to track renewals, linked seasonal projects, and future revenue."
+        description="Create or import multi-year agreements to track renewals, linked seasonal projects, and future revenue."
         icon={FileText}
       />
     );
@@ -146,6 +384,8 @@ function AgreementsTable({ agreements }: { agreements: MultiYearAgreement[] }) {
             <th>Annual</th>
             <th>Total</th>
             <th>Projects</th>
+            <th>File</th>
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -161,7 +401,7 @@ function AgreementsTable({ agreements }: { agreements: MultiYearAgreement[] }) {
                     {agreement.customerName}
                   </Link>
                 ) : (
-                  agreement.customerName
+                  <span className="text-amber-700">{agreement.customerName || 'Unassigned'}</span>
                 )}
               </td>
               <td>
@@ -173,6 +413,24 @@ function AgreementsTable({ agreements }: { agreements: MultiYearAgreement[] }) {
               <td>{formatCurrency(agreement.annualValueCents)}</td>
               <td>{formatCurrency(agreement.totalValueCents)}</td>
               <td className="text-muted-foreground">{agreement.linkedProjectIds?.length ?? 0}</td>
+              <td>
+                {agreement.signedDocumentUrl ? (
+                  <a
+                    href={agreement.signedDocumentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                  >
+                    View file
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
+              <td>
+                <AssignCustomerControl agreement={agreement} onAssigned={onChanged} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -184,7 +442,7 @@ function AgreementsTable({ agreements }: { agreements: MultiYearAgreement[] }) {
 export function AgreementsListPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<MultiYearAgreementStatus | ''>('');
-  const [creating, setCreating] = useState(false);
+  const [mode, setMode] = useState<'none' | 'create' | 'import'>('none');
   const { data, isLoading, isError, refetch } = trpc.agreements360.list.useQuery(
     { page: 1, pageSize: 100, search: search || undefined, status: status || undefined },
     { staleTime: 30_000, retry: 1 },
@@ -198,18 +456,43 @@ export function AgreementsListPage() {
           <p className="page-subtitle">{data?.total ?? 0} multi-year agreements</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/app/settings/import" className="btn-secondary">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setMode(mode === 'import' ? 'none' : 'import')}
+          >
             <Upload className="h-4 w-4" />
-            Import data
-          </Link>
-          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+            Import existing
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setMode(mode === 'create' ? 'none' : 'create')}
+          >
             <Plus className="h-4 w-4" />
             New agreement
           </button>
         </div>
       </div>
 
-      {creating && <AgreementForm onCancel={() => setCreating(false)} onSaved={() => { setCreating(false); refetch(); }} />}
+      {mode === 'create' && (
+        <AgreementForm
+          onCancel={() => setMode('none')}
+          onSaved={() => {
+            setMode('none');
+            void refetch();
+          }}
+        />
+      )}
+      {mode === 'import' && (
+        <ImportExistingAgreementForm
+          onCancel={() => setMode('none')}
+          onSaved={() => {
+            setMode('none');
+            void refetch();
+          }}
+        />
+      )}
 
       <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative max-w-md flex-1">
@@ -230,7 +513,9 @@ export function AgreementsListPage() {
       <div className="mt-6">
         {isLoading && <LoadingState message="Loading agreements..." />}
         {isError && <ErrorState message="Could not load agreements." onRetry={() => refetch()} />}
-        {!isLoading && !isError && <AgreementsTable agreements={data?.items ?? []} />}
+        {!isLoading && !isError && (
+          <AgreementsTable agreements={data?.items ?? []} onChanged={() => void refetch()} />
+        )}
       </div>
     </div>
   );

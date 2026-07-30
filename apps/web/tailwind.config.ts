@@ -25,7 +25,9 @@ module.exports = {
           DEFAULT: 'hsl(var(--sidebar))',
           foreground: 'hsl(var(--sidebar-foreground))',
           muted: 'hsl(var(--sidebar-muted))',
+          border: 'hsl(var(--sidebar-border))',
         },
+        info: 'hsl(var(--info))',
         ring: 'hsl(var(--ring))',
       },
       borderRadius: {
@@ -34,7 +36,7 @@ module.exports = {
         '2xl': 'calc(var(--radius) + 8px)',
       },
       boxShadow: {
-        soft: '0 2px 16px -2px rgb(0 0 0 / 0.06), 0 4px 24px -4px rgb(0 0 0 / 0.04)',
+        soft: '0 1px 3px rgb(0 0 0 / 0.04), 0 6px 16px -4px rgb(0 0 0 / 0.06)',
         glow: '0 0 40px -8px hsl(var(--primary) / 0.35)',
       },
       fontFamily: {

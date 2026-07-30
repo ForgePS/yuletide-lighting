@@ -4,7 +4,11 @@ node_modules
 dist
 .env
 .env.local
+.env.staging
 .env.*.local
+apps/web/.env.deploy-backup
+build-theme-check.txt
+turbo-web-ok.txt
 secrets/
 *-firebase-adminsdk*.json
 *.log

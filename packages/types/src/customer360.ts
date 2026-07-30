@@ -344,8 +344,10 @@ export type FollowUpRule = AuditFields & {
 
 export type CustomerPortalAccess = {
   enabled: boolean;
+  status?: string;
   inviteSentAt?: Date | null;
   lastLoginAt?: Date | null;
+  accessUrl?: string | null;
   accessLinkPlaceholder: string;
 };
 

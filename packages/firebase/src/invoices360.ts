@@ -219,7 +219,21 @@ export async function sendInvoice360(orgId: string, invoiceId: string, userId?: 
     updatedBy: userId,
   });
   await logInvoiceActivity(orgId, invoiceId, 'sent', 'Invoice sent', { userId: userId ?? undefined });
-  return getInvoice360(orgId, invoiceId);
+  const invoice = await getInvoice360(orgId, invoiceId);
+  if (invoice?.customerId) {
+    try {
+      const { notifyPortalCustomer } = await import('./portal360');
+      await notifyPortalCustomer(orgId, invoice.customerId, {
+        category: 'billing',
+        title: 'New invoice',
+        body: `Invoice ${invoice.invoiceNumber ?? invoiceId} is ready.`,
+        actionUrl: '/billing',
+      });
+    } catch {
+      // Best-effort
+    }
+  }
+  return invoice;
 }
 
 export async function updateInvoice360(
@@ -466,6 +480,28 @@ export async function ensureReminderTemplates(orgId: string): Promise<ReminderTe
 
 export async function createReminderTemplate(orgId: string, input: Omit<ReminderTemplate, keyof import('@clcrm/types').InvoiceAuditFields | 'id' | 'organizationId' | 'version'>, userId?: string | null) {
   return colCreate(orgId, 'reminderTemplates', { organizationId: orgId, ...input, version: 1, createdBy: userId, updatedBy: userId }) as Promise<ReminderTemplate>;
+}
+
+export async function updateReminderTemplate(
+  orgId: string,
+  templateId: string,
+  input: Partial<{
+    name: string;
+    stage: ReminderTemplate['stage'];
+    channel: ReminderTemplate['channel'];
+    subject: string;
+    body: string;
+    isActive: boolean;
+  }>,
+  userId?: string | null,
+) {
+  const current = await colGet<ReminderTemplate>(orgId, 'reminderTemplates', templateId);
+  await colUpdate(orgId, 'reminderTemplates', templateId, {
+    ...input,
+    version: (current?.version ?? 1) + 1,
+    updatedBy: userId ?? null,
+  });
+  return colGet<ReminderTemplate>(orgId, 'reminderTemplates', templateId);
 }
 
 export async function listReminderTemplates(orgId: string) {

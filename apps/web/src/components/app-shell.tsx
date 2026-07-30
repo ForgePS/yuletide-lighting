@@ -96,10 +96,12 @@ function NavItemLink({
   item,
   pathname,
   onNavigate,
+  customChrome,
 }: {
   item: ShellNavItem;
   pathname: string;
   onNavigate?: () => void;
+  customChrome?: boolean;
 }) {
   const active = item.exact
     ? pathname === item.href
@@ -110,13 +112,17 @@ function NavItemLink({
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        'flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all',
-        active
-          ? 'bg-white/10 text-white shadow-inner'
-          : 'text-sidebar-muted hover:bg-white/5 hover:text-sidebar-foreground',
+        'sidebar-nav-item',
+        customChrome
+          ? active
+            ? 'bg-white/15 text-white shadow-inner'
+            : 'text-white/70 hover:bg-white/10 hover:text-white'
+          : active
+            ? 'sidebar-nav-item-active'
+            : 'sidebar-nav-item-idle',
       )}
     >
-      <Icon className={cn('h-4 w-4 shrink-0', active && 'text-accent')} />
+      <Icon className={cn('h-4 w-4 shrink-0', active && !customChrome && 'text-primary')} />
       {item.label}
     </Link>
   );
@@ -127,11 +133,13 @@ function SectionedNav({
   items,
   userId,
   onNavigate,
+  customChrome,
 }: {
   pathname: string;
   items: ShellNavItem[];
   userId?: string | null;
   onNavigate?: () => void;
+  customChrome?: boolean;
 }) {
   const groups = useMemo(() => {
     const asConfig = items.map((item, index) => ({
@@ -181,7 +189,13 @@ function SectionedNav({
                 {group.items.map((cfg) => {
                   const item = items.find((i) => i.href === cfg.href)!;
                   return (
-                    <NavItemLink key={cfg.href} item={item} pathname={pathname} onNavigate={onNavigate} />
+                    <NavItemLink
+                      key={cfg.href}
+                      item={item}
+                      pathname={pathname}
+                      onNavigate={onNavigate}
+                      customChrome={customChrome}
+                    />
                   );
                 })}
               </div>
@@ -191,8 +205,14 @@ function SectionedNav({
                   type="button"
                   onClick={() => toggleSection(group.section)}
                   className={cn(
-                    'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide',
-                    sectionActive ? 'text-white' : 'text-sidebar-muted hover:text-sidebar-foreground',
+                    'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider',
+                    customChrome
+                      ? sectionActive
+                        ? 'text-white'
+                        : 'text-white/50 hover:text-white/80'
+                      : sectionActive
+                        ? 'text-sidebar-foreground'
+                        : 'text-sidebar-muted hover:text-sidebar-foreground',
                   )}
                   aria-expanded={!isCollapsed}
                 >
@@ -211,6 +231,7 @@ function SectionedNav({
                           item={item}
                           pathname={pathname}
                           onNavigate={onNavigate}
+                          customChrome={customChrome}
                         />
                       );
                     })}
@@ -303,20 +324,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : configNav;
 
   const theme = resolvedNav?.config.theme;
-  const sidebarStyle =
-    theme?.useOrgBrandingInApp && (theme.sidebarBackground || branding?.primaryColor)
+  // EduLearn light sidebar is the default. Only paint a custom sidebar when an
+  // explicit sidebarBackground is set — never fall back to org primary (which
+  // was flooding the shell with brand red and looking like the old dark theme).
+  const explicitSidebarBg = theme?.sidebarBackground?.trim() || null;
+  const sidebarStyle = explicitSidebarBg
+    ? {
+        background: explicitSidebarBg,
+        color: theme?.sidebarText || undefined,
+        ['--accent' as string]:
+          theme?.accentColor ||
+          (theme?.useOrgBrandingInApp ? branding?.accentColor : undefined) ||
+          undefined,
+      }
+    : theme?.useOrgBrandingInApp && (theme.accentColor || branding?.accentColor)
       ? {
-          background: theme.sidebarBackground || branding?.primaryColor || undefined,
-          color: theme.sidebarText || undefined,
           ['--accent' as string]: theme.accentColor || branding?.accentColor || undefined,
         }
-      : theme?.sidebarBackground
-        ? {
-            background: theme.sidebarBackground,
-            color: theme.sidebarText || undefined,
-            ['--accent' as string]: theme.accentColor || undefined,
-          }
-        : undefined;
+      : undefined;
+  const customChrome = Boolean(explicitSidebarBg);
+  const logoSizePx = Math.min(96, Math.max(28, theme?.sidebarLogoSizePx ?? 44));
+  const logoAlign = theme?.sidebarLogoAlign ?? 'left';
+  const logoJustify =
+    logoAlign === 'center' ? 'justify-center' : logoAlign === 'right' ? 'justify-end' : 'justify-start';
+  const logoObject =
+    logoAlign === 'center' ? 'object-center' : logoAlign === 'right' ? 'object-right' : 'object-left';
+  const logoSrc = branding?.primaryLogoUrl || '/logo.svg';
 
   async function handleSignOut() {
     await signOut();
@@ -327,11 +360,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const sidebar = (
     <>
-      <div className="border-b border-white/10 p-4">
+      <div
+        className={cn(
+          'flex border-b p-4',
+          logoJustify,
+          customChrome ? 'border-white/10' : 'border-sidebar-border',
+        )}
+      >
         <SidebarLogo
           href="/app"
           onClick={() => setMobileOpen(false)}
-          imageClassName="h-11 w-full max-w-[200px] object-contain object-left"
+          src={logoSrc}
+          imageClassName={cn('w-auto max-w-full', logoObject)}
+          imageStyle={{ height: logoSizePx, width: 'auto' }}
         />
       </div>
       <nav className="flex-1 overflow-y-auto p-3">
@@ -340,15 +381,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           items={visibleNav}
           userId={user?.uid}
           onNavigate={() => setMobileOpen(false)}
+          customChrome={customChrome}
         />
       </nav>
-      <div className="border-t border-white/10 p-4">
+      <div
+        className={cn(
+          'border-t p-4',
+          customChrome ? 'border-white/10' : 'border-sidebar-border',
+        )}
+      >
         {creatorAccess?.allowed && (
           <>
             <Link
               href="/creator/website"
               onClick={() => setMobileOpen(false)}
-              className="mb-2 flex items-center gap-2 rounded-xl bg-emerald-500/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-200 hover:bg-emerald-500/30"
+              className={cn(
+                'mb-2 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-wide',
+                customChrome
+                  ? 'bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
+                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+              )}
             >
               <Globe className="h-3.5 w-3.5" />
               Website CMS
@@ -356,17 +408,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               href="/creator"
               onClick={() => setMobileOpen(false)}
-              className="mb-3 flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/15"
+              className={cn(
+                'mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-wide',
+                customChrome
+                  ? 'bg-white/10 text-white hover:bg-white/15'
+                  : 'bg-muted text-sidebar-foreground hover:bg-muted/80',
+              )}
             >
               Creator Console
             </Link>
           </>
         )}
-        <div className="rounded-xl bg-white/5 p-3">
-          <p className="truncate text-sm font-medium text-sidebar-foreground">{user?.email}</p>
+        <div
+          className={cn(
+            'rounded-xl p-3',
+            customChrome ? 'bg-white/5' : 'bg-muted/70',
+          )}
+        >
+          <p
+            className={cn(
+              'truncate text-sm font-medium',
+              customChrome ? 'text-white' : 'text-sidebar-foreground',
+            )}
+          >
+            {user?.email}
+          </p>
           <button
             onClick={handleSignOut}
-            className="mt-2 flex items-center gap-2 text-xs font-medium text-sidebar-muted transition-colors hover:text-white"
+            className={cn(
+              'mt-2 flex items-center gap-2 text-xs font-medium transition-colors',
+              customChrome
+                ? 'text-white/60 hover:text-white'
+                : 'text-sidebar-muted hover:text-primary',
+            )}
           >
             <LogOut className="h-3.5 w-3.5" />
             Sign out
@@ -377,20 +451,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-screen bg-muted/40">
-      <aside className="hidden w-64 shrink-0 flex-col bg-sidebar lg:flex" style={sidebarStyle}>
+    <div className="flex min-h-screen app-canvas">
+      <aside
+        className={cn(
+          'hidden w-64 shrink-0 flex-col border-r bg-sidebar lg:flex',
+          customChrome ? 'border-transparent' : 'border-sidebar-border',
+        )}
+        style={sidebarStyle}
+      >
         {sidebar}
       </aside>
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
           />
           <aside
-            className="relative flex h-full w-72 max-w-[85vw] flex-col bg-sidebar shadow-2xl"
+            className={cn(
+              'relative flex h-full w-72 max-w-[85vw] flex-col border-r bg-sidebar shadow-2xl',
+              customChrome ? 'border-transparent' : 'border-sidebar-border',
+            )}
             style={sidebarStyle}
           >
             {sidebar}
@@ -399,7 +482,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-border bg-surface/90 px-4 py-2 backdrop-blur lg:hidden">
+        <header className="app-topbar flex items-center gap-3 px-4 py-2.5 lg:hidden">
           <button
             onClick={() => setMobileOpen(true)}
             className="btn-ghost rounded-lg p-2"
@@ -414,7 +497,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           )}
         </header>
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto app-canvas">
           {showOnboardingBanner ? (
             <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 sm:px-6 lg:px-8">
               Finish setting up your workspace —{' '}
@@ -423,8 +506,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           ) : null}
+          <div className="app-topbar hidden items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:flex lg:px-8">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {yearFilterVisible ? (
+                <>
+                  <span>Viewing</span>
+                  <AnalyticsYearBadge />
+                </>
+              ) : (
+                <span className="font-medium text-foreground">Workspace</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              {yearFilterVisible ? <AnalyticsYearFilter /> : null}
+              <div className="hidden items-center gap-2 border-l border-border pl-3 text-sm text-muted-foreground xl:flex">
+                <span className="max-w-[180px] truncate">{user?.email}</span>
+              </div>
+            </div>
+          </div>
           {yearFilterVisible && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2.5 sm:px-6 lg:px-8">
+            <div className="app-topbar flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 lg:hidden sm:px-6">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>Viewing</span>
                 <AnalyticsYearBadge />

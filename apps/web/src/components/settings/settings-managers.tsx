@@ -7,8 +7,28 @@ import { roleLabel, SETTINGS_ROLES, USER_STATUSES } from '@/lib/settings-utils';
 import { FormField, SaveButton, SettingsError, SettingsLoading, SettingsSection, ToggleField, useSettingsSave } from './settings-widgets';
 import type { PermissionAction, PermissionResource, PermissionMatrix } from '@clcrm/types';
 
-const RESOURCES: PermissionResource[] = ['customers', 'mockups', 'proposals', 'jobs', 'invoices', 'inventory', 'reports', 'settings'];
-const ACTIONS: PermissionAction[] = ['view', 'create', 'edit', 'delete', 'export', 'approve'];
+const ACTIONS: PermissionAction[] = [
+  'view',
+  'create',
+  'edit',
+  'delete',
+  'export',
+  'approve',
+  'archive',
+  'restore',
+  'manage',
+];
+const RESOURCES: PermissionResource[] = [
+  'customers',
+  'mockups',
+  'proposals',
+  'jobs',
+  'invoices',
+  'inventory',
+  'reports',
+  'settings',
+  'sign_tracker',
+];
 
 type UserDraft = {
   email: string;
@@ -331,13 +351,21 @@ export function IntegrationCenterPage() {
               <div key={integration.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4">
                 <div>
                   <p className="font-medium">{integration.name}</p>
-                  <p className="text-xs text-muted-foreground">{integration.configured ? 'Configured' : 'Not configured'}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {integration.availability === 'planned'
+                      ? 'Planned — not available yet'
+                      : integration.availability === 'unavailable'
+                        ? 'Unavailable'
+                        : integration.configured
+                          ? 'Configured'
+                          : 'Not configured'}
+                  </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  {integration.id === 'stripe' && (
+                  {integration.id === 'stripe' && integration.connectable !== false && (
                     <button type="button" className="btn-secondary text-sm" onClick={connectStripe}>Connect Stripe</button>
                   )}
-                  {!integration.configured && integration.id !== 'stripe' && (
+                  {integration.connectable && !integration.configured && integration.id !== 'stripe' && (
                     <input
                       className="input text-sm"
                       placeholder="API key"
@@ -345,11 +373,15 @@ export function IntegrationCenterPage() {
                       onChange={(e) => setApiKeys({ ...apiKeys, [integration.id]: e.target.value })}
                     />
                   )}
-                  <ToggleField
-                    label="Enabled"
-                    checked={integration.enabled}
-                    onChange={(v) => update.mutate({ integrationId: integration.id, enabled: v, apiKey: apiKeys[integration.id] })}
-                  />
+                  {integration.availability === 'planned' || integration.availability === 'unavailable' ? (
+                    <span className="text-xs text-muted-foreground">Connect disabled</span>
+                  ) : (
+                    <ToggleField
+                      label="Enabled"
+                      checked={Boolean(integration.enabled)}
+                      onChange={(v) => update.mutate({ integrationId: integration.id, enabled: v, apiKey: apiKeys[integration.id] })}
+                    />
+                  )}
                 </div>
               </div>
             ))}

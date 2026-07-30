@@ -19,7 +19,7 @@ import {
   UserCog,
   Users,
 } from 'lucide-react';
-import { CRM_PLATFORM_MODULES, type CrmPlatformModuleKey } from '@clcrm/types';
+import { CRM_PLATFORM_MODULES, PORTAL_FEATURES, type CrmPlatformModuleKey, type PortalFeatureKey } from '@clcrm/types';
 import { formatCurrency } from '@clcrm/ui';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
@@ -288,6 +288,7 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
     hostingUrl: '',
     docsUrl: '',
     availableModules: [] as CrmPlatformModuleKey[],
+    availablePortalFeatures: [] as PortalFeatureKey[],
     signupEnabled: true,
     maintenanceMode: false,
     maintenanceMessage: '',
@@ -309,6 +310,7 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
         hostingUrl: data.hostingUrl ?? '',
         docsUrl: data.docsUrl ?? '',
         availableModules: data.availableModules ?? [],
+        availablePortalFeatures: data.availablePortalFeatures ?? [],
         signupEnabled: data.signupEnabled,
         maintenanceMode: data.maintenanceMode,
         maintenanceMessage: data.maintenanceMessage,
@@ -325,6 +327,15 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
       availableModules: prev.availableModules.includes(key)
         ? prev.availableModules.filter((k) => k !== key)
         : [...prev.availableModules, key],
+    }));
+  }
+
+  function togglePortalFeature(key: PortalFeatureKey) {
+    setForm((prev) => ({
+      ...prev,
+      availablePortalFeatures: prev.availablePortalFeatures.includes(key)
+        ? prev.availablePortalFeatures.filter((k) => k !== key)
+        : [...prev.availablePortalFeatures, key],
     }));
   }
 
@@ -352,6 +363,9 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
             docsUrl: form.docsUrl || null,
             announcementBanner: form.announcementBanner || null,
             availableModules: form.availableModules.length ? form.availableModules : CRM_PLATFORM_MODULES.map((m) => m.key),
+            availablePortalFeatures: form.availablePortalFeatures.length
+              ? form.availablePortalFeatures
+              : PORTAL_FEATURES.map((f) => f.key),
           });
         }}
       >
@@ -384,6 +398,29 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
                 <span>
                   <span className="font-medium">{mod.label}</span>
                   <span className="block text-xs text-muted-foreground">{mod.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm font-medium">Customer Portal features</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Creator-controlled portal features. Tenants can only enable a subset of these.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {PORTAL_FEATURES.map((feat) => (
+              <label key={feat.key} className="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted/30">
+                <input
+                  type="checkbox"
+                  checked={form.availablePortalFeatures.includes(feat.key)}
+                  onChange={() => togglePortalFeature(feat.key)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">{feat.label}</span>
+                  <span className="block text-xs text-muted-foreground">{feat.description}</span>
                 </span>
               </label>
             ))}

@@ -83,11 +83,9 @@ export default function PublicAgreementSignPage() {
         <div className="mt-6 rounded-lg border border-border p-4 text-sm">
           <h3 className="font-medium">Terms & conditions</h3>
           <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
-            By signing this agreement you authorize {organization?.companyName ?? 'the company'} to provide
-            seasonal lighting services for the seasons listed above at the agreed annual value. Work will be
-            scheduled according to weather and crew availability. Cancellations and renewals are subject to
-            the company&apos;s standard policies. Terms version: {agreement.termsVersion}.
+            {agreement.termsBody}
           </p>
+          <p className="mt-3 text-xs text-muted-foreground">Terms version: {agreement.termsVersion}</p>
         </div>
 
         {alreadySigned ? (

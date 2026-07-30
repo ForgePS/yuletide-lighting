@@ -75,12 +75,28 @@ export const mockups360Router = router({
   }),
 
   ai: router({
-    detect: officeProcedure.input(z.object({ mockupId: z.string() })).mutation(({ ctx, input }) =>
-      runAiDetection(ctx.auth.organizationId, input.mockupId, ctx.auth.userId),
-    ),
-    design: officeProcedure.input(aiDesignSchema).mutation(({ ctx, input }) =>
-      aiDesignAssistant(ctx.auth.organizationId, input.style, input.mockupId, ctx.auth.userId),
-    ),
+    detect: officeProcedure.input(z.object({ mockupId: z.string() })).mutation(async ({ ctx, input }) => {
+      try {
+        return await runAiDetection(ctx.auth.organizationId, input.mockupId, ctx.auth.userId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'AI unavailable';
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: message.startsWith('AI_') ? message : 'AI_PROVIDER_NOT_CONFIGURED',
+        });
+      }
+    }),
+    design: officeProcedure.input(aiDesignSchema).mutation(async ({ ctx, input }) => {
+      try {
+        return await aiDesignAssistant(ctx.auth.organizationId, input.style, input.mockupId, ctx.auth.userId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'AI unavailable';
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: message.startsWith('AI_') ? message : 'AI_PROVIDER_NOT_CONFIGURED',
+        });
+      }
+    }),
   }),
 
   materials: router({

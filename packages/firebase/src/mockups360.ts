@@ -11,11 +11,9 @@ import type {
   MockupVersion,
 } from '@clcrm/types';
 import {
-  aiGenerateDesign,
   calculateMaterials,
   DEFAULT_DECORATION_LIBRARY,
   DEFAULT_DESIGN_TEMPLATES,
-  mockAiPropertyDetection,
   strandPixelLength,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
@@ -171,15 +169,15 @@ export async function setMockupScale(orgId: string, mockupId: string, knownFeet:
 }
 
 export async function runAiDetection(orgId: string, mockupId: string, userId?: string | null) {
-  const mockup = await getMockup360(orgId, mockupId);
-  if (!mockup) throw new Error('Mockup not found');
-  const result = mockAiPropertyDetection(mockup.imageUrl);
-  await colUpdate(orgId, 'mockups', mockupId, {
-    aiDetectionComplete: true,
-    detectedFeatures: result.features,
-    updatedBy: userId,
-  });
-  return { ...result, mockup: await getMockup360(orgId, mockupId) };
+  const provider = (process.env.AI_PROVIDER || '').trim();
+  const apiKey = (process.env.AI_API_KEY || '').trim();
+  if (!provider || !apiKey) {
+    throw new Error('AI_PROVIDER_NOT_CONFIGURED');
+  }
+  void orgId;
+  void mockupId;
+  void userId;
+  throw new Error('AI_PROVIDER_NOT_IMPLEMENTED');
 }
 
 export async function generateMaterials(orgId: string, mockupId: string): Promise<MaterialList> {
@@ -292,11 +290,16 @@ export async function applyDesignTemplate(orgId: string, mockupId: string, templ
 }
 
 export async function aiDesignAssistant(orgId: string, style: string, mockupId?: string, userId?: string | null) {
-  const result = aiGenerateDesign(style);
-  if (mockupId) {
-    await updateMockup360(orgId, mockupId, { strands: result.strands, name: result.designName }, userId);
+  const provider = (process.env.AI_PROVIDER || '').trim();
+  const apiKey = (process.env.AI_API_KEY || '').trim();
+  if (!provider || !apiKey) {
+    throw new Error('AI_PROVIDER_NOT_CONFIGURED');
   }
-  return result;
+  void orgId;
+  void style;
+  void mockupId;
+  void userId;
+  throw new Error('AI_PROVIDER_NOT_IMPLEMENTED');
 }
 
 export async function createProposalFromMockup(
@@ -399,6 +402,20 @@ export async function sendMockupForApproval(orgId: string, mockupId: string, use
     sentForApprovalAt: new Date(),
     updatedBy: userId,
   });
+  const mockup = await getMockup360(orgId, mockupId);
+  if (mockup?.customerId) {
+    try {
+      const { notifyPortalCustomer } = await import('./portal360');
+      await notifyPortalCustomer(orgId, mockup.customerId, {
+        category: 'mockups',
+        title: 'Design ready for review',
+        body: `${mockup.name} is ready for your feedback.`,
+        actionUrl: '/mockups',
+      });
+    } catch {
+      // Best-effort
+    }
+  }
   return { token, approvalUrl: mockupApprovalUrl(token) };
 }
 

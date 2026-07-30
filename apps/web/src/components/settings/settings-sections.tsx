@@ -568,33 +568,96 @@ export function InventorySettingsPage() {
 
 export function CustomerPortalSettingsPage() {
   const { data, isLoading, refetch } = trpc.settings360.portal.useQuery();
+  const { data: features } = trpc.portal360.features.useQuery();
   const saveHandlers = useSettingsSave(() => refetch());
   const update = trpc.settings360.updatePortal.useMutation(saveHandlers);
-  const [form, setForm] = useState({ enabled: true, allowSelfScheduling: false, allowOnlinePayments: true, allowServiceRequests: true, viewProposals: true, viewInvoices: true, approveDesigns: true, requestService: true });
+  const [form, setForm] = useState({
+    enabled: true,
+    allowSelfScheduling: false,
+    allowOnlinePayments: true,
+    allowServiceRequests: true,
+    viewProposals: true,
+    viewInvoices: true,
+    approveDesigns: true,
+    requestService: true,
+    enabledFeatures: [] as string[],
+  });
 
   useEffect(() => {
     if (data) setForm({
-      enabled: data.enabled, allowSelfScheduling: data.allowSelfScheduling, allowOnlinePayments: data.allowOnlinePayments, allowServiceRequests: data.allowServiceRequests,
-      viewProposals: data.permissions.viewProposals, viewInvoices: data.permissions.viewInvoices, approveDesigns: data.permissions.approveDesigns, requestService: data.permissions.requestService,
+      enabled: data.enabled,
+      allowSelfScheduling: data.allowSelfScheduling,
+      allowOnlinePayments: data.allowOnlinePayments,
+      allowServiceRequests: data.allowServiceRequests,
+      viewProposals: data.permissions.viewProposals,
+      viewInvoices: data.permissions.viewInvoices,
+      approveDesigns: data.permissions.approveDesigns,
+      requestService: data.permissions.requestService,
+      enabledFeatures: data.enabledFeatures ?? features?.enabled ?? [],
     });
-  }, [data]);
+  }, [data, features?.enabled]);
   if (isLoading) return <SettingsLoading />;
   if (!data) return null;
+
+  const available = features?.available ?? form.enabledFeatures;
+
+  function toggleFeature(key: string) {
+    if (!available.includes(key as never) && !(features?.available ?? []).includes(key as never)) return;
+    setForm((prev) => ({
+      ...prev,
+      enabledFeatures: prev.enabledFeatures.includes(key)
+        ? prev.enabledFeatures.filter((k) => k !== key)
+        : [...prev.enabledFeatures, key],
+    }));
+  }
 
   return (
     <form className="space-y-6" onSubmit={(e) => {
       e.preventDefault();
       update.mutate({
-        enabled: form.enabled, allowSelfScheduling: form.allowSelfScheduling, allowOnlinePayments: form.allowOnlinePayments, allowServiceRequests: form.allowServiceRequests,
-        permissions: { viewProposals: form.viewProposals, viewInvoices: form.viewInvoices, approveDesigns: form.approveDesigns, requestService: form.requestService },
+        enabled: form.enabled,
+        allowSelfScheduling: form.allowSelfScheduling,
+        allowOnlinePayments: form.allowOnlinePayments,
+        allowServiceRequests: form.allowServiceRequests,
+        enabledFeatures: form.enabledFeatures as never,
+        permissions: {
+          viewProposals: form.viewProposals,
+          viewInvoices: form.viewInvoices,
+          approveDesigns: form.approveDesigns,
+          requestService: form.requestService,
+        },
       });
     }}>
       <SettingsSection title="Portal access">
+        <p className="mb-3 text-sm text-muted-foreground">
+          Manage org-wide QR codes and scan analytics in{' '}
+          <Link href="/app/settings/portal-qr" className="text-primary hover:underline">Portal QR</Link>
+          {' '}or bulk-generate from{' '}
+          <Link href="/app/customers/portal-qr" className="text-primary hover:underline">Customers → Bulk portal QR</Link>.
+        </p>
         <div className="space-y-2">
           <ToggleField label="Portal enabled" checked={form.enabled} onChange={(v) => setForm({ ...form, enabled: v })} />
           <ToggleField label="Self scheduling" checked={form.allowSelfScheduling} onChange={(v) => setForm({ ...form, allowSelfScheduling: v })} />
           <ToggleField label="Online payments" checked={form.allowOnlinePayments} onChange={(v) => setForm({ ...form, allowOnlinePayments: v })} />
           <ToggleField label="Service requests" checked={form.allowServiceRequests} onChange={(v) => setForm({ ...form, allowServiceRequests: v })} />
+        </div>
+      </SettingsSection>
+      <SettingsSection title="Portal features" description="Only features allowed by the platform Creator can be enabled.">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(features?.available ?? []).map((key) => {
+            const meta = PORTAL_FEATURE_LABELS[key] ?? key;
+            return (
+              <ToggleField
+                key={key}
+                label={meta}
+                checked={form.enabledFeatures.includes(key)}
+                onChange={() => toggleFeature(key)}
+              />
+            );
+          })}
+          {(features?.available?.length ?? 0) === 0 && (
+            <p className="text-sm text-muted-foreground">No portal features available from Creator.</p>
+          )}
         </div>
       </SettingsSection>
       <SettingsSection title="Customer permissions">
@@ -609,6 +672,28 @@ export function CustomerPortalSettingsPage() {
     </form>
   );
 }
+
+const PORTAL_FEATURE_LABELS: Record<string, string> = {
+  dashboard: 'Dashboard',
+  properties: 'Properties',
+  consultations: 'Consultations',
+  mockups: 'Designs & mockups',
+  proposals: 'Proposals',
+  agreements: 'Agreements',
+  e_sign: 'E-sign',
+  billing: 'Billing',
+  online_payments: 'Online payments',
+  scheduling: 'Scheduling',
+  install_tracking: 'Install tracking',
+  service_requests: 'Service requests',
+  takedowns: 'Takedowns',
+  storage: 'Storage',
+  messaging: 'Messaging',
+  documents: 'Documents',
+  reviews: 'Reviews',
+  referrals: 'Referrals',
+  rebooking: 'Rebooking',
+};
 
 export function AiSettingsPage() {
   const { data, isLoading, refetch } = trpc.settings360.ai.useQuery();
@@ -755,10 +840,69 @@ export function ReportsSettingsPage() {
 
 const TEMPLATE_LINKS = [
   { href: '/app/settings/proposals', title: 'Proposal terms & layout', description: 'Default terms, deposit %, expiration, and PDF layout.' },
+  { href: '/app/settings/agreements', title: 'Agreement terms', description: 'Customer-facing terms shown when signing multi-year agreements.' },
   { href: '/app/settings/invoices', title: 'Invoice layout', description: 'Payment terms, tax rate, deposit rules, and invoice PDF layout.' },
   { href: '/app/settings/branding', title: 'Branding & logos', description: 'Company colors and logos used on proposals, invoices, and portal.' },
-  { href: '/app/messages/templates', title: 'Email & SMS templates', description: 'Customer messaging templates for campaigns and automations.' },
+  { href: '/app/messages/templates', title: 'Email & SMS templates', description: 'Edit customer messaging templates for campaigns and automations.' },
+  { href: '/app/invoices/settings', title: 'Invoice reminder copy', description: 'Edit collection reminder subjects and bodies by stage.' },
+  { href: '/app/proposals/templates', title: 'Proposal starter templates', description: 'Edit residential, commercial, and HOA proposal starters.' },
+  { href: '/app/messages/automations', title: 'Message automations', description: 'Edit automation message bodies, delays, and enable/disable rules.' },
 ] as const;
+
+export function AgreementSettingsPage() {
+  const { data, isLoading, refetch } = trpc.settings360.agreements.useQuery();
+  const saveHandlers = useSettingsSave(() => refetch());
+  const update = trpc.settings360.updateAgreements.useMutation(saveHandlers);
+  const [form, setForm] = useState({ termsBody: '', termsVersion: '2026.1' });
+
+  useEffect(() => {
+    if (data) {
+      setForm({
+        termsBody: data.termsBody,
+        termsVersion: data.termsVersion,
+      });
+    }
+  }, [data]);
+
+  if (isLoading) return <SettingsLoading />;
+  if (!data) return null;
+
+  return (
+    <form
+      className="space-y-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        update.mutate(form);
+      }}
+    >
+      <SettingsSection
+        title="Agreement terms"
+        description="These terms appear on the public agreement signing page. Use {{companyName}} to insert your company name."
+      >
+        <div className="grid gap-4">
+          <FormField label="Terms version">
+            <input
+              className="input w-full max-w-xs"
+              value={form.termsVersion}
+              onChange={(e) => setForm({ ...form, termsVersion: e.target.value })}
+              required
+            />
+          </FormField>
+          <FormField label="Terms & conditions">
+            <textarea
+              className="input mt-1 w-full font-mono text-sm"
+              rows={12}
+              value={form.termsBody}
+              onChange={(e) => setForm({ ...form, termsBody: e.target.value })}
+              required
+            />
+          </FormField>
+        </div>
+      </SettingsSection>
+      <SaveButton saving={update.isPending} />
+    </form>
+  );
+}
 
 export function TemplatesSettingsPage() {
   const { data: proposals, isLoading: proposalsLoading } = trpc.settings360.proposals.useQuery();

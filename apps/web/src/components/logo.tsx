@@ -22,7 +22,7 @@ export function Logo({
   href = '/',
   className,
   imageClassName,
-  src = '/logo.png',
+  src = '/logo.svg',
   variant = 'full',
   priority = false,
   onClick,

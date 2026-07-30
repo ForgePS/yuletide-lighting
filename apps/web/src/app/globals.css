@@ -3,21 +3,24 @@
 @import 'tailwindcss/utilities';
 
 :root {
-  --background: 40 33% 98%;
+  /* EduLearn-style cool canvas + Yuletide red primary */
+  --background: 220 20% 97%;
   --foreground: 224 32% 12%;
   --surface: 0 0% 100%;
-  --muted: 220 16% 96%;
-  --muted-foreground: 220 9% 46%;
+  --muted: 220 16% 94%;
+  --muted-foreground: 220 9% 42%;
   --border: 220 14% 90%;
   --primary: 346 77% 48%;
   --primary-foreground: 0 0% 100%;
   --accent: 38 92% 50%;
   --accent-foreground: 224 32% 12%;
-  --sidebar: 224 32% 10%;
-  --sidebar-foreground: 220 14% 96%;
-  --sidebar-muted: 220 10% 65%;
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 224 32% 14%;
+  --sidebar-muted: 220 9% 46%;
+  --sidebar-border: 220 14% 91%;
+  --info: 210 90% 52%;
   --ring: 346 77% 48%;
-  --radius: 0.875rem;
+  --radius: 0.75rem;
 }
 
 @layer base {
@@ -71,11 +74,36 @@
   }
 
   .card {
-    @apply rounded-2xl border border-border/70 bg-surface shadow-sm shadow-black/[0.03];
+    @apply rounded-2xl border border-border/80 bg-surface shadow-soft;
   }
 
   .card-hover {
     @apply card transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md hover:shadow-primary/5;
+  }
+
+  .stat-card {
+    @apply card-hover block p-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+
+  .app-canvas {
+    @apply bg-background;
+  }
+
+  .app-topbar {
+    @apply border-b border-border bg-surface;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.03);
+  }
+
+  .sidebar-nav-item {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all;
+  }
+
+  .sidebar-nav-item-active {
+    @apply bg-primary/10 text-primary;
+  }
+
+  .sidebar-nav-item-idle {
+    @apply text-sidebar-muted hover:bg-muted hover:text-sidebar-foreground;
   }
 
   .page-header {
@@ -90,8 +118,9 @@
     @apply mt-1 text-sm text-muted-foreground sm:text-base;
   }
 
+  /* Marketing-only atmosphere — keep warm brand wash independent of admin canvas */
   .mesh-bg {
-    background-color: hsl(var(--background));
+    background-color: hsl(40 33% 98%);
     background-image:
       radial-gradient(at 0% 0%, hsl(346 77% 48% / 0.08) 0, transparent 50%),
       radial-gradient(at 100% 0%, hsl(38 92% 50% / 0.1) 0, transparent 45%),

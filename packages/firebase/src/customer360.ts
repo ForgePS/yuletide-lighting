@@ -687,8 +687,10 @@ export function getCustomerPortalAccess(customer: CustomerRecord): CustomerPorta
   const accessUrl = customer.portalToken ? `${root}/portal/${customer.portalToken}` : null;
   return {
     enabled: customer.portalEnabled ?? false,
+    status: customer.portalEnabled ? 'active' : 'not_invited',
     inviteSentAt: customer.portalInviteSentAt ?? null,
     lastLoginAt: customer.portalLastLoginAt ?? null,
+    accessUrl,
     accessLinkPlaceholder: accessUrl ?? `${root}/portal/login`,
   };
 }

@@ -179,20 +179,82 @@ export function ReminderEngine() {
 }
 
 export function ReminderTemplateManager() {
+  const { toast } = useToast();
+  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.invoices360.reminders.templates.list.useQuery();
+  const update = trpc.invoices360.reminders.templates.update.useMutation({
+    onSuccess: () => {
+      toast('Reminder template saved', 'success');
+      void utils.invoices360.reminders.templates.list.invalidate();
+      setEditingId(null);
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ name: '', subject: '', body: '' });
+
   if (isLoading) return <LoadingState />;
   return (
     <div className="space-y-4">
-      {data?.map((t) => (
-        <div key={t.id} className="card p-4">
-          <div className="flex items-center justify-between">
-            <p className="font-medium">{t.name}</p>
-            <span className="text-xs text-muted-foreground">v{t.version} · {t.channel}</span>
+      <div>
+        <h2 className="font-semibold">Reminder templates</h2>
+        <p className="text-sm text-muted-foreground">Edit the copy used for invoice collection reminders.</p>
+      </div>
+      {data?.map((t) => {
+        const editing = editingId === t.id;
+        return (
+          <div key={t.id} className="card space-y-3 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-medium">{t.name}</p>
+              <span className="text-xs text-muted-foreground">v{t.version} · {t.channel}</span>
+            </div>
+            {editing ? (
+              <>
+                <input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+                <input className="input" value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="Subject" />
+                <textarea
+                  className="input min-h-[120px] font-mono text-sm"
+                  value={draft.body}
+                  onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="btn-primary text-sm"
+                    disabled={update.isPending}
+                    onClick={() =>
+                      update.mutate({
+                        templateId: t.id,
+                        data: { name: draft.name, subject: draft.subject, body: draft.body },
+                      })
+                    }
+                  >
+                    Save
+                  </button>
+                  <button type="button" className="btn-secondary text-sm" onClick={() => setEditingId(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-sm font-medium">{t.subject}</p>
+                <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{t.body}</pre>
+                <button
+                  type="button"
+                  className="btn-secondary text-sm"
+                  onClick={() => {
+                    setEditingId(t.id);
+                    setDraft({ name: t.name, subject: t.subject, body: t.body });
+                  }}
+                >
+                  Edit
+                </button>
+              </>
+            )}
           </div>
-          <p className="mt-1 text-sm font-medium">{t.subject}</p>
-          <pre className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{t.body}</pre>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

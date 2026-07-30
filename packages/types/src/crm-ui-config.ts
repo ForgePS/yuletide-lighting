@@ -20,6 +20,7 @@ export type CrmNavItemKey =
   | 'messages'
   | 'automation'
   | 'reviews'
+  | 'sign_tracker'
   | 'schedule'
   | 'time_clock'
   | 'routes'
@@ -74,11 +75,17 @@ export type CrmNavItemConfig = {
 
 export type CrmLabelOverrides = Record<string, string>;
 
+export type CrmSidebarLogoAlign = 'left' | 'center' | 'right';
+
 export type CrmUiThemeOverrides = {
   sidebarBackground?: string | null;
   sidebarText?: string | null;
   accentColor?: string | null;
   useOrgBrandingInApp?: boolean;
+  /** Sidebar header logo height in pixels (28–96). */
+  sidebarLogoSizePx?: number | null;
+  /** Horizontal alignment of the sidebar logo. */
+  sidebarLogoAlign?: CrmSidebarLogoAlign | null;
 };
 
 export type CrmCustomFieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'textarea';
@@ -126,9 +133,10 @@ export const DEFAULT_CRM_NAV_ITEMS: CrmNavItemConfig[] = [
   { key: 'invoices', label: 'Invoices', href: '/app/invoices', enabled: true, order: 19, section: 'finance', moduleKey: 'invoices', permissionResource: 'invoices' },
   { key: 'messages', label: 'Messages', href: '/app/messages', enabled: true, order: 20, section: 'marketing', moduleKey: 'messages' },
   { key: 'reviews', label: 'Reviews & Referrals', href: '/app/reviews', enabled: true, order: 21, section: 'marketing', moduleKey: 'reviews' },
-  { key: 'automation', label: 'Automation', href: '/app/automation', enabled: true, order: 22, section: 'administration', moduleKey: 'automation' },
-  { key: 'reports', label: 'Reports', href: '/app/reports', enabled: true, order: 23, section: 'administration', moduleKey: 'reports', permissionResource: 'reports' },
-  { key: 'settings', label: 'Settings', href: '/app/settings', enabled: true, order: 24, section: 'administration' },
+  { key: 'sign_tracker', label: 'Sign Tracker', href: '/app/marketing/sign-tracker', enabled: true, order: 22, section: 'marketing', moduleKey: 'sign_tracker', permissionResource: 'sign_tracker' },
+  { key: 'automation', label: 'Automation', href: '/app/automation', enabled: true, order: 23, section: 'administration', moduleKey: 'automation' },
+  { key: 'reports', label: 'Reports', href: '/app/reports', enabled: true, order: 24, section: 'administration', moduleKey: 'reports', permissionResource: 'reports' },
+  { key: 'settings', label: 'Settings', href: '/app/settings', enabled: true, order: 25, section: 'administration' },
 ];
 
 export const DEFAULT_CRM_UI_CONFIG: CrmUiConfig = {
@@ -138,7 +146,9 @@ export const DEFAULT_CRM_UI_CONFIG: CrmUiConfig = {
     sidebarBackground: null,
     sidebarText: null,
     accentColor: null,
-    useOrgBrandingInApp: true,
+    useOrgBrandingInApp: false,
+    sidebarLogoSizePx: 44,
+    sidebarLogoAlign: 'left',
   },
   customFields: [],
   updatedAt: new Date(0),
@@ -150,17 +160,17 @@ function withSectionDefaults(item: CrmNavItemConfig): CrmNavItemConfig {
   return { ...item, section: fromDefault?.section ?? 'administration' };
 }
 
-/** Resolve visible nav for an org given modules + UI config (+ optional permissions). */
+/** Resolve visible nav for an org given modules + UI config (+ optional permissions). Fail closed on modules. */
 export function resolveCrmNavItems(
   config: CrmUiConfig,
   enabledModules: CrmPlatformModuleKey[] | null | undefined,
   permissions?: PermissionMatrix | null,
 ): CrmNavItemConfig[] {
-  const modules = enabledModules?.length ? new Set(enabledModules) : null;
+  const modules = Array.isArray(enabledModules) ? new Set(enabledModules) : new Set<CrmPlatformModuleKey>();
   return [...config.navItems]
     .map(withSectionDefaults)
     .filter((item) => item.enabled)
-    .filter((item) => !item.moduleKey || !modules || modules.has(item.moduleKey))
+    .filter((item) => !item.moduleKey || modules.has(item.moduleKey))
     .filter((item) => {
       if (!permissions || !item.permissionResource) return true;
       // Settings: owners/admins often have view; if matrix lacks view but has edit, still show

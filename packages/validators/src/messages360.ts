@@ -61,6 +61,18 @@ export const createTemplate360Schema = z.object({
   body: z.string().min(1).max(10000),
 });
 
+export const updateTemplate360Schema = createTemplate360Schema.partial().extend({
+  isActive: z.boolean().optional(),
+});
+
+export const updateAutomation360Schema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  subject: z.string().max(500).optional().nullable(),
+  body: z.string().min(1).max(10000).optional(),
+  delayDays: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+});
+
 export const createCampaignSchema = z.object({
   name: z.string().min(1).max(200),
   campaignType: campaignTypeSchema,

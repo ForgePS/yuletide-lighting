@@ -22,8 +22,8 @@ export const metadata: Metadata = {
   description:
     'All-in-one CRM for Christmas light installers. Proposals, invoicing, inventory, scheduling, and crew management.',
   icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
+    icon: '/logo.svg',
+    apple: '/logo.svg',
   },
   manifest: '/manifest.webmanifest',
   appleWebApp: {

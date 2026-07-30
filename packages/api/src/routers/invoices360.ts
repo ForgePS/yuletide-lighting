@@ -15,6 +15,7 @@ import {
   controlReminders360,
   listReminderTemplates,
   createReminderTemplate,
+  updateReminderTemplate,
   createDispute360,
   updateDispute360,
   listDisputes360,
@@ -42,6 +43,7 @@ import {
   updateDisputeSchema,
   reminderControlSchema,
   createReminderTemplateSchema,
+  updateReminderTemplateSchema,
   generateStatementSchema,
   aiCollectionsQuerySchema,
   updateInvoiceStatusSchema,
@@ -148,6 +150,11 @@ export const invoices360Router = router({
       create: officeProcedure.input(createReminderTemplateSchema).mutation(({ ctx, input }) =>
         createReminderTemplate(ctx.auth.organizationId, { ...input, isActive: true } as never, ctx.auth.userId),
       ),
+      update: officeProcedure
+        .input(z.object({ templateId: z.string(), data: updateReminderTemplateSchema.extend({ isActive: z.boolean().optional() }) }))
+        .mutation(({ ctx, input }) =>
+          updateReminderTemplate(ctx.auth.organizationId, input.templateId, input.data, ctx.auth.userId),
+        ),
     }),
   }),
 

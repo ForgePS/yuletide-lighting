@@ -1,4 +1,6 @@
 import type { SubscriptionPlan, SubscriptionStatus } from './billing';
+import type { PortalFeatureKey } from './portal';
+import { DEFAULT_PORTAL_FEATURES } from './portal';
 
 export type PlatformAuditAction =
   | 'org_subscription_update'
@@ -48,8 +50,10 @@ export type CrmPlatformModuleKey =
   | 'storage'
   | 'rebooking'
   | 'reviews'
+  | 'sign_tracker'
   | 'time_clock'
-  | 'routes';
+  | 'routes'
+  | 'customer_portal';
 
 export const CRM_PLATFORM_MODULES: Array<{ key: CrmPlatformModuleKey; label: string; description: string }> = [
   { key: 'pipeline', label: 'Pipeline', description: 'Sales pipeline and lead tracking' },
@@ -68,8 +72,10 @@ export const CRM_PLATFORM_MODULES: Array<{ key: CrmPlatformModuleKey; label: str
   { key: 'storage', label: 'Storage', description: 'Seasonal storage tracking' },
   { key: 'rebooking', label: 'Rebooking', description: 'Renewal and rebooking campaigns' },
   { key: 'reviews', label: 'Reviews', description: 'Review requests and reputation' },
+  { key: 'sign_tracker', label: 'Sign Tracker', description: 'Yard sign placement, pickup, and territory intelligence' },
   { key: 'time_clock', label: 'Time Clock', description: 'Crew time tracking' },
   { key: 'routes', label: 'Routes', description: 'Route planning and optimization' },
+  { key: 'customer_portal', label: 'Customer Portal', description: 'Customer-facing portal access and features' },
 ];
 
 export const DEFAULT_AVAILABLE_MODULES: CrmPlatformModuleKey[] = CRM_PLATFORM_MODULES.map((m) => m.key);
@@ -85,6 +91,8 @@ export type PlatformSettings = {
   hostingUrl: string | null;
   docsUrl: string | null;
   availableModules: CrmPlatformModuleKey[];
+  /** Creator-controlled portal child features tenants may enable. */
+  availablePortalFeatures: PortalFeatureKey[];
   signupEnabled: boolean;
   maintenanceMode: boolean;
   maintenanceMessage: string;
@@ -224,6 +232,7 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   hostingUrl: 'https://yuletide-lighting.web.app',
   docsUrl: null,
   availableModules: [...DEFAULT_AVAILABLE_MODULES],
+  availablePortalFeatures: [...DEFAULT_PORTAL_FEATURES],
   signupEnabled: true,
   maintenanceMode: false,
   maintenanceMessage: 'We are performing scheduled maintenance. Please check back shortly.',

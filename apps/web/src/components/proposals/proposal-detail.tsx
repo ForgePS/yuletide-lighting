@@ -39,6 +39,7 @@ type GeneralForm = {
   salespersonName: string;
   notes: string;
   propertyPhotoUrl: string;
+  proposalPriceDollars: string;
 };
 
 export function ProposalDetail({ proposalId }: { proposalId: string }) {
@@ -59,7 +60,7 @@ export function ProposalDetail({ proposalId }: { proposalId: string }) {
 
   const update = trpc.proposals360.update.useMutation({
     onSuccess: () => { toast('Proposal saved', 'success'); refetch(); },
-    onError: () => toast('Could not save proposal', 'error'),
+    onError: (e) => toast(e.message || 'Could not save proposal', 'error'),
   });
   const send = trpc.proposals360.send.useMutation({
     onSuccess: () => { toast('Proposal sent', 'success'); refetch(); },
@@ -97,6 +98,7 @@ export function ProposalDetail({ proposalId }: { proposalId: string }) {
       salespersonName: data.salespersonName ?? '',
       notes: data.notes ?? '',
       propertyPhotoUrl: data.propertyPhotoUrl ?? '',
+      proposalPriceDollars: data.subtotalCents > 0 ? (data.subtotalCents / 100).toFixed(2) : '',
     });
   }, [data]);
 
@@ -138,10 +140,12 @@ export function ProposalDetail({ proposalId }: { proposalId: string }) {
     || form.salespersonName !== (data.salespersonName ?? '')
     || form.notes !== (data.notes ?? '')
     || form.propertyPhotoUrl !== (data.propertyPhotoUrl ?? '')
+    || form.proposalPriceDollars !== (data.subtotalCents > 0 ? (data.subtotalCents / 100).toFixed(2) : '')
   );
 
   function save() {
     if (!form) return;
+    const typedCents = Math.round(parseFloat(form.proposalPriceDollars || '0') * 100);
     update.mutate({
       proposalId,
       data: {
@@ -152,6 +156,9 @@ export function ProposalDetail({ proposalId }: { proposalId: string }) {
         salespersonName: form.salespersonName,
         notes: form.notes,
         propertyPhotoUrl: form.propertyPhotoUrl || undefined,
+        ...(form.proposalPriceDollars.trim() !== '' && Number.isFinite(typedCents) && typedCents >= 0
+          ? { subtotalCents: typedCents }
+          : {}),
       },
     });
   }
@@ -291,6 +298,17 @@ export function ProposalDetail({ proposalId }: { proposalId: string }) {
           <label className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">Name</span>
             <input className="input w-full" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Proposal price ($)</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="input w-full"
+              placeholder="0.00"
+              value={form.proposalPriceDollars}
+              onChange={(e) => setForm({ ...form, proposalPriceDollars: e.target.value })}
+            />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">Category</span>

@@ -1,25 +1,37 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { ProposalLineItem } from '@clcrm/types';
-import { formatCurrency } from '@clcrm/ui';
+import { formatCurrency } from '@/lib/proposal-utils';
 
 type LineItemRow = {
   id: string;
   description: string;
-  quantity: number;
+  quantity: string;
   unitPriceDollars: string;
 };
 
+function serializeItems(items: ProposalLineItem[]): string {
+  return JSON.stringify(
+    items.map((li) => ({
+      id: li.id,
+      description: li.description,
+      quantity: li.quantity,
+      unitPriceCents: li.unitPriceCents,
+    })),
+  );
+}
+
 function toRows(items: ProposalLineItem[]): LineItemRow[] {
   if (!items.length) {
-    return [{ id: crypto.randomUUID(), description: '', quantity: 1, unitPriceDollars: '' }];
+    return [{ id: crypto.randomUUID(), description: '', quantity: '1', unitPriceDollars: '' }];
   }
   return items.map((li) => ({
     id: li.id,
     description: li.description,
-    quantity: li.quantity,
-    unitPriceDollars: (li.unitPriceCents / 100).toFixed(2),
+    quantity: String(li.quantity),
+    unitPriceDollars: li.unitPriceCents === 0 ? '' : (li.unitPriceCents / 100).toFixed(2),
   }));
 }
 
@@ -29,8 +41,8 @@ function toLineItems(rows: LineItemRow[]): ProposalLineItem[] {
     .map((r) => ({
       id: r.id,
       description: r.description.trim(),
-      quantity: r.quantity,
-      unitPriceCents: Math.round(parseFloat(r.unitPriceDollars || '0') * 100),
+      quantity: Math.max(0.01, Number(r.quantity) || 1),
+      unitPriceCents: Math.round(parseFloat(r.unitPriceDollars || '0') * 100) || 0,
     }));
 }
 
@@ -41,24 +53,46 @@ export function ProposalLineItemsEditor({
   value: ProposalLineItem[];
   onChange: (items: ProposalLineItem[]) => void;
 }) {
-  const rows = toRows(value);
-  const totalCents = toLineItems(rows).reduce((s, i) => s + i.quantity * i.unitPriceCents, 0);
+  const [rows, setRows] = useState<LineItemRow[]>(() => toRows(value));
+  const lastEmitted = useRef(serializeItems(value));
+
+  useEffect(() => {
+    const next = serializeItems(value);
+    if (next === lastEmitted.current) return;
+    lastEmitted.current = next;
+    setRows(toRows(value));
+  }, [value]);
+
+  function commit(next: LineItemRow[]) {
+    setRows(next);
+    const items = toLineItems(next);
+    lastEmitted.current = serializeItems(items);
+    onChange(items);
+  }
 
   function updateRow(id: string, patch: Partial<LineItemRow>) {
-    const next = rows.map((r) => (r.id === id ? { ...r, ...patch } : r));
-    onChange(toLineItems(next));
+    commit(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
   function addRow() {
-    onChange(toLineItems([...rows, { id: crypto.randomUUID(), description: '', quantity: 1, unitPriceDollars: '' }]));
+    commit([...rows, { id: crypto.randomUUID(), description: '', quantity: '1', unitPriceDollars: '' }]);
   }
 
   function removeRow(id: string) {
-    onChange(toLineItems(rows.filter((r) => r.id !== id)));
+    const next = rows.filter((r) => r.id !== id);
+    commit(next.length ? next : [{ id: crypto.randomUUID(), description: '', quantity: '1', unitPriceDollars: '' }]);
   }
+
+  const totalCents = toLineItems(rows).reduce((s, i) => s + i.quantity * i.unitPriceCents, 0);
 
   return (
     <div className="space-y-3">
+      <div className="hidden text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1fr_80px_100px_auto] sm:gap-2">
+        <span>Description</span>
+        <span>Qty</span>
+        <span>Unit price</span>
+        <span />
+      </div>
       {rows.map((row) => (
         <div key={row.id} className="grid gap-2 sm:grid-cols-[1fr_80px_100px_auto]">
           <input
@@ -68,18 +102,18 @@ export function ProposalLineItemsEditor({
             onChange={(e) => updateRow(row.id, { description: e.target.value })}
           />
           <input
-            type="number"
-            min={1}
+            type="text"
+            inputMode="decimal"
             className="input"
+            placeholder="Qty"
             value={row.quantity}
-            onChange={(e) => updateRow(row.id, { quantity: Number(e.target.value) || 1 })}
+            onChange={(e) => updateRow(row.id, { quantity: e.target.value })}
           />
           <input
-            type="number"
-            min={0}
-            step={0.01}
+            type="text"
+            inputMode="decimal"
             className="input"
-            placeholder="$0.00"
+            placeholder="0.00"
             value={row.unitPriceDollars}
             onChange={(e) => updateRow(row.id, { unitPriceDollars: e.target.value })}
           />

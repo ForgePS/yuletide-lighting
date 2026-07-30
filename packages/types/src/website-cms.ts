@@ -348,17 +348,17 @@ export type CmsPageVersion = {
 
 export const DEFAULT_SITE_BRANDING: CmsSiteBranding = {
   companyName: 'Yuletide Lighting',
-  primaryLogoUrl: null,
+  primaryLogoUrl: '/logo.svg',
   alternateLogoUrl: null,
-  faviconUrl: null,
-  primaryColor: '#0f766e',
-  secondaryColor: '#134e4a',
-  accentColor: '#f59e0b',
-  backgroundColor: '#f8fafc',
+  faviconUrl: '/logo.svg',
+  primaryColor: '#DC2626',
+  secondaryColor: '#991B1B',
+  accentColor: '#F59E0B',
+  backgroundColor: '#FFFBF5',
   textColor: '#0f172a',
-  linkColor: '#0f766e',
-  headingFont: 'Geist Sans',
-  bodyFont: 'Geist Sans',
+  linkColor: '#DC2626',
+  headingFont: 'DM Sans',
+  bodyFont: 'DM Sans',
   borderRadius: 12,
   containerWidth: 1152,
 };
@@ -366,7 +366,7 @@ export const DEFAULT_SITE_BRANDING: CmsSiteBranding = {
 export const DEFAULT_HEADER: CmsHeaderConfig = {
   sticky: true,
   transparent: false,
-  logoUrl: null,
+  logoUrl: '/logo.svg',
   logoAlt: 'Yuletide Lighting',
   navItems: [
     {

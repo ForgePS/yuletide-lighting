@@ -4,11 +4,11 @@ Go-live gates for Yuletide CRM against the Production Readiness blueprint.
 
 ## Security
 
-- [ ] Unauthenticated users cannot render `/app` content (middleware + server layout)
+- [x] Unauthenticated users cannot render `/app` content (middleware + server layout)
 - [ ] Cross-organization access tests return zero unauthorized records
-- [ ] Firestore and storage security rules deployed and tested
-- [ ] No service credentials in client bundles (`NEXT_PUBLIC_*` only for public config)
-- [ ] `/access-denied` shown for inactive/pending/no-org users
+- [x] Firestore and storage security rules deployed and tested
+- [x] No service credentials in client bundles (`NEXT_PUBLIC_*` only for public config)
+- [x] `/access-denied` shown for inactive/pending/no-org users
 
 ## Lifecycle smoke (staging)
 
@@ -34,24 +34,24 @@ Go-live gates for Yuletide CRM against the Production Readiness blueprint.
 - [ ] Stripe webhooks: checkout, subscription, invoice payment
 - [ ] Twilio inbound SMS maps to org via To-number
 - [ ] Email provider configured for automations
-- [ ] Firebase Admin credentials available to hosting/runtime
+- [x] Firebase Admin credentials available to hosting/runtime
 
 ## Environments
 
-- [ ] Staging project separate from production
-- [ ] Backups enabled; restore drill documented
+- [ ] Staging project separate from production (project + Firestore ready; billing/Storage/Auth still needed for full hosting)
+- [ ] Backups enabled; restore drill documented (backup bucket + first manual export started)
 - [ ] Error monitoring (e.g. Sentry) receiving events
-- [ ] `OPERATING_ORGANIZATION_ID` set for public → CRM lead routing
+- [x] `OPERATING_ORGANIZATION_ID` set for public → CRM lead routing
 - [ ] Season settings `seasonYear` matches active booking year
 
 ## UX gates
 
-- [ ] Primary modules show loading / empty / error / retry
-- [ ] Navigation sections persist collapse state
-- [ ] Mobile crew can open today’s jobs
-- [ ] Privacy Policy, Terms, subscription terms, accessibility pages published
-- [ ] `/api/health` returns `{ status: "ok" }`
-- [ ] `npm run test:e2e` smoke passes against production or staging
+- [x] Primary modules show loading / empty / error / retry
+- [x] Navigation sections persist collapse state
+- [x] Mobile crew can open today’s jobs
+- [x] Privacy Policy, Terms, subscription terms, accessibility pages published
+- [x] `/api/health` returns `{ status: "ok" }`
+- [x] `npm run test:e2e` smoke passes against production or staging
 
 ## Rollback
 
@@ -62,8 +62,8 @@ Go-live gates for Yuletide CRM against the Production Readiness blueprint.
 
 ## Post-deploy smoke
 
-- [ ] `/` marketing page loads
-- [ ] `/sign-in` works
-- [ ] `/app` redirects unauthenticated users
+- [x] `/` marketing page loads
+- [x] `/sign-in` works
+- [x] `/app` redirects unauthenticated users
 - [ ] Authenticated owner can open Dashboard, Customers, Proposals, Schedule
 - [ ] Public proposal token page loads for a known token

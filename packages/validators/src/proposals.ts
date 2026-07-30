@@ -61,8 +61,8 @@ export const proposalLineItemSchema = z.object({
   quantity: z.number().positive(),
   unitPriceCents: z.number().int().min(0),
   category: z.string().max(100).optional(),
-  inventoryItemId: z.string().optional(),
-  agreementCode: z.string().optional(),
+  inventoryItemId: z.string().optional().nullable(),
+  agreementCode: z.string().optional().nullable(),
 });
 
 export const proposalPackageSchema = z.object({
@@ -94,9 +94,11 @@ export const createProposal360Schema = z.object({
   notes: z.string().max(5000).optional().or(z.literal('')),
   validUntil: z.coerce.date().optional().nullable(),
   designId: z.string().optional().or(z.literal('')),
-  propertyPhotoUrl: z.string().url().optional().or(z.literal('')),
+  propertyPhotoUrl: z.string().max(2000).optional().or(z.literal('')),
   mockupIds: z.array(z.string()).default([]),
   pricing: pricingComponentsSchema.optional(),
+  /** Manual proposal total override (cents). Wins over calc when set; line items still win when present. */
+  subtotalCents: z.number().int().min(0).optional(),
   financingOption: financingOptionSchema.default('deposit_50'),
   depositPercent: z.number().min(0).max(100).default(50),
   installDate: z.coerce.date().optional().nullable(),

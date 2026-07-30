@@ -22,8 +22,8 @@ const REASONS: Record<string, { title: string; body: string }> = {
     body: 'You do not have permission to view this page.',
   },
   unauthenticated: {
-    title: 'Sign in required',
-    body: 'Your session is missing or expired.',
+    title: 'Session could not be verified',
+    body: 'You appear signed in on this device, but the server could not verify your session. Sign out and sign back in. If this keeps happening, contact support.',
   },
 };
 
@@ -44,12 +44,17 @@ export default async function AccessDeniedPage({
         <p className="mt-3 text-sm text-muted-foreground">{copy.body}</p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/sign-in" className="btn-primary">
-            Sign in
+            Sign in again
           </Link>
           <Link href="/" className="btn-ghost">
             Home
           </Link>
         </div>
+        {reason === 'unauthenticated' ? (
+          <p className="mt-4 text-xs text-muted-foreground">
+            Tip: clear site cookies for this domain if the page keeps bouncing.
+          </p>
+        ) : null}
       </div>
     </main>
   );

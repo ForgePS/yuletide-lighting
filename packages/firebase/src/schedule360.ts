@@ -21,7 +21,6 @@ import {
   DEFAULT_VEHICLES,
   detectConflicts,
   EVENT_CATEGORY_COLORS,
-  mockWeatherForecast,
   SEASON_PLAN,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
@@ -201,8 +200,8 @@ export async function createCalendarEvent(
 
   const crews = await ensureCrews(orgId);
   const crew = input.crewId ? crews.find((c) => c.id === input.crewId) : null;
-  const weather = mockWeatherForecast(1)[0]!;
-  const weatherRisk = weather.riskLevel === 'high';
+  // Weather risk requires a live provider — never fabricate from mock forecasts.
+  const weatherRisk = false;
 
   const allEvents = await listCalendarEvents(orgId);
   const draft = {
@@ -628,11 +627,14 @@ export async function optimizeRoute(
     totalTravelMinutes += travelMinutes;
     arrivalCursor += travelMinutes * 60_000;
 
+    const point = hasCoords ? (stop as StopPoint) : null;
     stops.push({
       id: nanoid(),
       eventId: stop.eventId,
       customerName: stop.event.customerName,
       address: stop.address,
+      latitude: point?.lat ?? null,
+      longitude: point?.lng ?? null,
       arrivalAt: new Date(arrivalCursor),
       travelMinutes,
       order: i + 1,
@@ -731,8 +733,26 @@ export async function getScheduleAnalytics(orgId: string): Promise<ScheduleAnaly
   };
 }
 
-export async function getWeatherForecast(_orgId: string, days = 5): Promise<WeatherForecast[]> {
-  return mockWeatherForecast(days);
+export async function getWeatherForecast(
+  _orgId: string,
+  _days = 5,
+): Promise<{ available: false; reason: string; forecasts: [] }> {
+  // Production must never fabricate weather. Enable only when a real provider is configured.
+  const provider = (process.env.WEATHER_PROVIDER || '').trim();
+  const apiKey = (process.env.WEATHER_API_KEY || '').trim();
+  if (!provider || !apiKey) {
+    return {
+      available: false,
+      reason: 'Weather provider not configured',
+      forecasts: [],
+    };
+  }
+  // Provider adapters can be added without changing schedule UI contracts.
+  return {
+    available: false,
+    reason: `Weather provider "${provider}" is not implemented yet`,
+    forecasts: [],
+  };
 }
 
 export async function getSeasonPlan() {

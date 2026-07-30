@@ -7,7 +7,8 @@ import { marketingIcon } from '@/lib/marketing-icons';
 import { ArrowRight, Check, Sparkles, X } from 'lucide-react';
 import { useAuth } from '@/lib/firebase-auth';
 import { CmsMarketingChrome } from '@/components/cms/cms-marketing-chrome';
-import { trpc } from '@/lib/trpc';
+import { TRPCProvider, trpc } from '@/lib/trpc';
+import { hexToHslComponents } from '@/lib/hex-to-hsl';
 
 function resolveHref(href: string, loggedIn: boolean) {
   if (href === '/sign-up' && loggedIn) return '/app';
@@ -541,8 +542,16 @@ function renderBlock(block: CmsBlock) {
 }
 
 function CmsNotices({ pageSlug }: { pageSlug: string }) {
-  const { data: notices } = trpc.siteCms.notices.active.useQuery({ pageSlug });
+  const [ready, setReady] = useState(false);
+  const { data: notices } = trpc.siteCms.notices.active.useQuery(
+    { pageSlug },
+    { enabled: ready, staleTime: 60_000 },
+  );
   const [dismissed, setDismissed] = useState<string[]>([]);
+
+  useEffect(() => {
+    setReady(true);
+  }, []);
 
   useEffect(() => {
     try {
@@ -637,7 +646,7 @@ function CmsNotices({ pageSlug }: { pageSlug: string }) {
   );
 }
 
-export function CmsPageView({
+function CmsPageViewInner({
   page,
   globals,
 }: {
@@ -645,13 +654,15 @@ export function CmsPageView({
   globals: CmsSiteGlobals;
 }) {
   const branding = globals.branding;
+  const primaryHsl = hexToHslComponents(branding.primaryColor);
+  const accentHsl = hexToHslComponents(branding.accentColor);
   return (
     <div
       className="mesh-bg min-h-screen"
       style={
         {
-          ['--primary' as string]: branding.primaryColor,
-          ['--accent' as string]: branding.accentColor,
+          ...(primaryHsl ? { ['--primary' as string]: primaryHsl } : null),
+          ...(accentHsl ? { ['--accent' as string]: accentHsl } : null),
         } as React.CSSProperties
       }
     >
@@ -688,5 +699,19 @@ export function CmsPageView({
         <p className="mt-10 text-center text-sm text-muted-foreground">{globals.footer.copyrightText}</p>
       </footer>
     </div>
+  );
+}
+
+export function CmsPageView({
+  page,
+  globals,
+}: {
+  page: CmsPage;
+  globals: CmsSiteGlobals;
+}) {
+  return (
+    <TRPCProvider>
+      <CmsPageViewInner page={page} globals={globals} />
+    </TRPCProvider>
   );
 }

@@ -372,6 +372,8 @@ export const crmUiConfigUpdateSchema = z.object({
     sidebarText: z.string().nullable().optional(),
     accentColor: z.string().nullable().optional(),
     useOrgBrandingInApp: z.boolean().optional(),
+    sidebarLogoSizePx: z.number().int().min(28).max(96).nullable().optional(),
+    sidebarLogoAlign: z.enum(['left', 'center', 'right']).nullable().optional(),
   }),
   customFields: z.array(crmCustomFieldSchema),
 });

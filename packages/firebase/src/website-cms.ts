@@ -95,6 +95,28 @@ async function readPageBySlugOnly(
   slug: string,
   opts?: { includeDrafts?: boolean },
 ): Promise<CmsPage | null> {
+  // Known default pages — direct doc read is faster than a query.
+  const knownId = slug === 'home' ? 'page_home' : slug === 'pricing' ? 'page_pricing' : null;
+  if (knownId) {
+    const direct = await refs().page(knownId).get();
+    if (direct.exists) {
+      const page = mapPage(direct.id, direct.data()!);
+      if (page.slug === slug) {
+        if (!opts?.includeDrafts && page.status !== 'published') {
+          if (
+            page.status === 'scheduled' &&
+            page.scheduledPublishAt &&
+            page.scheduledPublishAt <= new Date()
+          ) {
+            return page;
+          }
+          return null;
+        }
+        return page;
+      }
+    }
+  }
+
   const snap = await refs().pages.where('slug', '==', slug).limit(1).get();
   if (snap.empty) return null;
   const page = mapPage(snap.docs[0]!.id, snap.docs[0]!.data());
@@ -178,38 +200,50 @@ export async function getCmsPageBySlug(
 }
 
 let publicCmsDenied = false;
+let publicCmsDeniedAt = 0;
 const publicBundleCache = new Map<string, { expiresAt: number; page: CmsPage | null; globals: CmsSiteGlobals }>();
-const PUBLIC_BUNDLE_TTL_MS = 15_000;
+const PUBLIC_BUNDLE_TTL_MS = 5 * 60_000;
+const PUBLIC_CMS_DENY_TTL_MS = 60_000;
+const PUBLIC_CMS_READ_TIMEOUT_MS = 1500;
 
 export async function getPublishedPageBundle(slug: string) {
   const cached = publicBundleCache.get(slug);
   if (cached && cached.expiresAt > Date.now()) {
     return { page: cached.page, globals: cached.globals };
   }
-  if (publicCmsDenied) {
+  if (publicCmsDenied && Date.now() - publicCmsDeniedAt < PUBLIC_CMS_DENY_TTL_MS) {
     return { page: null, globals: buildDefaultSiteGlobals() };
   }
+  publicCmsDenied = false;
 
-  // Soft timeout so broken Admin credentials don't hang SSR for many seconds
+  // Soft timeout so broken Admin credentials don't hang SSR
   try {
     const [page, globals] = await Promise.race([
       Promise.all([readPageBySlugOnly(slug), readGlobalsOnly()]),
       new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('CMS public read timeout')), 2500);
+        setTimeout(() => reject(new Error('CMS public read timeout')), PUBLIC_CMS_READ_TIMEOUT_MS);
       }),
     ]);
     if (!page && (slug === 'home' || slug === 'pricing')) {
+      // Never block the request on seeding — warm in background.
       void ensureWebsiteCmsSeeded().catch(() => {});
     }
     publicBundleCache.set(slug, { page, globals, expiresAt: Date.now() + PUBLIC_BUNDLE_TTL_MS });
     return { page, globals };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/PERMISSION_DENIED|Missing or insufficient permissions|timeout/i.test(msg)) {
+    if (/PERMISSION_DENIED|Missing or insufficient permissions/i.test(msg)) {
       publicCmsDenied = true;
+      publicCmsDeniedAt = Date.now();
     }
     void ensureWebsiteCmsSeeded().catch(() => {});
-    return { page: null, globals: buildDefaultSiteGlobals() };
+    const fallback = { page: null, globals: buildDefaultSiteGlobals() };
+    // Cache misses briefly so cold-start timeouts don't hammer Firestore.
+    publicBundleCache.set(slug, {
+      ...fallback,
+      expiresAt: Date.now() + 10_000,
+    });
+    return fallback;
   }
 }
 

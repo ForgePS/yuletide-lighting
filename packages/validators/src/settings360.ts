@@ -138,7 +138,7 @@ export const proposalSettingsSchema = z.object({
   numberFormat: z.string().default('PROP-{YYYY}-{SEQ}'),
   defaultExpirationDays: z.number().min(1).max(365).default(30),
   defaultDepositPercent: z.number().min(0).max(100).default(50),
-  defaultTerms: z.string().max(5000).default(''),
+  defaultTerms: z.string().max(20000).default(''),
   defaultTemplateId: z.string().optional().nullable(),
   packageDefaults: z.object({
     good: z.object({ label: z.string(), markupPercent: z.number() }),
@@ -146,6 +146,11 @@ export const proposalSettingsSchema = z.object({
     best: z.object({ label: z.string(), markupPercent: z.number() }),
   }).optional(),
   layout: proposalLayoutSchema.optional(),
+});
+
+export const agreementSettingsSchema = z.object({
+  termsBody: z.string().min(1).max(20000),
+  termsVersion: z.string().min(1).max(40),
 });
 
 export const invoiceSettingsConfigSchema = z.object({
@@ -201,6 +206,12 @@ export const customerPortalSettingsSchema = z.object({
   allowSelfScheduling: z.boolean().default(false),
   allowOnlinePayments: z.boolean().default(true),
   allowServiceRequests: z.boolean().default(true),
+  enabledFeatures: z.array(z.enum([
+    'dashboard', 'properties', 'consultations', 'mockups', 'proposals', 'agreements',
+    'e_sign', 'billing', 'online_payments', 'scheduling', 'install_tracking',
+    'service_requests', 'takedowns', 'storage', 'messaging', 'documents',
+    'reviews', 'referrals', 'rebooking',
+  ])).optional(),
   permissions: z.object({
     viewProposals: z.boolean().default(true),
     viewInvoices: z.boolean().default(true),

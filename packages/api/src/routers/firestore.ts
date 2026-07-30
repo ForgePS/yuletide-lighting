@@ -65,6 +65,7 @@ import { billingRouter } from './billing';
 import { import360Router } from './import360';
 import { crew360Router, crewMobileRouter } from './crew360';
 import { reviews360Router } from './reviews360';
+import { signTracker360Router } from './signTracker360';
 import { automation360Router } from './automation360';
 import { creator360Router } from './creator360';
 import { websiteCmsRouter } from './website-cms';
@@ -768,6 +769,7 @@ export const appRouter = router({
   crew360: crew360Router,
   crew: crewMobileRouter,
   reviews360: reviews360Router,
+  signTracker360: signTracker360Router,
   automation360: automation360Router,
   creator360: creator360Router,
   websiteCms: websiteCmsRouter,

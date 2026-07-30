@@ -35,6 +35,7 @@ const nextConfig = {
       '1:928287362183:web:e0cca4d6e2f6d89cc3bc22',
     NEXT_PUBLIC_APP_URL:
       process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app',
+    NEXT_PUBLIC_MAPBOX_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '',
   },
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],

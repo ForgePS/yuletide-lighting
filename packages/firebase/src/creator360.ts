@@ -13,7 +13,7 @@ import type {
   PlatformAuditLogEntry,
   PlatformSettings,
 } from '@clcrm/types';
-import { DEFAULT_AVAILABLE_MODULES, DEFAULT_PLATFORM_SETTINGS, SUBSCRIPTION_PRICING } from '@clcrm/types';
+import { DEFAULT_AVAILABLE_MODULES, DEFAULT_PLATFORM_SETTINGS, DEFAULT_PORTAL_FEATURES, SUBSCRIPTION_PRICING } from '@clcrm/types';
 import type { SubscriptionStatus } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';import { mapTimestampsFromData } from './firestore-utils';
 import {
@@ -96,6 +96,9 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
   const merged = { ...DEFAULT_PLATFORM_SETTINGS, ...snap.data()! };
   if (!Array.isArray(merged.availableModules) || merged.availableModules.length === 0) {
     merged.availableModules = [...DEFAULT_AVAILABLE_MODULES];
+  }
+  if (!Array.isArray(merged.availablePortalFeatures) || merged.availablePortalFeatures.length === 0) {
+    merged.availablePortalFeatures = [...DEFAULT_PORTAL_FEATURES];
   }
   return mapTimestampsFromData(merged) as PlatformSettings;
 }

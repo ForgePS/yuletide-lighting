@@ -398,6 +398,12 @@ if (!auditsOnly) {
     'npm run format:changed:check',
     'Run npm run format:changed on files touched since p0.1-complete-with-limitations',
   );
+  tryRun(
+    'legacy-write-path-audit',
+    'data-integrity',
+    'node scripts/audit-legacy-writes.mjs',
+    'Redirect legacy property/job/message writes to canonical org paths',
+  );
   tryRun('typecheck', 'quality', 'npm run typecheck', 'Fix TypeScript errors');
   if (!skipLint) tryRun('lint', 'quality', 'npm run lint', 'Fix lint errors');
   else

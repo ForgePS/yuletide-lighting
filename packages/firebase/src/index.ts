@@ -44,3 +44,4 @@ export * from './public-season';
 export * from './module-entitlement';
 export * from './org-provisioning';
 export * from './follow-up-automation';
+export * from './compat-metrics';

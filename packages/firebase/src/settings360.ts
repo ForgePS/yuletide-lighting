@@ -51,7 +51,10 @@ function settingsPath(orgId: string, section: string) {
   return `organizations/${orgId}/settings/${section}`;
 }
 
-function normalizePermissions(perms: Partial<PermissionMatrix> | undefined, fallback: PermissionMatrix): PermissionMatrix {
+function normalizePermissions(
+  perms: Partial<PermissionMatrix> | undefined,
+  fallback: PermissionMatrix,
+): PermissionMatrix {
   const resources: Array<keyof PermissionMatrix> = [
     'customers',
     'mockups',
@@ -90,7 +93,10 @@ function mapRoleDoc(orgId: string, id: string, data: Record<string, unknown>): R
   const slug = String(data.slug ?? id);
   const template = SYSTEM_ROLES.find((r) => r.slug === slug);
   const mapped = mapDoc<RoleDefinition>({ id, organizationId: orgId, ...data, slug });
-  mapped.permissions = normalizePermissions(mapped.permissions, template?.permissions ?? SYSTEM_ROLES.find((r) => r.slug === 'read_only')!.permissions);
+  mapped.permissions = normalizePermissions(
+    mapped.permissions,
+    template?.permissions ?? SYSTEM_ROLES.find((r) => r.slug === 'read_only')!.permissions,
+  );
   return mapped;
 }
 
@@ -128,7 +134,13 @@ async function saveSettingsDoc<T extends Record<string, unknown>>(
 
 export async function logAudit(
   orgId: string,
-  entry: { action: string; resource: string; userId?: string | null; userEmail?: string | null; details?: Record<string, unknown> },
+  entry: {
+    action: string;
+    resource: string;
+    userId?: string | null;
+    userEmail?: string | null;
+    details?: Record<string, unknown>;
+  },
 ) {
   const db = getAdminFirestore();
   const now = ts();
@@ -175,15 +187,17 @@ export async function getSettingsDashboard(orgId: string): Promise<SettingsDashb
       listBackups(orgId).catch(() => [] as BackupRecord[]),
     ]);
 
-    const integrations = integrationsDoc?.integrations ?? DEFAULT_INTEGRATIONS.map((i) => {
-      if (i.id === 'stripe' && org?.stripeConnectAccountId) {
-        return { ...i, enabled: true, configured: true, apiKeySet: true };
-      }
-      if (i.id === 'twilio' && org?.twilioPhoneNumber) {
-        return { ...i, enabled: true, configured: true, apiKeySet: true };
-      }
-      return i;
-    });
+    const integrations =
+      integrationsDoc?.integrations ??
+      DEFAULT_INTEGRATIONS.map((i) => {
+        if (i.id === 'stripe' && org?.stripeConnectAccountId) {
+          return { ...i, enabled: true, configured: true, apiKeySet: true };
+        }
+        if (i.id === 'twilio' && org?.twilioPhoneNumber) {
+          return { ...i, enabled: true, configured: true, apiKeySet: true };
+        }
+        return i;
+      });
 
     const activeIntegrations = integrations.filter((i) => i.enabled && i.configured).length;
     const lastBackup = backups[0]?.createdAt ?? null;
@@ -267,7 +281,10 @@ function normalizeCompanySettings(
   };
 }
 
-export async function getCompanySettings(orgId: string, userId?: string | null): Promise<CompanySettings> {
+export async function getCompanySettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<CompanySettings> {
   const org = await getOrganization(orgId);
   const existing = await getSettingsDoc<CompanySettings>(orgId, 'company');
   if (existing) return normalizeCompanySettings(existing, orgId, org);
@@ -293,47 +310,89 @@ export async function getCompanySettings(orgId: string, userId?: string | null):
   return saveSettingsDoc(orgId, 'company', defaults, userId);
 }
 
-export async function updateCompanySettings(orgId: string, input: Partial<CompanySettings>, userId?: string | null, userEmail?: string | null) {
+export async function updateCompanySettings(
+  orgId: string,
+  input: Partial<CompanySettings>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getCompanySettings(orgId, userId);
   const updates: Partial<CompanySettings> = { ...input };
   if ('logoUrl' in input) {
     updates.logoUrl = normalizeLogoReference(input.logoUrl ?? null);
   }
   const updated = await saveSettingsDoc(orgId, 'company', { ...current, ...updates }, userId);
-  await updateOrganization(orgId, { companyName: updated.companyName, logoUrl: updated.logoUrl ?? null });
-  await logAudit(orgId, { action: 'update', resource: 'settings/company', userId, userEmail, details: { fields: Object.keys(input) } });
+  await updateOrganization(orgId, {
+    companyName: updated.companyName,
+    logoUrl: updated.logoUrl ?? null,
+  });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/company',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
-export async function getBrandingSettings(orgId: string, userId?: string | null): Promise<BrandingSettings> {
+export async function getBrandingSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<BrandingSettings> {
   const existing = await getSettingsDoc<BrandingSettings>(orgId, 'branding');
   if (existing) return existing;
 
   const org = await getOrganization(orgId);
-  return saveSettingsDoc(orgId, 'branding', {
-    organizationId: orgId,
-    primaryLogoUrl: org?.logoUrl ?? null,
-    secondaryLogoUrl: null,
-    emailLogoUrl: org?.logoUrl ?? null,
-    invoiceLogoUrl: org?.logoUrl ?? null,
-    proposalLogoUrl: org?.logoUrl ?? null,
-    primaryColor: org?.brandColor ?? '#DC2626',
-    secondaryColor: '#1E40AF',
-    accentColor: '#059669',
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'branding',
+    {
+      organizationId: orgId,
+      primaryLogoUrl: org?.logoUrl ?? null,
+      secondaryLogoUrl: null,
+      emailLogoUrl: org?.logoUrl ?? null,
+      invoiceLogoUrl: org?.logoUrl ?? null,
+      proposalLogoUrl: org?.logoUrl ?? null,
+      primaryColor: org?.brandColor ?? '#DC2626',
+      secondaryColor: '#1E40AF',
+      accentColor: '#059669',
+    },
+    userId,
+  );
 }
 
-export async function updateBrandingSettings(orgId: string, input: Partial<BrandingSettings>, userId?: string | null, userEmail?: string | null) {
+export async function updateBrandingSettings(
+  orgId: string,
+  input: Partial<BrandingSettings>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getBrandingSettings(orgId, userId);
   const normalized: Partial<BrandingSettings> = { ...input };
-  for (const key of ['primaryLogoUrl', 'secondaryLogoUrl', 'emailLogoUrl', 'invoiceLogoUrl', 'proposalLogoUrl'] as const) {
+  for (const key of [
+    'primaryLogoUrl',
+    'secondaryLogoUrl',
+    'emailLogoUrl',
+    'invoiceLogoUrl',
+    'proposalLogoUrl',
+  ] as const) {
     if (key in input) {
       normalized[key] = normalizeLogoReference(input[key] ?? null);
     }
   }
   const updated = await saveSettingsDoc(orgId, 'branding', { ...current, ...normalized }, userId);
-  await updateOrganization(orgId, { brandColor: updated.primaryColor, logoUrl: updated.primaryLogoUrl ?? null });
-  await logAudit(orgId, { action: 'update', resource: 'settings/branding', userId, userEmail, details: { fields: Object.keys(input) } });
+  await updateOrganization(orgId, {
+    brandColor: updated.primaryColor,
+    logoUrl: updated.primaryLogoUrl ?? null,
+  });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/branding',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
@@ -388,16 +447,31 @@ export async function listOrgUsers(orgId: string): Promise<OrgUserProfile[]> {
 
 export async function inviteOrgUser(
   orgId: string,
-  input: { email: string; firstName?: string | null; lastName?: string | null; role: OrgUserProfile['role']; department?: string | null },
+  input: {
+    email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    role: OrgUserProfile['role'];
+    department?: string | null;
+  },
   actorId?: string | null,
   actorEmail?: string | null,
 ) {
   const db = getAdminFirestore();
   const email = input.email.trim().toLowerCase();
-  const existing = await db.collection('users').where('organizationId', '==', orgId).where('email', '==', email).limit(1).get();
+  const existing = await db
+    .collection('users')
+    .where('organizationId', '==', orgId)
+    .where('email', '==', email)
+    .limit(1)
+    .get();
   if (!existing.empty) throw new Error('A user with this email already exists');
 
-  const inviteDup = await db.collection(`organizations/${orgId}/userInvites`).where('email', '==', email).limit(1).get();
+  const inviteDup = await db
+    .collection(`organizations/${orgId}/userInvites`)
+    .where('email', '==', email)
+    .limit(1)
+    .get();
   if (!inviteDup.empty) throw new Error('An invitation for this email already exists');
 
   const now = ts();
@@ -416,12 +490,24 @@ export async function inviteOrgUser(
     updatedBy: actorId ?? null,
   };
   await ref.set(payload);
-  await logAudit(orgId, { action: 'invite', resource: 'settings/users', userId: actorId, userEmail: actorEmail, details: { email } });
+  await logAudit(orgId, {
+    action: 'invite',
+    resource: 'settings/users',
+    userId: actorId,
+    userEmail: actorEmail,
+    details: { email },
+  });
   const users = await listOrgUsers(orgId);
   return users.find((u) => u.id === `invite:${ref.id}`)!;
 }
 
-export async function updateOrgUser(orgId: string, userId: string, input: Partial<OrgUserProfile>, actorId?: string | null, actorEmail?: string | null) {
+export async function updateOrgUser(
+  orgId: string,
+  userId: string,
+  input: Partial<OrgUserProfile>,
+  actorId?: string | null,
+  actorEmail?: string | null,
+) {
   const db = getAdminFirestore();
 
   if (userId.startsWith('invite:')) {
@@ -437,7 +523,13 @@ export async function updateOrgUser(orgId: string, userId: string, input: Partia
     if (input.department !== undefined) update.department = input.department;
     if (input.role !== undefined) update.role = input.role;
     await ref.update(update);
-    await logAudit(orgId, { action: 'update', resource: 'settings/userInvites', userId: actorId, userEmail: actorEmail, details: { inviteId, fields: Object.keys(input) } });
+    await logAudit(orgId, {
+      action: 'update',
+      resource: 'settings/userInvites',
+      userId: actorId,
+      userEmail: actorEmail,
+      details: { inviteId, fields: Object.keys(input) },
+    });
     const users = await listOrgUsers(orgId);
     return users.find((u) => u.id === userId)!;
   }
@@ -455,7 +547,14 @@ export async function updateOrgUser(orgId: string, userId: string, input: Partia
   if (input.status !== undefined) update.status = input.status;
   if (input.role !== undefined) {
     update.settingsRole = input.role;
-    const legacyMap: Record<string, string> = { owner: 'owner', administrator: 'admin', office_staff: 'office', installer: 'crew', crew_leader: 'crew', dispatcher: 'crew' };
+    const legacyMap: Record<string, string> = {
+      owner: 'owner',
+      administrator: 'admin',
+      office_staff: 'office',
+      installer: 'crew',
+      crew_leader: 'crew',
+      dispatcher: 'crew',
+    };
     update.role = legacyMap[input.role] ?? 'office';
   }
 
@@ -469,12 +568,21 @@ export async function updateOrgUser(orgId: string, userId: string, input: Partia
     }
   }
 
-  await logAudit(orgId, { action: 'update', resource: 'settings/users', userId: actorId, userEmail: actorEmail, details: { targetUserId: userId, fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/users',
+    userId: actorId,
+    userEmail: actorEmail,
+    details: { targetUserId: userId, fields: Object.keys(input) },
+  });
   const users = await listOrgUsers(orgId);
   return users.find((u) => u.id === userId)!;
 }
 
-export async function ensureRoles(orgId: string, userId?: string | null): Promise<RoleDefinition[]> {
+export async function ensureRoles(
+  orgId: string,
+  userId?: string | null,
+): Promise<RoleDefinition[]> {
   const db = getAdminFirestore();
   const now = ts();
   const batch = db.batch();
@@ -528,19 +636,32 @@ export async function listRoles(orgId: string) {
   }
 }
 
-export async function updateRolePermissions(orgId: string, roleId: string, permissions: RoleDefinition['permissions'], userId?: string | null, userEmail?: string | null) {
+export async function updateRolePermissions(
+  orgId: string,
+  roleId: string,
+  permissions: RoleDefinition['permissions'],
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const db = getAdminFirestore();
   const ref = db.doc(`organizations/${orgId}/roles/${roleId}`);
   const snap = await ref.get();
   if (!snap.exists) throw new Error('Role not found');
   await ref.update({ permissions, updatedAt: ts(), updatedBy: userId ?? null });
-  await logAudit(orgId, { action: 'update', resource: 'settings/roles', userId, userEmail, details: { roleId } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/roles',
+    userId,
+    userEmail,
+    details: { roleId },
+  });
   return mapDoc<RoleDefinition>({ id: snap.id, ...snap.data()!, permissions });
 }
 
 export async function getUserPermissions(orgId: string, settingsRole: string) {
   const roles = await listRoles(orgId);
-  const role = roles.find((r) => r.slug === settingsRole) ?? roles.find((r) => r.slug === 'read_only');
+  const role =
+    roles.find((r) => r.slug === settingsRole) ?? roles.find((r) => r.slug === 'read_only');
   const fallback =
     SYSTEM_ROLES.find((r) => r.slug === settingsRole)?.permissions ??
     SYSTEM_ROLES.find((r) => r.slug === 'read_only')!.permissions ??
@@ -548,34 +669,75 @@ export async function getUserPermissions(orgId: string, settingsRole: string) {
   return normalizePermissions(role?.permissions, fallback);
 }
 
-export async function getNotificationSettings(orgId: string, userId?: string | null): Promise<NotificationSettings> {
+export async function getNotificationSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<NotificationSettings> {
   const existing = await getSettingsDoc<NotificationSettings>(orgId, 'notifications');
   if (existing) return existing;
-  return saveSettingsDoc(orgId, 'notifications', {
-    organizationId: orgId,
-    emailEnabled: true,
-    smsEnabled: true,
-    pushEnabled: true,
-    inAppEnabled: true,
-    rules: [
-      { id: 'proposal_sent', name: 'Proposal Sent', event: 'proposal_sent', channels: ['email', 'in_app'], enabled: true },
-      { id: 'invoice_overdue', name: 'Invoice Overdue', event: 'invoice_overdue', channels: ['email', 'sms'], enabled: true },
-      { id: 'job_scheduled', name: 'Job Scheduled', event: 'job_scheduled', channels: ['sms', 'push'], enabled: true },
-    ],
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'notifications',
+    {
+      organizationId: orgId,
+      emailEnabled: true,
+      smsEnabled: true,
+      pushEnabled: true,
+      inAppEnabled: true,
+      rules: [
+        {
+          id: 'proposal_sent',
+          name: 'Proposal Sent',
+          event: 'proposal_sent',
+          channels: ['email', 'in_app'],
+          enabled: true,
+        },
+        {
+          id: 'invoice_overdue',
+          name: 'Invoice Overdue',
+          event: 'invoice_overdue',
+          channels: ['email', 'sms'],
+          enabled: true,
+        },
+        {
+          id: 'job_scheduled',
+          name: 'Job Scheduled',
+          event: 'job_scheduled',
+          channels: ['sms', 'push'],
+          enabled: true,
+        },
+      ],
+    },
+    userId,
+  );
 }
 
-export async function updateNotificationSettings(orgId: string, input: Partial<NotificationSettings>, userId?: string | null, userEmail?: string | null) {
+export async function updateNotificationSettings(
+  orgId: string,
+  input: Partial<NotificationSettings>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getNotificationSettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'notifications', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/notifications', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/notifications',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
 export async function updateNotificationRule(
   orgId: string,
   ruleId: string,
-  input: { name?: string; enabled?: boolean; channels?: Array<'email' | 'sms' | 'push' | 'in_app'> },
+  input: {
+    name?: string;
+    enabled?: boolean;
+    channels?: Array<'email' | 'sms' | 'push' | 'in_app'>;
+  },
   userId?: string | null,
   userEmail?: string | null,
 ) {
@@ -585,50 +747,92 @@ export async function updateNotificationRule(
   return updateNotificationSettings(orgId, { rules }, userId, userEmail);
 }
 
-export async function getAutomationSettings(orgId: string, userId?: string | null): Promise<AutomationRuleSettings> {
+export async function getAutomationSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<AutomationRuleSettings> {
   const existing = await getSettingsDoc<AutomationRuleSettings>(orgId, 'automation');
   if (existing) return existing;
-  return saveSettingsDoc(orgId, 'automation', { organizationId: orgId, rules: DEFAULT_AUTOMATION_RULES }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'automation',
+    { organizationId: orgId, rules: DEFAULT_AUTOMATION_RULES },
+    userId,
+  );
 }
 
-export async function updateAutomationRule(orgId: string, ruleId: string, input: { enabled?: boolean; delayHours?: number; deliveryMethod?: string }, userId?: string | null, userEmail?: string | null) {
+export async function updateAutomationRule(
+  orgId: string,
+  ruleId: string,
+  input: { enabled?: boolean; delayHours?: number; deliveryMethod?: string },
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getAutomationSettings(orgId, userId);
-  const rules = current.rules.map((r) => r.id === ruleId ? { ...r, ...input } : r);
+  const rules = current.rules.map((r) => (r.id === ruleId ? { ...r, ...input } : r));
   const updated = await saveSettingsDoc(orgId, 'automation', { ...current, rules }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/automation', userId, userEmail, details: { ruleId } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/automation',
+    userId,
+    userEmail,
+    details: { ruleId },
+  });
   return updated;
 }
 
-export async function getProposalSettings(orgId: string, userId?: string | null): Promise<ProposalSettings> {
+export async function getProposalSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<ProposalSettings> {
   const existing = await getSettingsDoc<ProposalSettings>(orgId, 'proposals');
   if (existing) {
     return { ...existing, layout: { ...DEFAULT_PROPOSAL_LAYOUT, ...existing.layout } };
   }
   const org = await getOrganization(orgId);
-  return saveSettingsDoc(orgId, 'proposals', {
-    organizationId: orgId,
-    numberFormat: 'PROP-{YYYY}-{SEQ}',
-    defaultExpirationDays: 30,
-    defaultDepositPercent: 50,
-    defaultTerms: 'Payment due upon acceptance. Installation scheduled upon deposit receipt.',
-    defaultTemplateId: null,
-    packageDefaults: {
-      good: { label: 'Good', markupPercent: 15 },
-      better: { label: 'Better', markupPercent: 25 },
-      best: { label: 'Best', markupPercent: 35 },
+  return saveSettingsDoc(
+    orgId,
+    'proposals',
+    {
+      organizationId: orgId,
+      numberFormat: 'PROP-{YYYY}-{SEQ}',
+      defaultExpirationDays: 30,
+      defaultDepositPercent: 50,
+      defaultTerms: 'Payment due upon acceptance. Installation scheduled upon deposit receipt.',
+      defaultTemplateId: null,
+      packageDefaults: {
+        good: { label: 'Good', markupPercent: 15 },
+        better: { label: 'Better', markupPercent: 25 },
+        best: { label: 'Best', markupPercent: 35 },
+      },
+      layout: DEFAULT_PROPOSAL_LAYOUT,
     },
-    layout: DEFAULT_PROPOSAL_LAYOUT,
-  }, userId);
+    userId,
+  );
 }
 
-export async function updateProposalSettings(orgId: string, input: Partial<ProposalSettings>, userId?: string | null, userEmail?: string | null) {
+export async function updateProposalSettings(
+  orgId: string,
+  input: Partial<ProposalSettings>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getProposalSettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'proposals', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/proposals', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/proposals',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
-export async function getAgreementSettings(orgId: string, userId?: string | null): Promise<AgreementSettings> {
+export async function getAgreementSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<AgreementSettings> {
   const existing = await getSettingsDoc<AgreementSettings>(orgId, 'agreements');
   if (existing) {
     return {
@@ -637,11 +841,16 @@ export async function getAgreementSettings(orgId: string, userId?: string | null
       termsVersion: existing.termsVersion || DEFAULT_AGREEMENT_TERMS_VERSION,
     };
   }
-  return saveSettingsDoc(orgId, 'agreements', {
-    organizationId: orgId,
-    termsBody: DEFAULT_AGREEMENT_TERMS_BODY,
-    termsVersion: DEFAULT_AGREEMENT_TERMS_VERSION,
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'agreements',
+    {
+      organizationId: orgId,
+      termsBody: DEFAULT_AGREEMENT_TERMS_BODY,
+      termsVersion: DEFAULT_AGREEMENT_TERMS_VERSION,
+    },
+    userId,
+  );
 }
 
 export async function updateAgreementSettings(
@@ -662,55 +871,108 @@ export async function updateAgreementSettings(
   return updated;
 }
 
-export async function getInvoiceSettings(orgId: string, userId?: string | null): Promise<InvoiceSettingsConfig> {
+export async function getInvoiceSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<InvoiceSettingsConfig> {
   const existing = await getSettingsDoc<InvoiceSettingsConfig>(orgId, 'invoices');
   if (existing) {
     return { ...existing, layout: { ...DEFAULT_INVOICE_LAYOUT, ...existing.layout } };
   }
-  return saveSettingsDoc(orgId, 'invoices', {
-    organizationId: orgId,
-    numberFormat: 'INV-{YYYY}-{SEQ}',
-    paymentTermsDays: 30,
-    lateFeePercent: 1.5,
-    taxRatePercent: 0,
-    depositRequiredPercent: 50,
-    reminderDays: [3, 7, 14, 30],
-    layout: DEFAULT_INVOICE_LAYOUT,
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'invoices',
+    {
+      organizationId: orgId,
+      numberFormat: 'INV-{YYYY}-{SEQ}',
+      paymentTermsDays: 30,
+      lateFeePercent: 1.5,
+      taxRatePercent: 0,
+      depositRequiredPercent: 50,
+      reminderDays: [3, 7, 14, 30],
+      layout: DEFAULT_INVOICE_LAYOUT,
+    },
+    userId,
+  );
 }
 
-export async function updateInvoiceSettings(orgId: string, input: Partial<InvoiceSettingsConfig>, userId?: string | null, userEmail?: string | null) {
+export async function updateInvoiceSettings(
+  orgId: string,
+  input: Partial<InvoiceSettingsConfig>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getInvoiceSettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'invoices', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/invoices', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/invoices',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
-export async function getJobSettings(orgId: string, userId?: string | null): Promise<JobSettingsConfig> {
+export async function getJobSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<JobSettingsConfig> {
   const existing = await getSettingsDoc<JobSettingsConfig>(orgId, 'jobs');
   if (existing) return existing;
-  return saveSettingsDoc(orgId, 'jobs', {
-    organizationId: orgId,
-    numberFormat: 'JOB-{YYYY}-{SEQ}',
-    crewCapacityPerDay: 4,
-    defaultScheduleDurationHours: 4,
-    dispatchAutoAssign: false,
-    workOrderTemplateId: null,
-    statusFlow: ['Draft', 'Scheduled', 'Assigned', 'Completed'],
-    jobTypes: ['installation', 'takedown', 'service_call', 'repair', 'warranty', 'permanent_lighting_install'],
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'jobs',
+    {
+      organizationId: orgId,
+      numberFormat: 'JOB-{YYYY}-{SEQ}',
+      crewCapacityPerDay: 4,
+      defaultScheduleDurationHours: 4,
+      dispatchAutoAssign: false,
+      workOrderTemplateId: null,
+      statusFlow: ['Draft', 'Scheduled', 'Assigned', 'Completed'],
+      jobTypes: [
+        'installation',
+        'takedown',
+        'service_call',
+        'repair',
+        'warranty',
+        'permanent_lighting_install',
+      ],
+    },
+    userId,
+  );
 }
 
-export async function getSeasonSettings(orgId: string, userId?: string | null): Promise<SeasonSettings> {
+export async function getSeasonSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<SeasonSettings> {
   const existing = await getSettingsDoc<SeasonSettings>(orgId, 'season');
   if (existing) return existing;
-  return saveSettingsDoc(orgId, 'season', { organizationId: orgId, ...DEFAULT_SEASON_SETTINGS }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'season',
+    { organizationId: orgId, ...DEFAULT_SEASON_SETTINGS },
+    userId,
+  );
 }
 
-export async function updateSeasonSettings(orgId: string, input: Partial<SeasonSettings>, userId?: string | null, userEmail?: string | null) {
+export async function updateSeasonSettings(
+  orgId: string,
+  input: Partial<SeasonSettings>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getSeasonSettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'season', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/season', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/season',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
@@ -723,38 +985,76 @@ export async function getBrandingForCustomerFacing(orgId: string) {
   return {
     companyName: org?.companyName ?? 'Company',
     brandColor: portal.portalPrimaryColor ?? branding.primaryColor ?? org?.brandColor ?? '#DC2626',
-    logoUrl: portal.portalLogoUrl ?? branding.proposalLogoUrl ?? branding.primaryLogoUrl ?? org?.logoUrl ?? null,
+    logoUrl:
+      portal.portalLogoUrl ??
+      branding.proposalLogoUrl ??
+      branding.primaryLogoUrl ??
+      org?.logoUrl ??
+      null,
   };
 }
 
-export async function updateJobSettings(orgId: string, input: Partial<JobSettingsConfig>, userId?: string | null, userEmail?: string | null) {
+export async function updateJobSettings(
+  orgId: string,
+  input: Partial<JobSettingsConfig>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getJobSettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'jobs', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/jobs', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/jobs',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
-export async function getInventorySettings(orgId: string, userId?: string | null): Promise<InventorySettingsConfig> {
+export async function getInventorySettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<InventorySettingsConfig> {
   const existing = await getSettingsDoc<InventorySettingsConfig>(orgId, 'inventory');
   if (existing) return existing;
-  return saveSettingsDoc(orgId, 'inventory', {
-    organizationId: orgId,
-    skuFormat: 'SKU-{CAT}-{SEQ}',
-    defaultReorderThreshold: 10,
-    categories: ['Lighting', 'Clips', 'Wire', 'Decor', 'Tools'],
-    defaultWarehouseId: null,
-    auditFrequencyDays: 90,
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'inventory',
+    {
+      organizationId: orgId,
+      skuFormat: 'SKU-{CAT}-{SEQ}',
+      defaultReorderThreshold: 10,
+      categories: ['Lighting', 'Clips', 'Wire', 'Decor', 'Tools'],
+      defaultWarehouseId: null,
+      auditFrequencyDays: 90,
+    },
+    userId,
+  );
 }
 
-export async function updateInventorySettings(orgId: string, input: Partial<InventorySettingsConfig>, userId?: string | null, userEmail?: string | null) {
+export async function updateInventorySettings(
+  orgId: string,
+  input: Partial<InventorySettingsConfig>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getInventorySettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'inventory', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/inventory', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/inventory',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
-export async function getPortalSettings(orgId: string, userId?: string | null): Promise<CustomerPortalSettings> {
+export async function getPortalSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<CustomerPortalSettings> {
   const existing = await getSettingsDoc<CustomerPortalSettings>(orgId, 'portal');
   const { PHASE1_ACTIVE_PORTAL_FEATURES } = await import('@clcrm/types');
   if (existing) {
@@ -765,33 +1065,59 @@ export async function getPortalSettings(orgId: string, userId?: string | null): 
         : [...PHASE1_ACTIVE_PORTAL_FEATURES],
     };
   }
-  return saveSettingsDoc(orgId, 'portal', {
-    organizationId: orgId,
-    enabled: true,
-    portalLogoUrl: null,
-    portalPrimaryColor: null,
-    allowSelfScheduling: false,
-    allowOnlinePayments: true,
-    allowServiceRequests: true,
-    enabledFeatures: [...PHASE1_ACTIVE_PORTAL_FEATURES],
-    permissions: { viewProposals: true, viewInvoices: true, approveDesigns: true, requestService: true },
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'portal',
+    {
+      organizationId: orgId,
+      enabled: true,
+      portalLogoUrl: null,
+      portalPrimaryColor: null,
+      allowSelfScheduling: false,
+      allowOnlinePayments: true,
+      allowServiceRequests: true,
+      enabledFeatures: [...PHASE1_ACTIVE_PORTAL_FEATURES],
+      permissions: {
+        viewProposals: true,
+        viewInvoices: true,
+        approveDesigns: true,
+        requestService: true,
+      },
+    },
+    userId,
+  );
 }
 
-export async function updatePortalSettings(orgId: string, input: Partial<CustomerPortalSettings>, userId?: string | null, userEmail?: string | null) {
+export async function updatePortalSettings(
+  orgId: string,
+  input: Partial<CustomerPortalSettings>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getPortalSettings(orgId, userId);
   const platform = await import('./creator360').then((m) => m.getPlatformSettings());
   const available = new Set(platform.availablePortalFeatures ?? []);
   const next = { ...current, ...input };
   if (input.enabledFeatures) {
-    next.enabledFeatures = input.enabledFeatures.filter((f) => available.size === 0 || available.has(f));
+    next.enabledFeatures = input.enabledFeatures.filter(
+      (f) => available.size === 0 || available.has(f),
+    );
   }
   const updated = await saveSettingsDoc(orgId, 'portal', next, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/portal', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/portal',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
-export async function getIntegrationsSettings(orgId: string, userId?: string | null): Promise<IntegrationsSettings> {
+export async function getIntegrationsSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<IntegrationsSettings> {
   const existing = await getSettingsDoc<IntegrationsSettings>(orgId, 'integrations');
   const org = await getOrganization(orgId);
   const defaultsById = new Map(DEFAULT_INTEGRATIONS.map((i) => [i.id, i]));
@@ -807,25 +1133,67 @@ export async function getIntegrationsSettings(orgId: string, userId?: string | n
         connectable: def.connectable,
       };
       if (def.availability === 'planned' || def.availability === 'unavailable') {
-        return { ...merged, enabled: false, configured: false, apiKeySet: false, connectable: false };
+        return {
+          ...merged,
+          enabled: false,
+          configured: false,
+          apiKeySet: false,
+          connectable: false,
+        };
       }
       if (def.id === 'stripe' && org?.stripeConnectAccountId) {
-        return { ...merged, enabled: true, configured: true, apiKeySet: true, availability: 'connected' as const };
+        return {
+          ...merged,
+          enabled: true,
+          configured: true,
+          apiKeySet: true,
+          availability: 'connected' as const,
+        };
       }
       if (def.id === 'twilio' && org?.twilioPhoneNumber) {
-        return { ...merged, enabled: true, configured: true, apiKeySet: true, availability: 'connected' as const };
+        return {
+          ...merged,
+          enabled: true,
+          configured: true,
+          apiKeySet: true,
+          availability: 'connected' as const,
+        };
       }
-      if (def.id === 'mapbox' && (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.MAPBOX_TOKEN)) {
-        return { ...merged, configured: true, apiKeySet: true, availability: 'configured' as const };
+      if (
+        def.id === 'mapbox' &&
+        (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.MAPBOX_TOKEN)
+      ) {
+        return {
+          ...merged,
+          configured: true,
+          apiKeySet: true,
+          availability: 'configured' as const,
+        };
       }
       if (def.id === 'resend' && process.env.RESEND_API_KEY) {
-        return { ...merged, configured: true, apiKeySet: true, availability: 'configured' as const };
+        return {
+          ...merged,
+          configured: true,
+          apiKeySet: true,
+          availability: 'configured' as const,
+        };
       }
       if (def.id === 'inngest' && process.env.INNGEST_EVENT_KEY) {
-        return { ...merged, configured: true, apiKeySet: true, availability: 'configured' as const };
+        return {
+          ...merged,
+          configured: true,
+          apiKeySet: true,
+          availability: 'configured' as const,
+        };
       }
       if (def.id === 'firebase') {
-        return { ...merged, enabled: true, configured: true, apiKeySet: true, availability: 'connected' as const };
+        return {
+          ...merged,
+          enabled: true,
+          configured: true,
+          apiKeySet: true,
+          availability: 'connected' as const,
+        };
       }
       return merged;
     });
@@ -841,12 +1209,27 @@ export async function getIntegrationsSettings(orgId: string, userId?: string | n
   return saveSettingsDoc(orgId, 'integrations', { organizationId: orgId, integrations }, userId);
 }
 
-export async function updateIntegration(orgId: string, integrationId: string, input: { enabled: boolean; apiKey?: string }, userId?: string | null, userEmail?: string | null) {
+export async function updateIntegration(
+  orgId: string,
+  integrationId: string,
+  input: { enabled: boolean; apiKey?: string },
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getIntegrationsSettings(orgId, userId);
   const target = current.integrations.find((i) => i.id === integrationId);
   if (!target) throw new Error('Integration not found');
-  if (target.availability === 'planned' || target.availability === 'unavailable' || target.connectable === false) {
-    if (integrationId !== 'stripe' && integrationId !== 'twilio' && integrationId !== 'resend' && integrationId !== 'mapbox') {
+  if (
+    target.availability === 'planned' ||
+    target.availability === 'unavailable' ||
+    target.connectable === false
+  ) {
+    if (
+      integrationId !== 'stripe' &&
+      integrationId !== 'twilio' &&
+      integrationId !== 'resend' &&
+      integrationId !== 'mapbox'
+    ) {
       throw new Error('Integration is not available to enable');
     }
   }
@@ -861,83 +1244,316 @@ export async function updateIntegration(orgId: string, integrationId: string, in
           enabled: input.enabled,
           configured: input.enabled || i.configured,
           apiKeySet: !!input.apiKey || i.apiKeySet,
-          availability: input.enabled ? ('connected' as const) : i.availability === 'connected' ? ('configured' as const) : i.availability,
+          availability: input.enabled
+            ? ('connected' as const)
+            : i.availability === 'connected'
+              ? ('configured' as const)
+              : i.availability,
         }
       : i,
   );
-  const updated = await saveSettingsDoc(orgId, 'integrations', { ...current, integrations }, userId);
+  const updated = await saveSettingsDoc(
+    orgId,
+    'integrations',
+    { ...current, integrations },
+    userId,
+  );
 
   if (integrationId === 'twilio' && input.apiKey) {
     await updateOrganization(orgId, { twilioPhoneNumber: input.apiKey });
   }
 
-  await logAudit(orgId, { action: 'update', resource: 'settings/integrations', userId, userEmail, details: { integrationId, enabled: input.enabled } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/integrations',
+    userId,
+    userEmail,
+    details: { integrationId, enabled: input.enabled, apiKeySet: !!input.apiKey },
+  });
   return updated;
 }
 
-export async function getAiSettings(orgId: string, userId?: string | null): Promise<AiSettingsConfig> {
+export type IntegrationConnectionTestResult = {
+  integrationKey: string;
+  state: 'available' | 'configured' | 'connected' | 'degraded' | 'unavailable' | 'planned';
+  capabilityTested: string;
+  timestamp: string;
+  latencyMs: number;
+  result: 'pass' | 'fail' | 'skipped';
+  errorCategory: string | null;
+};
+
+/**
+ * Non-destructive connection probes. Never returns secrets or full provider payloads.
+ */
+export async function testIntegrationConnection(
+  orgId: string,
+  integrationId: string,
+): Promise<IntegrationConnectionTestResult> {
+  const started = Date.now();
+  const timestamp = new Date().toISOString();
+  const settings = await getIntegrationsSettings(orgId);
+  const target = settings.integrations.find((i) => i.id === integrationId);
+  if (!target) {
+    return {
+      integrationKey: integrationId,
+      state: 'unavailable',
+      capabilityTested: 'lookup',
+      timestamp,
+      latencyMs: Date.now() - started,
+      result: 'fail',
+      errorCategory: 'not_found',
+    };
+  }
+  if (
+    target.availability === 'planned' ||
+    (target.connectable === false && target.id !== 'firebase' && target.id !== 'inngest')
+  ) {
+    if (target.availability === 'planned') {
+      return {
+        integrationKey: integrationId,
+        state: 'planned',
+        capabilityTested: 'connectability',
+        timestamp,
+        latencyMs: Date.now() - started,
+        result: 'skipped',
+        errorCategory: 'planned_not_connectable',
+      };
+    }
+  }
+
+  try {
+    switch (integrationId) {
+      case 'stripe': {
+        const key = process.env.STRIPE_SECRET_KEY?.trim();
+        if (!key) {
+          return {
+            integrationKey: integrationId,
+            state: 'unavailable',
+            capabilityTested: 'account_status',
+            timestamp,
+            latencyMs: Date.now() - started,
+            result: 'fail',
+            errorCategory: 'missing_credentials',
+          };
+        }
+        // Presence + format only — no Stripe network call that could mutate.
+        const ok = key.startsWith('sk_') || key.startsWith('rk_');
+        return {
+          integrationKey: integrationId,
+          state: ok ? 'configured' : 'degraded',
+          capabilityTested: 'credential_format',
+          timestamp,
+          latencyMs: Date.now() - started,
+          result: ok ? 'pass' : 'fail',
+          errorCategory: ok ? null : 'invalid_credential_format',
+        };
+      }
+      case 'twilio': {
+        const sid = process.env.TWILIO_ACCOUNT_SID?.trim();
+        const token = process.env.TWILIO_AUTH_TOKEN?.trim();
+        const ok = !!(sid && token);
+        return {
+          integrationKey: integrationId,
+          state: ok ? 'configured' : 'unavailable',
+          capabilityTested: 'credential_presence',
+          timestamp,
+          latencyMs: Date.now() - started,
+          result: ok ? 'pass' : 'fail',
+          errorCategory: ok ? null : 'missing_credentials',
+        };
+      }
+      case 'resend': {
+        const key = process.env.RESEND_API_KEY?.trim();
+        const ok = !!key;
+        return {
+          integrationKey: integrationId,
+          state: ok ? 'configured' : 'unavailable',
+          capabilityTested: 'credential_presence',
+          timestamp,
+          latencyMs: Date.now() - started,
+          result: ok ? 'pass' : 'fail',
+          errorCategory: ok ? null : 'missing_credentials',
+        };
+      }
+      case 'mapbox': {
+        const token = (
+          process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+          process.env.MAPBOX_TOKEN ||
+          ''
+        ).trim();
+        const ok = token.startsWith('pk.');
+        return {
+          integrationKey: integrationId,
+          state: ok ? 'configured' : token ? 'degraded' : 'unavailable',
+          capabilityTested: 'public_token_format',
+          timestamp,
+          latencyMs: Date.now() - started,
+          result: ok ? 'pass' : 'fail',
+          errorCategory: ok ? null : token ? 'non_public_or_invalid_token' : 'missing_credentials',
+        };
+      }
+      case 'inngest': {
+        const eventKey = process.env.INNGEST_EVENT_KEY?.trim();
+        const signingKey = process.env.INNGEST_SIGNING_KEY?.trim();
+        const ok = !!(eventKey || signingKey);
+        return {
+          integrationKey: integrationId,
+          state: ok ? 'configured' : 'unavailable',
+          capabilityTested: 'config_presence',
+          timestamp,
+          latencyMs: Date.now() - started,
+          result: ok ? 'pass' : 'fail',
+          errorCategory: ok ? null : 'missing_credentials',
+        };
+      }
+      default:
+        return {
+          integrationKey: integrationId,
+          state: target.availability,
+          capabilityTested: 'unsupported',
+          timestamp,
+          latencyMs: Date.now() - started,
+          result: 'skipped',
+          errorCategory: 'no_test_action',
+        };
+    }
+  } catch {
+    return {
+      integrationKey: integrationId,
+      state: 'degraded',
+      capabilityTested: 'probe',
+      timestamp,
+      latencyMs: Date.now() - started,
+      result: 'fail',
+      errorCategory: 'probe_exception',
+    };
+  }
+}
+
+export async function getAiSettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<AiSettingsConfig> {
   const existing = await getSettingsDoc<AiSettingsConfig>(orgId, 'ai');
   if (existing) return existing;
-  return saveSettingsDoc(orgId, 'ai', {
-    organizationId: orgId,
-    proposalWriterEnabled: true,
-    followUpAssistantEnabled: true,
-    forecastingEnabled: true,
-    dispatchAssistantEnabled: true,
-    monthlyUsageLimit: 1000,
-    currentUsageCount: 0,
-    allowedFeatures: ['proposals', 'follow_up', 'forecasting', 'dispatch'],
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'ai',
+    {
+      organizationId: orgId,
+      proposalWriterEnabled: true,
+      followUpAssistantEnabled: true,
+      forecastingEnabled: true,
+      dispatchAssistantEnabled: true,
+      monthlyUsageLimit: 1000,
+      currentUsageCount: 0,
+      allowedFeatures: ['proposals', 'follow_up', 'forecasting', 'dispatch'],
+    },
+    userId,
+  );
 }
 
-export async function updateAiSettings(orgId: string, input: Partial<AiSettingsConfig>, userId?: string | null, userEmail?: string | null) {
+export async function updateAiSettings(
+  orgId: string,
+  input: Partial<AiSettingsConfig>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getAiSettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'ai', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/ai', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/ai',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
-export async function getSecuritySettings(orgId: string, userId?: string | null): Promise<SecuritySettings> {
+export async function getSecuritySettings(
+  orgId: string,
+  userId?: string | null,
+): Promise<SecuritySettings> {
   const existing = await getSettingsDoc<SecuritySettings>(orgId, 'security');
   if (existing) return existing;
-  return saveSettingsDoc(orgId, 'security', {
-    organizationId: orgId,
-    emailLoginEnabled: true,
-    googleLoginEnabled: true,
-    microsoftLoginEnabled: false,
-    twoFactorRequired: false,
-    passwordExpirationDays: 90,
-    sessionTimeoutMinutes: 480,
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'security',
+    {
+      organizationId: orgId,
+      emailLoginEnabled: true,
+      googleLoginEnabled: true,
+      microsoftLoginEnabled: false,
+      twoFactorRequired: false,
+      passwordExpirationDays: 90,
+      sessionTimeoutMinutes: 480,
+    },
+    userId,
+  );
 }
 
-export async function updateSecuritySettings(orgId: string, input: Partial<SecuritySettings>, userId?: string | null, userEmail?: string | null) {
+export async function updateSecuritySettings(
+  orgId: string,
+  input: Partial<SecuritySettings>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getSecuritySettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'security', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/security', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/security',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
-export async function getSystemPreferences(orgId: string, userId?: string | null): Promise<SystemPreferences> {
+export async function getSystemPreferences(
+  orgId: string,
+  userId?: string | null,
+): Promise<SystemPreferences> {
   const existing = await getSettingsDoc<SystemPreferences>(orgId, 'system');
   if (existing) return existing;
-  return saveSettingsDoc(orgId, 'system', {
-    organizationId: orgId,
-    timeZone: 'America/New_York',
-    dateFormat: 'MM/DD/YYYY',
-    currency: 'USD',
-    measurementUnit: 'feet',
-  }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'system',
+    {
+      organizationId: orgId,
+      timeZone: 'America/New_York',
+      dateFormat: 'MM/DD/YYYY',
+      currency: 'USD',
+      measurementUnit: 'feet',
+    },
+    userId,
+  );
 }
 
-export async function updateSystemPreferences(orgId: string, input: Partial<SystemPreferences>, userId?: string | null, userEmail?: string | null) {
+export async function updateSystemPreferences(
+  orgId: string,
+  input: Partial<SystemPreferences>,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getSystemPreferences(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'system', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/system', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/system',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }
 
-export async function ensureFeatureFlags(orgId: string, userId?: string | null): Promise<FeatureFlag[]> {
+export async function ensureFeatureFlags(
+  orgId: string,
+  userId?: string | null,
+): Promise<FeatureFlag[]> {
   const db = getAdminFirestore();
   const snap = await db.collection(`organizations/${orgId}/featureFlags`).get();
   if (!snap.empty) return snap.docs.map((d) => mapDoc<FeatureFlag>({ id: d.id, ...d.data()! }));
@@ -947,7 +1563,14 @@ export async function ensureFeatureFlags(orgId: string, userId?: string | null):
   const flags: FeatureFlag[] = [];
   for (const f of DEFAULT_FEATURE_FLAGS) {
     const ref = db.collection(`organizations/${orgId}/featureFlags`).doc(f.key);
-    const data = { organizationId: orgId, ...f, createdAt: now, updatedAt: now, createdBy: userId ?? null, updatedBy: userId ?? null };
+    const data = {
+      organizationId: orgId,
+      ...f,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: userId ?? null,
+      updatedBy: userId ?? null,
+    };
     batch.set(ref, data);
     flags.push(mapDoc<FeatureFlag>({ id: ref.id, ...data }));
   }
@@ -962,7 +1585,13 @@ export async function listFeatureFlags(orgId: string) {
   return ensureFeatureFlags(orgId);
 }
 
-export async function toggleFeatureFlag(orgId: string, flagId: string, enabled: boolean, userId?: string | null, userEmail?: string | null) {
+export async function toggleFeatureFlag(
+  orgId: string,
+  flagId: string,
+  enabled: boolean,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const db = getAdminFirestore();
   let ref = db.doc(`organizations/${orgId}/featureFlags/${flagId}`);
   let snap = await ref.get();
@@ -975,12 +1604,22 @@ export async function toggleFeatureFlag(orgId: string, flagId: string, enabled: 
   }
   if (!snap.exists) throw new Error('Feature flag not found');
   await ref.update({ enabled, updatedAt: ts(), updatedBy: userId ?? null });
-  await logAudit(orgId, { action: 'update', resource: 'settings/featureFlags', userId, userEmail, details: { flagId, enabled } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/featureFlags',
+    userId,
+    userEmail,
+    details: { flagId, enabled },
+  });
   const updated = await ref.get();
   return mapDoc<FeatureFlag>({ id: updated.id, ...updated.data()! });
 }
 
-export async function listAuditLogs(orgId: string, limit = 50, resource?: string): Promise<AuditLogEntry[]> {
+export async function listAuditLogs(
+  orgId: string,
+  limit = 50,
+  resource?: string,
+): Promise<AuditLogEntry[]> {
   const db = getAdminFirestore();
   const col = db.collection(`organizations/${orgId}/auditLogs`);
   let logs: AuditLogEntry[];
@@ -1012,25 +1651,63 @@ export async function listBackups(orgId: string): Promise<BackupRecord[]> {
   }
 }
 
-export async function createBackup(orgId: string, userId?: string | null, userEmail?: string | null) {
+export async function createBackup(
+  orgId: string,
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const db = getAdminFirestore();
   const now = ts();
   const ref = db.collection(`organizations/${orgId}/backups`).doc();
-  const data = { organizationId: orgId, type: 'manual' as const, status: 'completed' as const, sizeMb: 128, createdAt: now, updatedAt: now, createdBy: userId };
+  const data = {
+    organizationId: orgId,
+    type: 'manual' as const,
+    status: 'completed' as const,
+    sizeMb: 128,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: userId,
+  };
   await ref.set(data);
-  await logAudit(orgId, { action: 'backup', resource: 'settings/backups', userId, userEmail, details: { backupId: ref.id } });
+  await logAudit(orgId, {
+    action: 'backup',
+    resource: 'settings/backups',
+    userId,
+    userEmail,
+    details: { backupId: ref.id },
+  });
   return mapDoc<BackupRecord>({ id: ref.id, ...data });
 }
 
 export async function getReportsSettings(orgId: string, userId?: string | null) {
-  const existing = await getSettingsDoc<{ organizationId: string; defaultDashboardRole: string; autoRefreshSeconds: number }>(orgId, 'reports');
+  const existing = await getSettingsDoc<{
+    organizationId: string;
+    defaultDashboardRole: string;
+    autoRefreshSeconds: number;
+  }>(orgId, 'reports');
   if (existing) return existing;
-  return saveSettingsDoc(orgId, 'reports', { organizationId: orgId, defaultDashboardRole: 'owner', autoRefreshSeconds: 30 }, userId);
+  return saveSettingsDoc(
+    orgId,
+    'reports',
+    { organizationId: orgId, defaultDashboardRole: 'owner', autoRefreshSeconds: 30 },
+    userId,
+  );
 }
 
-export async function updateReportsSettings(orgId: string, input: { defaultDashboardRole?: string; autoRefreshSeconds?: number }, userId?: string | null, userEmail?: string | null) {
+export async function updateReportsSettings(
+  orgId: string,
+  input: { defaultDashboardRole?: string; autoRefreshSeconds?: number },
+  userId?: string | null,
+  userEmail?: string | null,
+) {
   const current = await getReportsSettings(orgId, userId);
   const updated = await saveSettingsDoc(orgId, 'reports', { ...current, ...input }, userId);
-  await logAudit(orgId, { action: 'update', resource: 'settings/reports', userId, userEmail, details: { fields: Object.keys(input) } });
+  await logAudit(orgId, {
+    action: 'update',
+    resource: 'settings/reports',
+    userId,
+    userEmail,
+    details: { fields: Object.keys(input) },
+  });
   return updated;
 }

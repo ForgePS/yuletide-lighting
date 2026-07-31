@@ -106,7 +106,8 @@ async function main() {
   loadEnv();
   const { flags, values } = parseArgs(process.argv.slice(2));
   const emulator = flags.has('emulator');
-  const redact = flags.has('redact');
+  // Always redact org names for non-emulator runs (safe for commit summaries).
+  const redact = flags.has('redact') || !emulator;
   const staging = flags.has('staging');
   const projectId =
     values.project ||
@@ -114,6 +115,22 @@ async function main() {
     process.env.FIREBASE_PROJECT_ID ||
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
     'yuletide-lighting';
+
+  if (!emulator && process.env.FIRESTORE_EMULATOR_HOST) {
+    console.error(
+      `Refusing non-emulator audit: FIRESTORE_EMULATOR_HOST=${process.env.FIRESTORE_EMULATOR_HOST}. Unset it for staging/production.`,
+    );
+    process.exit(1);
+  }
+  if (flags.has('apply')) {
+    console.error('Audit script is read-only. --apply is not supported.');
+    process.exit(1);
+  }
+
+  console.log(`Audit project confirmation: ${projectId}`);
+  console.log(`Emulator mode: ${emulator}`);
+  console.log(`FIRESTORE_EMULATOR_HOST: ${process.env.FIRESTORE_EMULATOR_HOST || '(unset)'}`);
+  console.log('Writes: NONE (read-only)');
 
   const db = initDb(projectId, emulator);
   const snap = await db.collection('organizations').get();
@@ -178,10 +195,13 @@ async function main() {
   };
 
   const outDir = path.join(repoRoot, 'docs/production-cleanup');
+  const privateDir = path.join(outDir, '.audit-private');
   fs.mkdirSync(outDir, { recursive: true });
-  const jsonPath = path.join(outDir, 'organization-module-audit.json');
+  fs.mkdirSync(privateDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const jsonPath = path.join(privateDir, `organization-module-audit-${projectId}-${stamp}.json`);
   const mdPath = path.join(outDir, 'organization-module-audit.md');
-  const csvPath = path.join(outDir, 'organization-module-audit.csv');
+  const csvPath = path.join(privateDir, `organization-module-audit-${projectId}-${stamp}.csv`);
 
   fs.writeFileSync(jsonPath, JSON.stringify({ summary, organizations: rows }, null, 2));
 

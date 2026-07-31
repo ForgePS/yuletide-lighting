@@ -11,6 +11,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@clcrm/types': resolve(__dirname, 'packages/types/src/index.ts'),
+      '@clcrm/validators': resolve(__dirname, 'packages/validators/src/index.ts'),
+      '@clcrm/api': resolve(__dirname, 'packages/api/src/index.ts'),
       '@yuletide/firebase': resolve(__dirname, 'packages/firebase/src/index.ts'),
     },
   },

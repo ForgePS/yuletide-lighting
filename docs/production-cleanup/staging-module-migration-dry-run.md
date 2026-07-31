@@ -1,35 +1,21 @@
-# Staging module migration dry-run
+# Staging module migration dry-run (P0.2C)
 
-| Field               | Value                                                                          |
-| ------------------- | ------------------------------------------------------------------------------ |
-| **Project ID**      | `yuletide-lighting-staging`                                                    |
-| **Date**            | 2026-07-31                                                                     |
-| **Commit SHA**      | `cb20b419e2382bc9bb85a0f91c78fdd1658d6f1d`                                     |
-| **Command**         | `npm run migrate:org-modules -- --staging --project=yuletide-lighting-staging` |
-| **Mode**            | `dry-run`                                                                      |
-| **Apply performed** | **NO**                                                                         |
+| Field       | Value                                                                |
+| ----------- | -------------------------------------------------------------------- |
+| **Project** | `yuletide-lighting-staging`                                          |
+| **Date**    | 2026-07-31                                                           |
+| **Command** | `npm run migrate:org-modules -- --project=yuletide-lighting-staging` |
+| **Mode**    | dry-run (default)                                                    |
+| **Apply**   | **not run**                                                          |
 
-## Results
+## Result
 
-| Metric                     | Count |
+| Metric                     | Value |
 | -------------------------- | ----: |
-| Organizations scanned      |     0 |
-| Proposed changes           |     0 |
-| Skipped                    |     0 |
-| Conflicts / failures       |     0 |
-| Expected writes            |     0 |
-| Unknown plans              |     0 |
-| Unknown keys               |     0 |
-| Preserved disabled modules |   n/a |
+| Scanned                    |     1 |
+| Migration required         |     0 |
+| Applied                    |     0 |
+| Skipped (already migrated) |     1 |
+| Failures                   |     0 |
 
-## Rollback output
-
-Path pattern: `docs/production-cleanup/organization-module-migration-rollback-*.json` (gitignored)
-
-## Entitlement match
-
-No proposed writes. Nothing to approve for apply.
-
-## Approval recommendation
-
-**Do not apply** on staging until test tenants exist and a non-empty audit is reviewed. Staging apply remains unauthorized in P0.2B.
+Tenant `8DS6mI0mfiYFIc3Ddutn` requires **no** corrective migration after real provisioning.

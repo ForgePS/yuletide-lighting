@@ -12,6 +12,23 @@ describe('buildOrganizationProvisioningFields', () => {
     expect(fields.subscriptionTier).toBe('trial');
     expect(fields.configurationSchemaVersion).toBe(ORGANIZATION_CONFIG_SCHEMA_VERSION);
     expect(fields.featureFlags?.followUpAutomation).toBe(false);
+    expect(fields.provisioningStatus).toBe('active');
+    expect(Array.isArray(fields.portalFeatures)).toBe(true);
+    expect(fields.portalFeatures.length).toBeGreaterThan(0);
+  });
+
+  it('accepts professional tier with staging markers', () => {
+    const fields = buildOrganizationProvisioningFields({
+      subscriptionStatus: 'active',
+      subscriptionTier: 'professional',
+      subscriptionPlan: 'monthly',
+      slug: 'yuletide-staging-verification',
+      environmentMarker: 'staging_test',
+    });
+    expect(fields.subscriptionTier).toBe('professional');
+    expect(fields.enabledModules).toEqual([...MODULE_PRESETS.professional]);
+    expect(fields.slug).toBe('yuletide-staging-verification');
+    expect(fields.environmentMarker).toBe('staging_test');
   });
 
   it('intersects with availableModules allow-list', () => {

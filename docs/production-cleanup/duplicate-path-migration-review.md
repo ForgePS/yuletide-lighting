@@ -1,26 +1,24 @@
-# Duplicate-path migration review (P0.2B)
+# Duplicate-path migration review (P0.2B → P0.2C)
 
-**Status:** Write freezes implemented; **no production record migration applied**  
+**Status:** Write freezes remain active; **no duplicate-path data migration applied in P0.2C**  
 **Commit base:** `cb20b419e2382bc9bb85a0f91c78fdd1658d6f1d`+
 
 ## Write freezes (code)
 
-| Domain               | Legacy writer                                       | Canonical behavior now                                                     |
-| -------------------- | --------------------------------------------------- | -------------------------------------------------------------------------- |
-| Properties           | `createCustomerProperty360` dual-write              | Writes **only** via `createOrgProperty`                                    |
-| Jobs                 | `createCustomerJob` subcollection                   | Writes **only** via `createOrgJob`                                         |
-| Conversations        | `messagesRouter` `messageThreads` / flat `messages` | Delegates to `listConversations` / `ensureConversation` / `sendMessage360` |
-| Messages dual-write  | `sendMessage360` flat `messages`                    | Removed                                                                    |
-| Proposals / Invoices | Already org-collection                              | Keep sole helpers                                                          |
+| Domain                 | Canonical writer                     | Legacy reader         | Legacy writer                                                  | Compatibility metrics       | Cross-path detector                 | Migration script            | Rollback           | Tests              |
+| ---------------------- | ------------------------------------ | --------------------- | -------------------------------------------------------------- | --------------------------- | ----------------------------------- | --------------------------- | ------------------ | ------------------ |
+| Properties             | `createOrgProperty`                  | may still read legacy | denied / redirected via `createCustomerProperty360` → org-only | `emitLegacyPathDeprecation` | static audit                        | planned, not applied        | pre-image required | integration + gate |
+| Jobs                   | `createOrgJob`                       | may still read legacy | denied / redirected via `createCustomerJob` → org-only         | same                        | static audit                        | planned, not applied        | pre-image required | integration + gate |
+| Conversations/messages | conversations helpers                | flat paths deprecated | dual-write removed; `messagesRouter` redirected                | same                        | static audit                        | planned, not applied        | pre-image required | integration + gate |
+| Proposals              | `createProposal360` (org collection) | org-only              | no legacy dual-write                                           | n/a                         | extend gate if dual-write reappears | none needed for path freeze | n/a                | unit/integration   |
+| Invoices               | `createInvoice360` (org collection)  | org-only              | no legacy dual-write                                           | n/a                         | extend gate if dual-write reappears | none needed for path freeze | n/a                | unit/integration   |
 
-Deprecation metrics: `emitLegacyPathDeprecation` (dev warn + optional sanitized debug).
+## Production gate
 
-Static gate: `node scripts/audit-legacy-writes.mjs` (wired into `production:check`).
+`node scripts/audit-legacy-writes.mjs` is wired into `production:check` and **fails** if forbidden legacy write patterns are reintroduced for properties/jobs/messages.
 
-## Migration tooling (not applied)
+## P0.2C confirmation
 
-Scripts still required per domain (audit / dry-run / apply-protected / rollback / conflicts / reconciliation) — tracked in `data-migration-plan.md`. **Do not migrate production records in P0.2B.**
-
-## Conflicts
-
-None evaluated yet (no data migration run).
+- Duplicate-path **data** migrations were **not** applied.
+- Write freezes remain active for properties, jobs, conversations/messages.
+- Proposals and invoices remain org-collection canonical writers (no dual-write freeze work required beyond monitoring).

@@ -1,44 +1,35 @@
-# Staging organization module audit (read-only)
+# Staging organization module audit (post P0.2C tenant)
 
-| Field                | Value                                                                        |
-| -------------------- | ---------------------------------------------------------------------------- |
-| **Project ID**       | `yuletide-lighting-staging`                                                  |
-| **Date**             | 2026-07-31                                                                   |
-| **Operator**         | Auto (P0.2B)                                                                 |
-| **Commit SHA**       | `cb20b419e2382bc9bb85a0f91c78fdd1658d6f1d`                                   |
-| **Command**          | `npm run audit:org-modules -- --staging --project=yuletide-lighting-staging` |
-| **Writes performed** | **0**                                                                        |
-
-## Safeguards verified
-
-- [x] Project ID confirmed: `yuletide-lighting-staging`
-- [x] `FIRESTORE_EMULATOR_HOST` unset
-- [x] No `--apply` flag
-- [x] Script is read-only
-- [x] Output redacted; detailed JSON/CSV in gitignored `.audit-private/`
+| Field                 | Value                                                      |
+| --------------------- | ---------------------------------------------------------- |
+| **Project ID**        | `yuletide-lighting-staging`                                |
+| **Date**              | 2026-07-31                                                 |
+| **Organization**      | `8DS6mI0mfiYFIc3Ddutn` (Yuletide CRM Staging Verification) |
+| **Provisioning path** | `provisionCreatorOrganization`                             |
+| **Plan**              | Professional / active / monthly                            |
+| **Writes in audit**   | **0**                                                      |
 
 ## Summary
 
-| Metric                               | Count |
-| ------------------------------------ | ----: |
-| Organizations scanned                |     0 |
-| Missing enabledModules               |     0 |
-| Empty enabledModules                 |     0 |
-| Unknown plans / tiers                |     0 |
-| Unknown module keys                  |     0 |
-| Invalid plan/module combinations     |     0 |
-| Missing configuration schema version |     0 |
-| Missing settings defaults            |     0 |
-| Creator-only module findings         |     0 |
-| Automatically safe migrations        |     0 |
-| Manual-review records                |     0 |
-| Blocking records                     |     0 |
-| Migration required                   |     0 |
+| Metric                    |                                   Count |
+| ------------------------- | --------------------------------------: |
+| Organizations scanned     |                                       1 |
+| Missing enabledModules    |                                       0 |
+| Empty enabledModules      |                                       0 |
+| Unknown plans             |                                       0 |
+| Unknown module keys       |                                       0 |
+| Missing schema versions   |                                       0 |
+| Missing settings defaults | 0 (seeded via `ensureSettingsDefaults`) |
+| Blocking records          |                                       0 |
+| Migration required        |                                   **0** |
 
-## Interpretation
+## Dry-run migration
 
-Staging currently contains **no organization documents**. There is nothing to migrate on staging until test tenants are provisioned.
+```text
+scanned: 1
+migrationRequired: 0
+applied: 0
+skipped: 1 (already migrated)
+```
 
-## No-write verification
-
-Audit completed with `Writes: NONE (read-only)` and exit code 0. No organization documents were created, updated, or deleted.
+Proposed writes for the new tenant: **0**. Migration required: **false**.

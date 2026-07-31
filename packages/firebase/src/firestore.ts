@@ -43,6 +43,14 @@ export type OrganizationRecord = {
   subscriptionTier?: string | null;
   configurationSchemaVersion?: number | null;
   featureFlags?: Record<string, boolean> | null;
+  /** Creator provisioning lifecycle: pending | active | failed */
+  provisioningStatus?: 'pending' | 'active' | 'failed' | null;
+  /** Stable org slug when assigned at provision time */
+  slug?: string | null;
+  /** Non-production marker (e.g. staging_test) */
+  environmentMarker?: string | null;
+  /** Portal feature keys enabled for the tenant */
+  portalFeatures?: string[] | null;
   twilioPhoneNumber?: string | null;
   reviewGoogleUrl?: string | null;
   reviewFacebookUrl?: string | null;

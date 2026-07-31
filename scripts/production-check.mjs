@@ -62,6 +62,118 @@ function tryRun(name, category, cmd, correction) {
   }
 }
 
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function waitForPortsFree(ports, timeoutMs = 30000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    let busy = false;
+    for (const port of ports) {
+      try {
+        execSync(
+          `node -e "const n=require('net');const s=n.createServer();s.once('error',()=>process.exit(1));s.listen(${port},'127.0.0.1',()=>s.close(()=>process.exit(0)));"`,
+          {
+            stdio: 'ignore',
+          },
+        );
+      } catch {
+        busy = true;
+        break;
+      }
+    }
+    if (!busy) return true;
+    sleep(1000);
+  }
+  return false;
+}
+
+/**
+ * Run an emulator-backed suite with port readiness + one infrastructure retry.
+ * Assertion failures must not be retried as infrastructure failures.
+ */
+function tryRunEmulatorSuite(name, category, cmd, correction) {
+  const ports = [8080, 9199, 4400];
+  waitForPortsFree(ports, 20000);
+
+  const runOnce = () => {
+    try {
+      const result = execSync(cmd, {
+        cwd: root,
+        env: process.env,
+        encoding: 'utf8',
+        stdio: ['inherit', 'pipe', 'pipe'],
+        maxBuffer: 20 * 1024 * 1024,
+      });
+      process.stdout.write(result);
+      return { ok: true, output: result };
+    } catch (err) {
+      const stdout =
+        err && typeof err === 'object' && 'stdout' in err ? String(err.stdout ?? '') : '';
+      const stderr =
+        err && typeof err === 'object' && 'stderr' in err ? String(err.stderr ?? '') : '';
+      process.stdout.write(stdout);
+      process.stderr.write(stderr);
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, output: `${message}\n${stdout}\n${stderr}` };
+    }
+  };
+
+  let first = runOnce();
+  if (first.ok) {
+    add({
+      name,
+      severity: 'info',
+      category,
+      status: 'PASS',
+      problem: 'passed',
+      correction: 'n/a',
+    });
+    waitForPortsFree(ports, 15000);
+    return true;
+  }
+
+  const infrastructureHints =
+    /EADDRINUSE|port.*already|emulator.*fail|failed to start|Could not start|TIMEOUT|timed out|Java|ENOMEM|spawn/i;
+  // Never treat vitest assertion failures as infrastructure — only retry start/port errors.
+  const mayRetry = infrastructureHints.test(first.output);
+  if (mayRetry) {
+    console.warn(
+      `[${name}] first attempt failed; evaluating one infrastructure retry. Original failure preserved below.`,
+    );
+    console.warn(first.output.slice(0, 500));
+    waitForPortsFree(ports, 30000);
+    sleep(2000);
+    const second = runOnce();
+    if (second.ok) {
+      add({
+        name,
+        severity: 'warning',
+        category,
+        status: 'WARN',
+        problem: 'passed after one infrastructure retry (original failure retained in logs)',
+        correction: 'Investigate emulator startup flake; do not ignore assertion failures',
+        docs: 'docs/production-cleanup/production-check-stability.md',
+      });
+      waitForPortsFree(ports, 15000);
+      return true;
+    }
+  }
+
+  add({
+    name,
+    severity: 'launch',
+    category,
+    status: 'FAIL',
+    problem: `command failed: ${cmd}`,
+    correction,
+    docs: 'docs/production-cleanup/production-check-stability.md',
+  });
+  waitForPortsFree(ports, 15000);
+  return false;
+}
+
 function collectNavHrefs() {
   const navFile = path.join(root, 'packages/types/src/crm-ui-config.ts');
   const text = fs.readFileSync(navFile, 'utf8');
@@ -358,11 +470,11 @@ function auditFirebaseRulesTests() {
     });
     return;
   }
-  tryRun(
+  tryRunEmulatorSuite(
     'firebase-rule-tests',
     'security',
     'npm run test:firebase-rules',
-    'Fix failing Firestore/Storage rules tests; ensure emulators start',
+    'Fix failing Firestore/Storage rules tests; ensure emulators start and ports 8080/9199 are free',
   );
 }
 
@@ -416,7 +528,9 @@ if (!auditsOnly) {
       correction: 'Run full lint before launch',
     });
   tryRun('unit-tests', 'quality', 'npm test', 'Fix unit test failures');
-  tryRun(
+  // Emulator suites run serially with port readiness: rules before integration.
+  auditFirebaseRulesTests();
+  tryRunEmulatorSuite(
     'integration-tests',
     'quality',
     'npm run test:integration',
@@ -496,8 +610,7 @@ auditMocks();
 auditHardcoded();
 auditLegacyPostgres();
 auditModulePresets();
-if (!auditsOnly) auditFirebaseRulesTests();
-else {
+if (auditsOnly) {
   const files = ['tests/firebase/firestore.rules.test.ts', 'tests/firebase/storage.rules.test.ts'];
   const ok = files.every((f) => fs.existsSync(path.join(root, f)));
   add({

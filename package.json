@@ -35,6 +35,9 @@
     "deploy:staging": "node scripts/deploy-firebase.mjs --staging",
     "deploy:rules": "firebase deploy --only firestore:rules,storage",
     "seed:cms": "npx tsx scripts/seed-website-cms.ts",
+    "provision:staging-verification": "npx tsx scripts/provision-staging-verification.ts",
+    "seed:staging-verification": "npx tsx scripts/seed-staging-verification.ts",
+    "cleanup:staging-verification": "npx tsx scripts/cleanup-staging-verification.ts",
     "shift-payments-2025": "node scripts/shift-2026-payments-to-2025.mjs",
     "shift-payments-2025:apply": "node scripts/shift-2026-payments-to-2025.mjs --apply"
   },

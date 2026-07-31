@@ -17,6 +17,8 @@ docs/production-cleanup/module-migration-emulator-dry-run.txt
 docs/production-cleanup/.audit-private/
 secrets/
 *-firebase-adminsdk*.json
+e2e/.auth/
+playwright/.auth/
 *.log
 .DS_Store
 .expo

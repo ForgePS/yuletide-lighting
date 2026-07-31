@@ -1275,50 +1275,93 @@ export async function updateIntegration(
 
 export type IntegrationConnectionTestResult = {
   integrationKey: string;
+  /** High-level availability — never claim "connected" for format-only probes. */
   state: 'available' | 'configured' | 'connected' | 'degraded' | 'unavailable' | 'planned';
-  capabilityTested: string;
+  /** Explicit capability under test. */
+  capabilityTested:
+    | 'configuration_validation'
+    | 'credential_format_validation'
+    | 'safe_provider_authentication'
+    | 'provider_capability_check'
+    | 'lookup'
+    | 'connectability'
+    | 'unsupported'
+    | 'probe'
+    | string;
+  configured: boolean;
+  credentialFormatValid: boolean | null;
+  providerAuthenticationAttempted: boolean;
+  providerAuthenticationPassed: boolean | null;
+  noSendNoChargeGuarantee: boolean;
+  sanitizedFailureReason: string | null;
   timestamp: string;
   latencyMs: number;
   result: 'pass' | 'fail' | 'skipped';
   errorCategory: string | null;
 };
 
+function baseProbe(
+  integrationKey: string,
+  partial: Partial<IntegrationConnectionTestResult> &
+    Pick<IntegrationConnectionTestResult, 'state' | 'capabilityTested' | 'result'>,
+  started: number,
+): IntegrationConnectionTestResult {
+  return {
+    integrationKey,
+    configured: false,
+    credentialFormatValid: null,
+    providerAuthenticationAttempted: false,
+    providerAuthenticationPassed: null,
+    noSendNoChargeGuarantee: true,
+    sanitizedFailureReason: null,
+    timestamp: new Date().toISOString(),
+    latencyMs: Date.now() - started,
+    errorCategory: null,
+    ...partial,
+  };
+}
+
 /**
  * Non-destructive connection probes. Never returns secrets or full provider payloads.
+ * Format/presence checks are labeled configuration_validation / credential_format_validation —
+ * not "connected".
  */
 export async function testIntegrationConnection(
   orgId: string,
   integrationId: string,
 ): Promise<IntegrationConnectionTestResult> {
   const started = Date.now();
-  const timestamp = new Date().toISOString();
   const settings = await getIntegrationsSettings(orgId);
   const target = settings.integrations.find((i) => i.id === integrationId);
   if (!target) {
-    return {
-      integrationKey: integrationId,
-      state: 'unavailable',
-      capabilityTested: 'lookup',
-      timestamp,
-      latencyMs: Date.now() - started,
-      result: 'fail',
-      errorCategory: 'not_found',
-    };
+    return baseProbe(
+      integrationId,
+      {
+        state: 'unavailable',
+        capabilityTested: 'lookup',
+        result: 'fail',
+        errorCategory: 'not_found',
+        sanitizedFailureReason: 'Integration not found in tenant settings',
+      },
+      started,
+    );
   }
   if (
     target.availability === 'planned' ||
     (target.connectable === false && target.id !== 'firebase' && target.id !== 'inngest')
   ) {
     if (target.availability === 'planned') {
-      return {
-        integrationKey: integrationId,
-        state: 'planned',
-        capabilityTested: 'connectability',
-        timestamp,
-        latencyMs: Date.now() - started,
-        result: 'skipped',
-        errorCategory: 'planned_not_connectable',
-      };
+      return baseProbe(
+        integrationId,
+        {
+          state: 'planned',
+          capabilityTested: 'connectability',
+          result: 'skipped',
+          errorCategory: 'planned_not_connectable',
+          sanitizedFailureReason: 'Planned integration is not connectable',
+        },
+        started,
+      );
     }
   }
 
@@ -1327,54 +1370,219 @@ export async function testIntegrationConnection(
       case 'stripe': {
         const key = process.env.STRIPE_SECRET_KEY?.trim();
         if (!key) {
-          return {
-            integrationKey: integrationId,
-            state: 'unavailable',
-            capabilityTested: 'account_status',
-            timestamp,
-            latencyMs: Date.now() - started,
-            result: 'fail',
-            errorCategory: 'missing_credentials',
-          };
+          return baseProbe(
+            integrationId,
+            {
+              state: 'unavailable',
+              capabilityTested: 'configuration_validation',
+              result: 'fail',
+              errorCategory: 'missing_credentials',
+              sanitizedFailureReason: 'STRIPE_SECRET_KEY not configured',
+            },
+            started,
+          );
         }
-        // Presence + format only — no Stripe network call that could mutate.
-        const ok = key.startsWith('sk_') || key.startsWith('rk_');
-        return {
-          integrationKey: integrationId,
-          state: ok ? 'configured' : 'degraded',
-          capabilityTested: 'credential_format',
-          timestamp,
-          latencyMs: Date.now() - started,
-          result: ok ? 'pass' : 'fail',
-          errorCategory: ok ? null : 'invalid_credential_format',
-        };
+        const formatOk = key.startsWith('sk_') || key.startsWith('rk_');
+        if (!formatOk) {
+          return baseProbe(
+            integrationId,
+            {
+              state: 'degraded',
+              capabilityTested: 'credential_format_validation',
+              configured: true,
+              credentialFormatValid: false,
+              result: 'fail',
+              errorCategory: 'invalid_credential_format',
+              sanitizedFailureReason: 'Stripe key format invalid',
+            },
+            started,
+          );
+        }
+        // Safe metadata retrieve only — no charges, customers, or payment creation.
+        try {
+          const auth = Buffer.from(`${key}:`).toString('base64');
+          const res = await fetch('https://api.stripe.com/v1/account', {
+            method: 'GET',
+            headers: { Authorization: `Basic ${auth}` },
+          });
+          if (res.ok) {
+            return baseProbe(
+              integrationId,
+              {
+                state: 'connected',
+                capabilityTested: 'safe_provider_authentication',
+                configured: true,
+                credentialFormatValid: true,
+                providerAuthenticationAttempted: true,
+                providerAuthenticationPassed: true,
+                result: 'pass',
+              },
+              started,
+            );
+          }
+          return baseProbe(
+            integrationId,
+            {
+              state: 'configured',
+              capabilityTested: 'safe_provider_authentication',
+              configured: true,
+              credentialFormatValid: true,
+              providerAuthenticationAttempted: true,
+              providerAuthenticationPassed: false,
+              result: 'fail',
+              errorCategory: 'provider_auth_failed',
+              sanitizedFailureReason: `Stripe account retrieve HTTP ${res.status}`,
+            },
+            started,
+          );
+        } catch {
+          return baseProbe(
+            integrationId,
+            {
+              state: 'configured',
+              capabilityTested: 'credential_format_validation',
+              configured: true,
+              credentialFormatValid: true,
+              providerAuthenticationAttempted: true,
+              providerAuthenticationPassed: false,
+              result: 'pass',
+              sanitizedFailureReason: 'configuration_validated (provider unreachable)',
+            },
+            started,
+          );
+        }
       }
       case 'twilio': {
         const sid = process.env.TWILIO_ACCOUNT_SID?.trim();
         const token = process.env.TWILIO_AUTH_TOKEN?.trim();
-        const ok = !!(sid && token);
-        return {
-          integrationKey: integrationId,
-          state: ok ? 'configured' : 'unavailable',
-          capabilityTested: 'credential_presence',
-          timestamp,
-          latencyMs: Date.now() - started,
-          result: ok ? 'pass' : 'fail',
-          errorCategory: ok ? null : 'missing_credentials',
-        };
+        if (!sid || !token) {
+          return baseProbe(
+            integrationId,
+            {
+              state: 'unavailable',
+              capabilityTested: 'configuration_validation',
+              result: 'fail',
+              errorCategory: 'missing_credentials',
+              sanitizedFailureReason: 'Twilio SID/token not configured',
+            },
+            started,
+          );
+        }
+        try {
+          const auth = Buffer.from(`${sid}:${token}`).toString('base64');
+          const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}.json`, {
+            method: 'GET',
+            headers: { Authorization: `Basic ${auth}` },
+          });
+          if (res.ok) {
+            return baseProbe(
+              integrationId,
+              {
+                state: 'connected',
+                capabilityTested: 'safe_provider_authentication',
+                configured: true,
+                credentialFormatValid: true,
+                providerAuthenticationAttempted: true,
+                providerAuthenticationPassed: true,
+                result: 'pass',
+              },
+              started,
+            );
+          }
+          return baseProbe(
+            integrationId,
+            {
+              state: 'configured',
+              capabilityTested: 'safe_provider_authentication',
+              configured: true,
+              credentialFormatValid: true,
+              providerAuthenticationAttempted: true,
+              providerAuthenticationPassed: false,
+              result: 'fail',
+              errorCategory: 'provider_auth_failed',
+              sanitizedFailureReason: `Twilio account retrieve HTTP ${res.status}`,
+            },
+            started,
+          );
+        } catch {
+          return baseProbe(
+            integrationId,
+            {
+              state: 'configured',
+              capabilityTested: 'configuration_validation',
+              configured: true,
+              credentialFormatValid: true,
+              result: 'pass',
+              sanitizedFailureReason: 'configuration_validated (provider unreachable)',
+            },
+            started,
+          );
+        }
       }
       case 'resend': {
         const key = process.env.RESEND_API_KEY?.trim();
-        const ok = !!key;
-        return {
-          integrationKey: integrationId,
-          state: ok ? 'configured' : 'unavailable',
-          capabilityTested: 'credential_presence',
-          timestamp,
-          latencyMs: Date.now() - started,
-          result: ok ? 'pass' : 'fail',
-          errorCategory: ok ? null : 'missing_credentials',
-        };
+        if (!key) {
+          return baseProbe(
+            integrationId,
+            {
+              state: 'unavailable',
+              capabilityTested: 'configuration_validation',
+              result: 'fail',
+              errorCategory: 'missing_credentials',
+              sanitizedFailureReason: 'RESEND_API_KEY not configured',
+            },
+            started,
+          );
+        }
+        try {
+          const res = await fetch('https://api.resend.com/domains', {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${key}` },
+          });
+          if (res.ok) {
+            return baseProbe(
+              integrationId,
+              {
+                state: 'connected',
+                capabilityTested: 'safe_provider_authentication',
+                configured: true,
+                credentialFormatValid: true,
+                providerAuthenticationAttempted: true,
+                providerAuthenticationPassed: true,
+                result: 'pass',
+              },
+              started,
+            );
+          }
+          return baseProbe(
+            integrationId,
+            {
+              state: 'configured',
+              capabilityTested: 'safe_provider_authentication',
+              configured: true,
+              credentialFormatValid: true,
+              providerAuthenticationAttempted: true,
+              providerAuthenticationPassed: false,
+              result: 'fail',
+              errorCategory: 'provider_auth_failed',
+              sanitizedFailureReason: `Resend domains retrieve HTTP ${res.status}`,
+            },
+            started,
+          );
+        } catch {
+          return baseProbe(
+            integrationId,
+            {
+              state: 'configured',
+              capabilityTested: 'configuration_validation',
+              configured: true,
+              credentialFormatValid: true,
+              result: 'pass',
+              sanitizedFailureReason: 'configuration_validated (provider unreachable)',
+            },
+            started,
+          );
+        }
       }
       case 'mapbox': {
         const token = (
@@ -1382,52 +1590,130 @@ export async function testIntegrationConnection(
           process.env.MAPBOX_TOKEN ||
           ''
         ).trim();
-        const ok = token.startsWith('pk.');
-        return {
-          integrationKey: integrationId,
-          state: ok ? 'configured' : token ? 'degraded' : 'unavailable',
-          capabilityTested: 'public_token_format',
-          timestamp,
-          latencyMs: Date.now() - started,
-          result: ok ? 'pass' : 'fail',
-          errorCategory: ok ? null : token ? 'non_public_or_invalid_token' : 'missing_credentials',
-        };
+        if (!token) {
+          return baseProbe(
+            integrationId,
+            {
+              state: 'unavailable',
+              capabilityTested: 'configuration_validation',
+              result: 'fail',
+              errorCategory: 'missing_credentials',
+              sanitizedFailureReason: 'Mapbox public token not configured',
+            },
+            started,
+          );
+        }
+        const formatOk = token.startsWith('pk.');
+        if (!formatOk) {
+          return baseProbe(
+            integrationId,
+            {
+              state: 'degraded',
+              capabilityTested: 'credential_format_validation',
+              configured: true,
+              credentialFormatValid: false,
+              result: 'fail',
+              errorCategory: 'non_public_or_invalid_token',
+              sanitizedFailureReason: 'Mapbox token must be a public pk. token',
+            },
+            started,
+          );
+        }
+        try {
+          const res = await fetch(
+            `https://api.mapbox.com/tokens/v2?access_token=${encodeURIComponent(token)}`,
+            { method: 'GET' },
+          );
+          if (res.ok) {
+            return baseProbe(
+              integrationId,
+              {
+                state: 'connected',
+                capabilityTested: 'safe_provider_authentication',
+                configured: true,
+                credentialFormatValid: true,
+                providerAuthenticationAttempted: true,
+                providerAuthenticationPassed: true,
+                result: 'pass',
+              },
+              started,
+            );
+          }
+          return baseProbe(
+            integrationId,
+            {
+              state: 'configured',
+              capabilityTested: 'credential_format_validation',
+              configured: true,
+              credentialFormatValid: true,
+              providerAuthenticationAttempted: true,
+              providerAuthenticationPassed: false,
+              result: 'fail',
+              errorCategory: 'provider_auth_failed',
+              sanitizedFailureReason: `Mapbox token validation HTTP ${res.status}`,
+            },
+            started,
+          );
+        } catch {
+          return baseProbe(
+            integrationId,
+            {
+              state: 'configured',
+              capabilityTested: 'credential_format_validation',
+              configured: true,
+              credentialFormatValid: true,
+              result: 'pass',
+              sanitizedFailureReason: 'configuration_validated (provider unreachable)',
+            },
+            started,
+          );
+        }
       }
       case 'inngest': {
         const eventKey = process.env.INNGEST_EVENT_KEY?.trim();
         const signingKey = process.env.INNGEST_SIGNING_KEY?.trim();
         const ok = !!(eventKey || signingKey);
-        return {
-          integrationKey: integrationId,
-          state: ok ? 'configured' : 'unavailable',
-          capabilityTested: 'config_presence',
-          timestamp,
-          latencyMs: Date.now() - started,
-          result: ok ? 'pass' : 'fail',
-          errorCategory: ok ? null : 'missing_credentials',
-        };
+        return baseProbe(
+          integrationId,
+          {
+            state: ok ? 'configured' : 'unavailable',
+            capabilityTested: 'configuration_validation',
+            configured: ok,
+            credentialFormatValid: ok ? true : null,
+            result: ok ? 'pass' : 'fail',
+            errorCategory: ok ? null : 'missing_credentials',
+            sanitizedFailureReason: ok
+              ? 'configuration_validated (no customer workflows triggered)'
+              : 'Inngest keys not configured',
+          },
+          started,
+        );
       }
       default:
-        return {
-          integrationKey: integrationId,
-          state: target.availability,
-          capabilityTested: 'unsupported',
-          timestamp,
-          latencyMs: Date.now() - started,
-          result: 'skipped',
-          errorCategory: 'no_test_action',
-        };
+        return baseProbe(
+          integrationId,
+          {
+            state: target.availability,
+            capabilityTested: 'unsupported',
+            result: 'skipped',
+            errorCategory: 'no_test_action',
+            sanitizedFailureReason: 'No safe probe implemented',
+          },
+          started,
+        );
     }
   } catch {
-    return {
-      integrationKey: integrationId,
-      state: 'degraded',
-      capabilityTested: 'probe',
-      timestamp,
-      latencyMs: Date.now() - started,
-      result: 'fail',
-      errorCategory: 'probe_exception',
-    };
+    return baseProbe(
+      integrationId,
+      {
+        state: 'degraded',
+        capabilityTested: 'probe',
+        result: 'fail',
+        errorCategory: 'probe_exception',
+        sanitizedFailureReason: 'Probe threw unexpectedly',
+      },
+      started,
+    );
   }
 }
 

@@ -7,7 +7,9 @@ const optionalUrl = z.preprocess(
 
 export const creatorOrgListSchema = z.object({
   search: z.string().max(200).optional(),
-  status: z.enum(['all', 'active', 'trialing', 'past_due', 'canceled', 'locked', 'none']).default('all'),
+  status: z
+    .enum(['all', 'active', 'trialing', 'past_due', 'canceled', 'locked', 'none'])
+    .default('all'),
   limit: z.number().int().min(1).max(100).default(50),
   offset: z.number().int().min(0).default(0),
 });
@@ -20,7 +22,9 @@ export const creatorUserListSchema = z.object({
 
 export const creatorUpdateOrgSubscriptionSchema = z.object({
   organizationId: z.string().min(1),
-  subscriptionStatus: z.enum(['none', 'trialing', 'active', 'past_due', 'canceled', 'locked']).optional(),
+  subscriptionStatus: z
+    .enum(['none', 'trialing', 'active', 'past_due', 'canceled', 'locked'])
+    .optional(),
   subscriptionPlan: z.enum(['monthly', 'yearly']).nullable().optional(),
   trialEndsAt: z.coerce.date().nullable().optional(),
   currentPeriodEnd: z.coerce.date().nullable().optional(),
@@ -36,14 +40,24 @@ export const creatorExtendTrialSchema = z.object({
 
 export const creatorSubscriptionListSchema = z.object({
   search: z.string().max(200).optional(),
-  status: z.enum(['all', 'active', 'trialing', 'past_due', 'canceled', 'locked', 'none', 'no_access']).default('all'),
+  status: z
+    .enum(['all', 'active', 'trialing', 'past_due', 'canceled', 'locked', 'none', 'no_access'])
+    .default('all'),
   limit: z.number().int().min(1).max(100).default(50),
   offset: z.number().int().min(0).default(0),
 });
 
 export const creatorSubscriptionPresetSchema = z.object({
   organizationId: z.string().min(1),
-  preset: z.enum(['start_trial', 'activate_monthly', 'activate_yearly', 'complimentary', 'mark_past_due', 'cancel', 'reactivate']),
+  preset: z.enum([
+    'start_trial',
+    'activate_monthly',
+    'activate_yearly',
+    'complimentary',
+    'mark_past_due',
+    'cancel',
+    'reactivate',
+  ]),
   days: z.number().int().min(1).max(730).optional(),
   note: z.string().max(2000).optional(),
 });
@@ -58,18 +72,55 @@ export const platformSettingsSchema = z.object({
   marketingUrl: optionalUrl.optional(),
   hostingUrl: optionalUrl.optional(),
   docsUrl: optionalUrl.optional(),
-  availableModules: z.array(z.enum([
-    'pipeline', 'customers', 'proposals', 'invoices', 'inventory', 'jobs', 'crew',
-    'schedule', 'messages', 'mockups', 'reports', 'automation', 'commercial',
-    'storage', 'rebooking', 'reviews', 'sign_tracker', 'time_clock', 'routes',
-    'customer_portal',
-  ])).min(1),
-  availablePortalFeatures: z.array(z.enum([
-    'dashboard', 'properties', 'consultations', 'mockups', 'proposals', 'agreements',
-    'e_sign', 'billing', 'online_payments', 'scheduling', 'install_tracking',
-    'service_requests', 'takedowns', 'storage', 'messaging', 'documents',
-    'reviews', 'referrals', 'rebooking',
-  ])),
+  availableModules: z
+    .array(
+      z.enum([
+        'pipeline',
+        'customers',
+        'proposals',
+        'invoices',
+        'inventory',
+        'jobs',
+        'crew',
+        'schedule',
+        'messages',
+        'mockups',
+        'reports',
+        'automation',
+        'commercial',
+        'storage',
+        'rebooking',
+        'reviews',
+        'sign_tracker',
+        'time_clock',
+        'routes',
+        'customer_portal',
+      ]),
+    )
+    .min(1),
+  availablePortalFeatures: z.array(
+    z.enum([
+      'dashboard',
+      'properties',
+      'consultations',
+      'mockups',
+      'proposals',
+      'agreements',
+      'e_sign',
+      'billing',
+      'online_payments',
+      'scheduling',
+      'install_tracking',
+      'service_requests',
+      'takedowns',
+      'storage',
+      'messaging',
+      'documents',
+      'reviews',
+      'referrals',
+      'rebooking',
+    ]),
+  ),
   signupEnabled: z.boolean(),
   maintenanceMode: z.boolean(),
   maintenanceMessage: z.string().max(500),
@@ -83,15 +134,47 @@ export const creatorProvisionOrgSchema = z.object({
   ownerEmail: z.string().email().max(200).optional(),
   trialDays: z.number().int().min(0).max(365).optional(),
   note: z.string().max(2000).optional(),
+  subscriptionTier: z
+    .enum(['trial', 'starter', 'standard', 'professional', 'enterprise', 'custom'])
+    .optional(),
+  subscriptionStatus: z
+    .enum(['none', 'trialing', 'active', 'past_due', 'canceled', 'locked'])
+    .optional(),
+  subscriptionPlan: z.enum(['monthly', 'yearly']).nullable().optional(),
+  slug: z
+    .string()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .optional(),
+  environmentMarker: z.string().min(1).max(64).optional(),
 });
 
 export const creatorOrgModulesSchema = z.object({
   organizationId: z.string().min(1),
-  enabledModules: z.array(z.enum([
-    'pipeline', 'customers', 'proposals', 'invoices', 'inventory', 'jobs', 'crew',
-    'schedule', 'messages', 'mockups', 'reports', 'automation', 'commercial',
-    'storage', 'rebooking', 'reviews', 'sign_tracker', 'time_clock', 'routes',
-    'customer_portal',
-  ])),
+  enabledModules: z.array(
+    z.enum([
+      'pipeline',
+      'customers',
+      'proposals',
+      'invoices',
+      'inventory',
+      'jobs',
+      'crew',
+      'schedule',
+      'messages',
+      'mockups',
+      'reports',
+      'automation',
+      'commercial',
+      'storage',
+      'rebooking',
+      'reviews',
+      'sign_tracker',
+      'time_clock',
+      'routes',
+      'customer_portal',
+    ]),
+  ),
   note: z.string().max(2000).optional(),
 });

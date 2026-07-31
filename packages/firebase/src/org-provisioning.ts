@@ -1,7 +1,9 @@
 import {
   ORGANIZATION_CONFIG_SCHEMA_VERSION,
+  PHASE1_ACTIVE_PORTAL_FEATURES,
   resolveModulesForOrganization,
   type CrmPlatformModuleKey,
+  type PortalFeatureKey,
   type SubscriptionTier,
 } from '@clcrm/types';
 
@@ -12,6 +14,12 @@ export type ProvisionSubscriptionInput = {
   disabledModules?: string[];
   /** When set, intersect resolved modules with this allow-list (platform catalog). */
   availableModules?: CrmPlatformModuleKey[];
+  /** Stable tenant slug (optional; used for staging verification tenants). */
+  slug?: string | null;
+  /** Environment marker such as staging_test — never set on production customers. */
+  environmentMarker?: string | null;
+  provisioningStatus?: 'pending' | 'active' | 'failed';
+  portalFeatures?: PortalFeatureKey[];
 };
 
 /**
@@ -57,8 +65,12 @@ export function buildOrganizationProvisioningFields(input: ProvisionSubscription
     enabledModules: modules,
     disabledModules: input.disabledModules ?? [],
     configurationSchemaVersion: ORGANIZATION_CONFIG_SCHEMA_VERSION,
+    provisioningStatus: input.provisioningStatus ?? 'active',
+    portalFeatures: input.portalFeatures ?? [...PHASE1_ACTIVE_PORTAL_FEATURES],
     featureFlags: {
       followUpAutomation: false,
     },
+    ...(input.slug ? { slug: input.slug } : {}),
+    ...(input.environmentMarker ? { environmentMarker: input.environmentMarker } : {}),
   };
 }

@@ -739,23 +739,61 @@ export async function updateCreatorOrgModules(
 }
 
 export async function provisionCreatorOrganization(
-  input: { companyName: string; ownerEmail?: string; trialDays?: number; note?: string },
+  input: {
+    companyName: string;
+    ownerEmail?: string;
+    trialDays?: number;
+    note?: string;
+    subscriptionTier?: import('@clcrm/types').SubscriptionTier;
+    subscriptionStatus?: OrganizationRecord['subscriptionStatus'];
+    subscriptionPlan?: 'monthly' | 'yearly' | null;
+    slug?: string;
+    environmentMarker?: string;
+  },
   actor: { userId: string; email: string },
 ): Promise<CreatorProvisionResult> {
   const settings = await getPlatformSettings();
   const db = getAdminFirestore();
   const now = ts();
-  const trialDays = input.trialDays ?? settings.defaultTrialDays ?? 14;
+  const explicitStatus = input.subscriptionStatus;
+  const explicitTier = input.subscriptionTier;
+  const trialDays =
+    explicitStatus && explicitStatus !== 'trialing'
+      ? (input.trialDays ?? 0)
+      : (input.trialDays ?? settings.defaultTrialDays ?? 14);
   const trialEndsAt = new Date();
-  trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
+  trialEndsAt.setDate(trialEndsAt.getDate() + Math.max(trialDays, 0));
 
   const { buildOrganizationProvisioningFields } = await import('./org-provisioning');
-  const subscriptionStatus = trialDays > 0 ? ('trialing' as const) : ('none' as const);
+  const subscriptionStatus =
+    explicitStatus ?? (trialDays > 0 ? ('trialing' as const) : ('none' as const));
+  const subscriptionTier =
+    explicitTier ??
+    (subscriptionStatus === 'trialing'
+      ? 'trial'
+      : subscriptionStatus === 'active'
+        ? 'standard'
+        : 'standard');
   const provisioning = buildOrganizationProvisioningFields({
     subscriptionStatus,
-    subscriptionTier: trialDays > 0 ? 'trial' : 'standard',
+    subscriptionTier,
+    subscriptionPlan: input.subscriptionPlan ?? null,
     availableModules: settings.availableModules ?? DEFAULT_AVAILABLE_MODULES,
+    slug: input.slug ?? null,
+    environmentMarker: input.environmentMarker ?? null,
+    provisioningStatus: 'active',
   });
+
+  if (input.slug) {
+    const slugClash = await db
+      .collection('organizations')
+      .where('slug', '==', input.slug)
+      .limit(1)
+      .get();
+    if (!slugClash.empty) {
+      throw new Error(`Organization slug already exists: ${input.slug}`);
+    }
+  }
 
   const orgRef = db.collection('organizations').doc();
   try {
@@ -770,14 +808,30 @@ export async function provisionCreatorOrganization(
         { code: '5YR', label: '5 Year', active: true },
       ],
       ...provisioning,
-      trialEndsAt: trialDays > 0 ? trialEndsAt : null,
+      trialEndsAt: trialDays > 0 && subscriptionStatus === 'trialing' ? trialEndsAt : null,
       createdAt: now,
       updatedAt: now,
+      createdBy: actor.userId,
+      updatedBy: actor.userId,
     });
 
     const { ensureSettingsDefaults } = await import('./settings360');
     await ensureSettingsDefaults(orgRef.id, actor.userId);
   } catch (err) {
+    // Fail closed: never mark a broken tenant active manually.
+    await orgRef
+      .set(
+        {
+          provisioningStatus: 'failed',
+          provisioningFailure: {
+            message: err instanceof Error ? err.message : String(err),
+            at: now,
+          },
+          updatedAt: now,
+        },
+        { merge: true },
+      )
+      .catch(() => undefined);
     await orgRef.delete().catch(() => undefined);
     throw err;
   }
@@ -793,12 +847,20 @@ export async function provisionCreatorOrganization(
       trialDays,
       note: input.note ?? null,
       subscriptionTier: provisioning.subscriptionTier,
+      subscriptionStatus: provisioning.subscriptionStatus,
       enabledModules: provisioning.enabledModules,
       configurationSchemaVersion: provisioning.configurationSchemaVersion,
+      slug: input.slug ?? null,
+      environmentMarker: input.environmentMarker ?? null,
+      provisioningStatus: provisioning.provisioningStatus,
     },
   });
 
-  return { organizationId: orgRef.id, companyName: input.companyName.trim(), trialEndsAt };
+  return {
+    organizationId: orgRef.id,
+    companyName: input.companyName.trim(),
+    trialEndsAt: trialDays > 0 && subscriptionStatus === 'trialing' ? trialEndsAt : trialEndsAt,
+  };
 }
 
 export async function listPlatformCreatorAccounts(): Promise<

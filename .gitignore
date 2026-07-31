@@ -9,6 +9,12 @@ dist
 apps/web/.env.deploy-backup
 build-theme-check.txt
 turbo-web-ok.txt
+docs/production-cleanup/organization-module-audit.json
+docs/production-cleanup/organization-module-audit.csv
+docs/production-cleanup/organization-module-migration-rollback-*.json
+docs/production-cleanup/*-production-check.txt
+docs/production-cleanup/module-migration-emulator-dry-run.txt
+docs/production-cleanup/.audit-private/
 secrets/
 *-firebase-adminsdk*.json
 *.log

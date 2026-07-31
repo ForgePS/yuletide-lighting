@@ -91,7 +91,12 @@ function auditDeadRoutes() {
       }
       if (!/\.(ts|tsx)$/.test(entry.name)) continue;
       const rel = path.relative(root, full).replace(/\\/g, '/');
-      if (rel.startsWith('docs/') || rel.includes('production-check') || rel.includes('tests/routes')) continue;
+      if (
+        rel.startsWith('docs/') ||
+        rel.includes('production-check') ||
+        rel.includes('tests/routes')
+      )
+        continue;
       if (rel.includes('/app/field/')) continue; // legacy redirect pages may mention paths in comments only
       const text = fs.readFileSync(full, 'utf8');
       // Flag non-redirect production links to /app/field that are not redirect() targets mapping away
@@ -202,7 +207,8 @@ function auditEnv() {
       category: 'ops',
       status: 'FAIL',
       problem: `Mapbox public token missing while APP_ENV=${appEnv}`,
-      correction: 'Set NEXT_PUBLIC_MAPBOX_TOKEN (pk.ey public token) for staging/production deploys',
+      correction:
+        'Set NEXT_PUBLIC_MAPBOX_TOKEN (pk.ey public token) for staging/production deploys',
       docs: 'docs/production-cleanup/integration-inventory.md',
     });
   } else if (mapboxEmpty) {
@@ -262,7 +268,8 @@ function auditMocks() {
   const plannedMisconfigured =
     /id: 'hubspot'[\s\S]{0,200}availability: 'available'/.test(integrationsText) ||
     /id: 'hubspot'[\s\S]{0,200}connectable: true/.test(integrationsText);
-  if (plannedMisconfigured) hits.push('HubSpot (or similar) planned integration marked available/connectable');
+  if (plannedMisconfigured)
+    hits.push('HubSpot (or similar) planned integration marked available/connectable');
 
   if (hits.length) {
     add({
@@ -338,10 +345,7 @@ function auditHardcoded() {
 }
 
 function auditFirebaseRulesTests() {
-  const files = [
-    'tests/firebase/firestore.rules.test.ts',
-    'tests/firebase/storage.rules.test.ts',
-  ];
+  const files = ['tests/firebase/firestore.rules.test.ts', 'tests/firebase/storage.rules.test.ts'];
   const missing = files.filter((f) => !fs.existsSync(path.join(root, f)));
   if (missing.length) {
     add({
@@ -388,6 +392,12 @@ function auditLegacyPostgres() {
 console.log('\n=== Yuletide production:check ===\n');
 
 if (!auditsOnly) {
+  tryRun(
+    'format-changed',
+    'quality',
+    'npm run format:changed:check',
+    'Run npm run format:changed on files touched since p0.1-complete-with-limitations',
+  );
   tryRun('typecheck', 'quality', 'npm run typecheck', 'Fix TypeScript errors');
   if (!skipLint) tryRun('lint', 'quality', 'npm run lint', 'Fix lint errors');
   else
@@ -400,8 +410,20 @@ if (!auditsOnly) {
       correction: 'Run full lint before launch',
     });
   tryRun('unit-tests', 'quality', 'npm test', 'Fix unit test failures');
+  tryRun(
+    'integration-tests',
+    'quality',
+    'npm run test:integration',
+    'Add/fix tests under tests/integration — missing or failing suite is a launch blocker',
+  );
   tryRun('route-tests', 'routes', 'npm run test:routes', 'Fix route validation tests');
-  if (!skipBuild) tryRun('production-web-build', 'quality', 'npm run build --workspace=@clcrm/web', 'Fix production build');
+  if (!skipBuild)
+    tryRun(
+      'production-web-build',
+      'quality',
+      'npm run build --workspace=@clcrm/web',
+      'Fix production build',
+    );
   else
     add({
       name: 'production-web-build',
@@ -413,11 +435,61 @@ if (!auditsOnly) {
     });
 }
 
+function auditModulePresets() {
+  const presets = path.join(root, 'packages/types/src/module-presets.ts');
+  const provisioning = path.join(root, 'packages/firebase/src/org-provisioning.ts');
+  const auditScript = path.join(root, 'scripts/audit-organization-modules.ts');
+  const migrateScript = path.join(root, 'scripts/migrate-organization-modules.ts');
+  const missing = [presets, provisioning, auditScript, migrateScript].filter(
+    (f) => !fs.existsSync(f),
+  );
+  if (missing.length) {
+    add({
+      name: 'module-presets-and-migration',
+      severity: 'deployment',
+      category: 'tenants',
+      status: 'FAIL',
+      problem: `missing: ${missing.map((f) => path.relative(root, f)).join(', ')}`,
+      correction: 'Restore module presets, org provisioning helper, and audit/migration scripts',
+      docs: 'docs/production-cleanup/module-migration-dry-run-review.md',
+    });
+    return;
+  }
+  const text = fs.readFileSync(presets, 'utf8');
+  const hasTiers =
+    text.includes('trial') &&
+    text.includes('starter') &&
+    text.includes('standard') &&
+    text.includes('professional') &&
+    text.includes('enterprise') &&
+    text.includes('custom');
+  if (!hasTiers) {
+    add({
+      name: 'module-presets-and-migration',
+      severity: 'deployment',
+      category: 'tenants',
+      status: 'FAIL',
+      problem: 'MODULE_PRESETS missing required subscription tiers',
+      correction: 'Define trial/starter/standard/professional/enterprise/custom presets',
+    });
+    return;
+  }
+  add({
+    name: 'module-presets-and-migration',
+    severity: 'info',
+    category: 'tenants',
+    status: 'PASS',
+    problem: 'presets + audit/migration scripts present',
+    correction: 'n/a',
+  });
+}
+
 auditDeadRoutes();
 auditEnv();
 auditMocks();
 auditHardcoded();
 auditLegacyPostgres();
+auditModulePresets();
 if (!auditsOnly) auditFirebaseRulesTests();
 else {
   const files = ['tests/firebase/firestore.rules.test.ts', 'tests/firebase/storage.rules.test.ts'];
@@ -438,7 +510,14 @@ const warnings = findings.filter((f) => f.status === 'WARN');
 console.log('\n=== Summary ===');
 console.log(`Launch blockers: ${blockers.filter((b) => b.severity === 'launch').length}`);
 console.log(`Security blockers: ${blockers.filter((b) => b.severity === 'security').length}`);
-console.log(`Data-integrity blockers: ${blockers.filter((b) => b.severity === 'data-integrity').length}`);
+console.log(
+  `Tenant-isolation blockers: ${blockers.filter((b) => b.severity === 'tenant-isolation').length}`,
+);
+console.log(
+  `Data-integrity blockers: ${blockers.filter((b) => b.severity === 'data-integrity').length}`,
+);
+console.log(`Deployment blockers: ${blockers.filter((b) => b.severity === 'deployment').length}`);
+console.log(`Functional blockers: ${blockers.filter((b) => b.severity === 'functional').length}`);
 console.log(`Operational blockers: ${blockers.filter((b) => b.severity === 'operational').length}`);
 console.log(`Warnings: ${warnings.length}`);
 console.log(`Informational: ${findings.filter((f) => f.status === 'PASS').length}`);

@@ -13,20 +13,22 @@ import type {
   PlatformAuditLogEntry,
   PlatformSettings,
 } from '@clcrm/types';
-import { DEFAULT_AVAILABLE_MODULES, DEFAULT_PLATFORM_SETTINGS, DEFAULT_PORTAL_FEATURES, SUBSCRIPTION_PRICING } from '@clcrm/types';
+import {
+  DEFAULT_AVAILABLE_MODULES,
+  DEFAULT_PLATFORM_SETTINGS,
+  DEFAULT_PORTAL_FEATURES,
+  SUBSCRIPTION_PRICING,
+} from '@clcrm/types';
 import type { SubscriptionStatus } from '@clcrm/types';
-import { getAdminFirestore, Timestamp } from './admin';import { mapTimestampsFromData } from './firestore-utils';
+import { getAdminFirestore, Timestamp } from './admin';
+import { mapTimestampsFromData } from './firestore-utils';
 import {
   getOrganization,
   updateOrganization,
   type OrganizationRecord,
   type UserRecord,
 } from './firestore';
-import {
-  getOrgSubscriptionState,
-  isSubscriptionLocked,
-  listSubscriptionPayments,
-} from './billing';
+import { getOrgSubscriptionState, isSubscriptionLocked, listSubscriptionPayments } from './billing';
 
 function ts() {
   return Timestamp.now();
@@ -78,7 +80,8 @@ async function logPlatformAudit(entry: Omit<PlatformAuditLogEntry, 'id' | 'creat
 
 export async function listPlatformAuditLogs(limit = 50): Promise<PlatformAuditLogEntry[]> {
   const db = getAdminFirestore();
-  const snap = await db.collection('platformAuditLogs')
+  const snap = await db
+    .collection('platformAuditLogs')
     .orderBy('createdAt', 'desc')
     .limit(limit)
     .get()
@@ -97,7 +100,10 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
   if (!Array.isArray(merged.availableModules) || merged.availableModules.length === 0) {
     merged.availableModules = [...DEFAULT_AVAILABLE_MODULES];
   }
-  if (!Array.isArray(merged.availablePortalFeatures) || merged.availablePortalFeatures.length === 0) {
+  if (
+    !Array.isArray(merged.availablePortalFeatures) ||
+    merged.availablePortalFeatures.length === 0
+  ) {
     merged.availablePortalFeatures = [...DEFAULT_PORTAL_FEATURES];
   }
   return mapTimestampsFromData(merged) as PlatformSettings;
@@ -117,7 +123,10 @@ export async function updatePlatformSettings(
     docsUrl: input.docsUrl ?? null,
     announcementBanner: input.announcementBanner ?? null,
   };
-  await db.collection('platform').doc('config').set({ ...payload, updatedAt: now }, { merge: true });
+  await db
+    .collection('platform')
+    .doc('config')
+    .set({ ...payload, updatedAt: now }, { merge: true });
   await logPlatformAudit({
     action: 'platform_settings_update',
     actorEmail: actor.email,
@@ -166,7 +175,8 @@ function estimateMrr(orgs: OrganizationRecord[]) {
     const status = org.subscriptionStatus ?? 'none';
     if (status !== 'active' && status !== 'trialing' && status !== 'past_due') continue;
     if (org.subscriptionPlan === 'monthly') mrr += SUBSCRIPTION_PRICING.monthly.amountCents;
-    if (org.subscriptionPlan === 'yearly') mrr += Math.round(SUBSCRIPTION_PRICING.yearly.amountCents / 12);
+    if (org.subscriptionPlan === 'yearly')
+      mrr += Math.round(SUBSCRIPTION_PRICING.yearly.amountCents / 12);
   }
   return mrr;
 }
@@ -183,7 +193,8 @@ function orgMrrCents(org: OrganizationRecord) {
   const status = org.subscriptionStatus ?? 'none';
   if (status !== 'active' && status !== 'trialing' && status !== 'past_due') return 0;
   if (org.subscriptionPlan === 'monthly') return SUBSCRIPTION_PRICING.monthly.amountCents;
-  if (org.subscriptionPlan === 'yearly') return Math.round(SUBSCRIPTION_PRICING.yearly.amountCents / 12);
+  if (org.subscriptionPlan === 'yearly')
+    return Math.round(SUBSCRIPTION_PRICING.yearly.amountCents / 12);
   return 0;
 }
 
@@ -192,7 +203,10 @@ function orgPlanLabel(org: OrganizationRecord) {
   return SUBSCRIPTION_PRICING[org.subscriptionPlan].label;
 }
 
-function toSubscriptionSummary(org: OrganizationRecord, userCount: number): CreatorSubscriptionSummary {
+function toSubscriptionSummary(
+  org: OrganizationRecord,
+  userCount: number,
+): CreatorSubscriptionSummary {
   const state = getOrgSubscriptionState(org);
   return {
     id: org.id,
@@ -215,7 +229,11 @@ function toSubscriptionSummary(org: OrganizationRecord, userCount: number): Crea
   };
 }
 
-function toOrgSummary(org: OrganizationRecord, userCount: number, customerCount: number): CreatorOrganizationSummary {
+function toOrgSummary(
+  org: OrganizationRecord,
+  userCount: number,
+  customerCount: number,
+): CreatorOrganizationSummary {
   const state = getOrgSubscriptionState(org);
   return {
     id: org.id,
@@ -288,10 +306,11 @@ export async function listCreatorOrganizations(input: {
 
   let filtered = orgs.filter((org) => orgMatchesStatus(org, status));
   if (search) {
-    filtered = filtered.filter((org) =>
-      org.companyName.toLowerCase().includes(search) ||
-      org.id.toLowerCase().includes(search) ||
-      (org.stripeCustomerId ?? '').toLowerCase().includes(search),
+    filtered = filtered.filter(
+      (org) =>
+        org.companyName.toLowerCase().includes(search) ||
+        org.id.toLowerCase().includes(search) ||
+        (org.stripeCustomerId ?? '').toLowerCase().includes(search),
     );
   }
 
@@ -310,19 +329,22 @@ export async function listCreatorOrganizations(input: {
   return { items, total };
 }
 
-export async function getCreatorOrganizationDetail(orgId: string): Promise<CreatorOrganizationDetail | null> {
+export async function getCreatorOrganizationDetail(
+  orgId: string,
+): Promise<CreatorOrganizationDetail | null> {
   const org = await getOrganization(orgId);
   if (!org) return null;
 
   const db = getAdminFirestore();
-  const [usersSnap, payments, customerCount, proposalsSnap, jobsSnap, invoicesSnap] = await Promise.all([
-    db.collection('users').where('organizationId', '==', orgId).get(),
-    listSubscriptionPayments(orgId, 12),
-    countCustomers(orgId),
-    db.collection(`organizations/${orgId}/proposals`).get(),
-    db.collection(`organizations/${orgId}/jobs`).get(),
-    db.collection(`organizations/${orgId}/invoices`).get(),
-  ]);
+  const [usersSnap, payments, customerCount, proposalsSnap, jobsSnap, invoicesSnap] =
+    await Promise.all([
+      db.collection('users').where('organizationId', '==', orgId).get(),
+      listSubscriptionPayments(orgId, 12),
+      countCustomers(orgId),
+      db.collection(`organizations/${orgId}/proposals`).get(),
+      db.collection(`organizations/${orgId}/jobs`).get(),
+      db.collection(`organizations/${orgId}/invoices`).get(),
+    ]);
 
   const users = usersSnap.docs.map((d) => {
     const u = mapTimestampsFromData({ id: d.id, ...d.data()! }) as UserRecord;
@@ -377,11 +399,12 @@ export async function listCreatorSubscriptions(input: {
 
   let filtered = orgs.filter((org) => orgMatchesStatus(org, status));
   if (search) {
-    filtered = filtered.filter((org) =>
-      org.companyName.toLowerCase().includes(search) ||
-      org.id.toLowerCase().includes(search) ||
-      (org.stripeCustomerId ?? '').toLowerCase().includes(search) ||
-      (org.stripeSubscriptionId ?? '').toLowerCase().includes(search),
+    filtered = filtered.filter(
+      (org) =>
+        org.companyName.toLowerCase().includes(search) ||
+        org.id.toLowerCase().includes(search) ||
+        (org.stripeCustomerId ?? '').toLowerCase().includes(search) ||
+        (org.stripeSubscriptionId ?? '').toLowerCase().includes(search),
     );
   }
 
@@ -417,10 +440,11 @@ export async function listCreatorUsers(input: {
   }));
 
   if (search) {
-    filtered = filtered.filter((user) =>
-      user.email.toLowerCase().includes(search) ||
-      `${user.firstName ?? ''} ${user.lastName ?? ''}`.toLowerCase().includes(search) ||
-      user.organizationName.toLowerCase().includes(search),
+    filtered = filtered.filter(
+      (user) =>
+        user.email.toLowerCase().includes(search) ||
+        `${user.firstName ?? ''} ${user.lastName ?? ''}`.toLowerCase().includes(search) ||
+        user.organizationName.toLowerCase().includes(search),
     );
   }
 
@@ -475,7 +499,8 @@ export async function updateCreatorOrganizationSubscription(
   if (input.currentPeriodEnd !== undefined) patch.currentPeriodEnd = input.currentPeriodEnd;
   if (input.cancelAtPeriodEnd !== undefined) patch.cancelAtPeriodEnd = input.cancelAtPeriodEnd;
   if (input.subscriptionStatus === 'locked') patch.lockedAt = new Date();
-  if (input.subscriptionStatus === 'active' || input.subscriptionStatus === 'trialing') patch.lockedAt = null;
+  if (input.subscriptionStatus === 'active' || input.subscriptionStatus === 'trialing')
+    patch.lockedAt = null;
 
   await updateOrganization(input.organizationId, patch);
   await logPlatformAudit({
@@ -491,7 +516,12 @@ export async function updateCreatorOrganizationSubscription(
 }
 
 export async function applyCreatorSubscriptionPreset(
-  input: { organizationId: string; preset: CreatorSubscriptionPreset; days?: number; note?: string },
+  input: {
+    organizationId: string;
+    preset: CreatorSubscriptionPreset;
+    days?: number;
+    note?: string;
+  },
   actor: { userId: string; email: string },
 ) {
   const org = await getOrganization(input.organizationId);
@@ -506,7 +536,12 @@ export async function applyCreatorSubscriptionPreset(
       const days = input.days ?? settings.defaultTrialDays ?? 14;
       const trialEndsAt = new Date(now);
       trialEndsAt.setDate(trialEndsAt.getDate() + days);
-      patch = { subscriptionStatus: 'trialing', trialEndsAt, subscriptionPlan: null, cancelAtPeriodEnd: false };
+      patch = {
+        subscriptionStatus: 'trialing',
+        trialEndsAt,
+        subscriptionPlan: null,
+        cancelAtPeriodEnd: false,
+      };
       break;
     }
     case 'activate_monthly': {
@@ -650,14 +685,24 @@ export async function unlockCreatorOrganization(
   return getCreatorOrganizationDetail(orgId);
 }
 
-function normalizeOrgModules(org: OrganizationRecord, available: CrmPlatformModuleKey[]): CrmPlatformModuleKey[] {
+function normalizeOrgModules(
+  org: OrganizationRecord,
+  available: CrmPlatformModuleKey[],
+): CrmPlatformModuleKey[] {
   const stored = org.enabledModules ?? [];
   if (stored.length === 0) return [...available];
-  return stored.filter((key): key is CrmPlatformModuleKey => available.includes(key as CrmPlatformModuleKey));
+  return stored.filter((key): key is CrmPlatformModuleKey =>
+    available.includes(key as CrmPlatformModuleKey),
+  );
 }
 
-export async function getCreatorOrgModules(organizationId: string): Promise<CreatorOrgModules | null> {
-  const [org, settings] = await Promise.all([getOrganization(organizationId), getPlatformSettings()]);
+export async function getCreatorOrgModules(
+  organizationId: string,
+): Promise<CreatorOrgModules | null> {
+  const [org, settings] = await Promise.all([
+    getOrganization(organizationId),
+    getPlatformSettings(),
+  ]);
   if (!org) return null;
   const available = settings.availableModules ?? DEFAULT_AVAILABLE_MODULES;
   return {
@@ -704,23 +749,38 @@ export async function provisionCreatorOrganization(
   const trialEndsAt = new Date();
   trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
 
-  const orgRef = db.collection('organizations').doc();
-  await orgRef.set({
-    companyName: input.companyName.trim(),
-    brandColor: '#DC2626',
-    logoUrl: null,
-    agreementMode: 'multi',
-    agreementOptions: [
-      { code: '1YR', label: '1 Year', active: true },
-      { code: '3YR', label: '3 Year', active: true },
-      { code: '5YR', label: '5 Year', active: true },
-    ],
-    subscriptionStatus: trialDays > 0 ? 'trialing' : 'none',
-    trialEndsAt: trialDays > 0 ? trialEndsAt : null,
-    enabledModules: settings.availableModules ?? DEFAULT_AVAILABLE_MODULES,
-    createdAt: now,
-    updatedAt: now,
+  const { buildOrganizationProvisioningFields } = await import('./org-provisioning');
+  const subscriptionStatus = trialDays > 0 ? ('trialing' as const) : ('none' as const);
+  const provisioning = buildOrganizationProvisioningFields({
+    subscriptionStatus,
+    subscriptionTier: trialDays > 0 ? 'trial' : 'standard',
+    availableModules: settings.availableModules ?? DEFAULT_AVAILABLE_MODULES,
   });
+
+  const orgRef = db.collection('organizations').doc();
+  try {
+    await orgRef.set({
+      companyName: input.companyName.trim(),
+      brandColor: '#DC2626',
+      logoUrl: null,
+      agreementMode: 'multi',
+      agreementOptions: [
+        { code: '1YR', label: '1 Year', active: true },
+        { code: '3YR', label: '3 Year', active: true },
+        { code: '5YR', label: '5 Year', active: true },
+      ],
+      ...provisioning,
+      trialEndsAt: trialDays > 0 ? trialEndsAt : null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const { ensureSettingsDefaults } = await import('./settings360');
+    await ensureSettingsDefaults(orgRef.id, actor.userId);
+  } catch (err) {
+    await orgRef.delete().catch(() => undefined);
+    throw err;
+  }
 
   await logPlatformAudit({
     action: 'org_provision',
@@ -728,23 +788,33 @@ export async function provisionCreatorOrganization(
     actorUserId: actor.userId,
     organizationId: orgRef.id,
     organizationName: input.companyName.trim(),
-    details: { ownerEmail: input.ownerEmail ?? null, trialDays, note: input.note ?? null },
+    details: {
+      ownerEmail: input.ownerEmail ?? null,
+      trialDays,
+      note: input.note ?? null,
+      subscriptionTier: provisioning.subscriptionTier,
+      enabledModules: provisioning.enabledModules,
+      configurationSchemaVersion: provisioning.configurationSchemaVersion,
+    },
   });
 
   return { organizationId: orgRef.id, companyName: input.companyName.trim(), trialEndsAt };
 }
 
-export async function listPlatformCreatorAccounts(): Promise<Array<{ id: string; email: string; firstName: string | null; lastName: string | null }>> {
+export async function listPlatformCreatorAccounts(): Promise<
+  Array<{ id: string; email: string; firstName: string | null; lastName: string | null }>
+> {
   const emails = parseCreatorAllowList(process.env.PLATFORM_CREATOR_EMAILS);
   const uids = parseCreatorAllowList(process.env.PLATFORM_CREATOR_UIDS);
   if (emails.length === 0 && uids.length === 0) return [];
 
   const users = await loadAllUsers();
   return users
-    .filter((user) =>
-      emails.includes(user.email.trim().toLowerCase()) ||
-      uids.includes(user.id.trim().toLowerCase()) ||
-      uids.includes((user.firebaseUid ?? '').trim().toLowerCase()),
+    .filter(
+      (user) =>
+        emails.includes(user.email.trim().toLowerCase()) ||
+        uids.includes(user.id.trim().toLowerCase()) ||
+        uids.includes((user.firebaseUid ?? '').trim().toLowerCase()),
     )
     .map((user) => ({
       id: user.id,
@@ -761,9 +831,19 @@ export async function runCreatorHealthChecks(): Promise<CreatorHealthCheck[]> {
   try {
     const db = getAdminFirestore();
     await db.collection('platform').doc('config').get();
-    checks.push({ id: 'firestore', label: 'Firestore connection', status: 'pass', detail: 'Platform config readable' });
+    checks.push({
+      id: 'firestore',
+      label: 'Firestore connection',
+      status: 'pass',
+      detail: 'Platform config readable',
+    });
   } catch (err) {
-    checks.push({ id: 'firestore', label: 'Firestore connection', status: 'fail', detail: err instanceof Error ? err.message : 'Connection failed' });
+    checks.push({
+      id: 'firestore',
+      label: 'Firestore connection',
+      status: 'fail',
+      detail: err instanceof Error ? err.message : 'Connection failed',
+    });
   }
 
   const orgs = await loadAllOrganizations();
@@ -776,23 +856,37 @@ export async function runCreatorHealthChecks(): Promise<CreatorHealthCheck[]> {
 
   const locked = orgs.filter((o) => isSubscriptionLocked(o)).length;
   if (locked > 0) {
-    checks.push({ id: 'locked', label: 'Locked accounts', status: 'warn', detail: `${locked} organization(s) locked` });
+    checks.push({
+      id: 'locked',
+      label: 'Locked accounts',
+      status: 'warn',
+      detail: `${locked} organization(s) locked`,
+    });
   } else {
-    checks.push({ id: 'locked', label: 'Locked accounts', status: 'pass', detail: 'No locked organizations' });
+    checks.push({
+      id: 'locked',
+      label: 'Locked accounts',
+      status: 'pass',
+      detail: 'No locked organizations',
+    });
   }
 
   checks.push({
     id: 'stripe',
     label: 'Stripe configuration',
     status: process.env.STRIPE_SECRET_KEY ? 'pass' : 'warn',
-    detail: process.env.STRIPE_SECRET_KEY ? 'Stripe secret key configured' : 'STRIPE_SECRET_KEY not set',
+    detail: process.env.STRIPE_SECRET_KEY
+      ? 'Stripe secret key configured'
+      : 'STRIPE_SECRET_KEY not set',
   });
 
   checks.push({
     id: 'signup',
     label: 'Public sign-ups',
     status: settings.signupEnabled ? 'pass' : 'warn',
-    detail: settings.signupEnabled ? 'New sign-ups enabled' : 'Sign-ups disabled in platform settings',
+    detail: settings.signupEnabled
+      ? 'New sign-ups enabled'
+      : 'Sign-ups disabled in platform settings',
   });
 
   checks.push({
@@ -807,7 +901,10 @@ export async function runCreatorHealthChecks(): Promise<CreatorHealthCheck[]> {
     id: 'creators',
     label: 'Creator accounts',
     status: creators.length > 0 ? 'pass' : 'warn',
-    detail: creators.length > 0 ? `${creators.length} creator account(s) matched` : 'No creator accounts matched env allow-list',
+    detail:
+      creators.length > 0
+        ? `${creators.length} creator account(s) matched`
+        : 'No creator accounts matched env allow-list',
   });
 
   return checks;

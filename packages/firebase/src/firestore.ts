@@ -1,13 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { UserRole } from '@clcrm/validators';
 import type { CustomerStage } from '@clcrm/types';
-import {
-  getAdminFirestore,
-  getAdminAuth,
-  FieldValue,
-  Timestamp,
-  docToData,
-} from './admin';
+import { getAdminFirestore, getAdminAuth, FieldValue, Timestamp, docToData } from './admin';
 import { stripUndefined, stripUndefinedDeep } from './firestore-utils';
 
 export type UserRecord = {
@@ -44,6 +38,11 @@ export type OrganizationRecord = {
   cancelAtPeriodEnd?: boolean | null;
   lockedAt?: Date | null;
   enabledModules?: string[] | null;
+  disabledModules?: string[] | null;
+  /** Product tier for module presets: trial | starter | standard | professional | enterprise | custom */
+  subscriptionTier?: string | null;
+  configurationSchemaVersion?: number | null;
+  featureFlags?: Record<string, boolean> | null;
   twilioPhoneNumber?: string | null;
   reviewGoogleUrl?: string | null;
   reviewFacebookUrl?: string | null;
@@ -60,7 +59,15 @@ export type CustomerRecord = {
   lastName: string;
   businessName?: string | null;
   customerType?: 'residential' | 'commercial' | 'hoa' | 'municipal' | 'church' | 'school';
-  status?: 'lead' | 'active' | 'scheduled' | 'installed' | 'takedown_pending' | 'storage' | 'at_risk' | 'archived';
+  status?:
+    | 'lead'
+    | 'active'
+    | 'scheduled'
+    | 'installed'
+    | 'takedown_pending'
+    | 'storage'
+    | 'at_risk'
+    | 'archived';
   referralSource?: string | null;
   assignedSalespersonId?: string | null;
   assignedSalespersonName?: string | null;
@@ -126,7 +133,41 @@ function ts() {
 
 function mapTimestamps<T extends Record<string, unknown>>(data: T): T {
   const result = { ...data };
-  for (const key of ['createdAt', 'updatedAt', 'sentAt', 'acceptedAt', 'dueDate', 'scheduledStart', 'scheduledEnd', 'installedAt', 'removedAt', 'lastViewedAt', 'paidAt', 'clockIn', 'clockOut', 'lastMessageAt', 'occurredAt', 'scheduledDate', 'completionDate', 'followUpDate', 'purchaseDate', 'portalInviteSentAt', 'portalLastLoginAt', 'archivedAt', 'stageUpdatedAt', 'nextActionDue', 'validUntil', 'openDate', 'installDate', 'removalDate', 'contractGeneratedAt', 'onboardingCompletedAt', 'trialEndsAt', 'lockedAt', 'currentPeriodEnd']) {
+  for (const key of [
+    'createdAt',
+    'updatedAt',
+    'sentAt',
+    'acceptedAt',
+    'dueDate',
+    'scheduledStart',
+    'scheduledEnd',
+    'installedAt',
+    'removedAt',
+    'lastViewedAt',
+    'paidAt',
+    'clockIn',
+    'clockOut',
+    'lastMessageAt',
+    'occurredAt',
+    'scheduledDate',
+    'completionDate',
+    'followUpDate',
+    'purchaseDate',
+    'portalInviteSentAt',
+    'portalLastLoginAt',
+    'archivedAt',
+    'stageUpdatedAt',
+    'nextActionDue',
+    'validUntil',
+    'openDate',
+    'installDate',
+    'removalDate',
+    'contractGeneratedAt',
+    'onboardingCompletedAt',
+    'trialEndsAt',
+    'lockedAt',
+    'currentPeriodEnd',
+  ]) {
     const val = result[key];
     if (val && typeof val === 'object' && 'toDate' in (val as object)) {
       (result as Record<string, unknown>)[key] = (val as FirebaseFirestore.Timestamp).toDate();
@@ -135,7 +176,10 @@ function mapTimestamps<T extends Record<string, unknown>>(data: T): T {
   return result;
 }
 
-export async function ensureOrganization(companyName: string, ownerUid: string): Promise<OrganizationRecord> {
+export async function ensureOrganization(
+  companyName: string,
+  ownerUid: string,
+): Promise<OrganizationRecord> {
   const db = getAdminFirestore();
   const userSnap = await db.collection('users').doc(ownerUid).get();
   if (userSnap.exists) {
@@ -147,41 +191,65 @@ export async function ensureOrganization(companyName: string, ownerUid: string):
   const orgRef = db.collection('organizations').doc();
   const now = ts();
   let trialDays = 14;
+  let availableModules: import('@clcrm/types').CrmPlatformModuleKey[] | undefined;
   try {
     const { getPlatformSettings } = await import('./creator360');
     const settings = await getPlatformSettings();
     trialDays = settings.defaultTrialDays ?? 14;
+    availableModules = settings.availableModules;
   } catch {
     // platform settings optional during bootstrap
   }
   const trialEndsAt = new Date();
   trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
 
+  const { buildOrganizationProvisioningFields } = await import('./org-provisioning');
+  const provisioning = buildOrganizationProvisioningFields({
+    subscriptionStatus: 'trialing',
+    subscriptionTier: 'trial',
+    availableModules,
+  });
+
   const orgData = {
     companyName,
     brandColor: '#DC2626',
     logoUrl: null,
-    agreementMode: 'multi',
+    agreementMode: 'multi' as const,
     agreementOptions: [
       { code: '1YR', label: '1 Year', active: true },
       { code: '3YR', label: '3 Year', active: true },
       { code: '5YR', label: '5 Year', active: true },
     ],
-    subscriptionStatus: 'trialing' as const,
+    ...provisioning,
     trialEndsAt,
     createdAt: now,
     updatedAt: now,
   };
-  await orgRef.set(orgData);
 
-  await db.collection('users').doc(ownerUid).set({
-    firebaseUid: ownerUid,
-    organizationId: orgRef.id,
-    email: '',
-    role: 'owner',
-    createdAt: now,
-    updatedAt: now,
-  });
+  try {
+    await orgRef.set(orgData);
+    await db.collection('users').doc(ownerUid).set({
+      firebaseUid: ownerUid,
+      organizationId: orgRef.id,
+      email: '',
+      role: 'owner',
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const { ensureSettingsDefaults } = await import('./settings360');
+    await ensureSettingsDefaults(orgRef.id, ownerUid);
+  } catch (err) {
+    // Fail closed: do not leave a partially configured tenant.
+    await db
+      .collection('users')
+      .doc(ownerUid)
+      .delete()
+      .catch(() => undefined);
+    await orgRef.delete().catch(() => undefined);
+    throw err;
+  }
 
   const org = await orgRef.get();
   return mapTimestamps({ id: org.id, ...org.data()! }) as OrganizationRecord;
@@ -236,7 +304,10 @@ export async function getOrganization(orgId: string): Promise<OrganizationRecord
 
 export async function updateOrganization(orgId: string, data: Partial<OrganizationRecord>) {
   const db = getAdminFirestore();
-  await db.collection('organizations').doc(orgId).update(stripUndefined({ ...data, updatedAt: ts() }));
+  await db
+    .collection('organizations')
+    .doc(orgId)
+    .update(stripUndefined({ ...data, updatedAt: ts() }));
   return getOrganization(orgId);
 }
 
@@ -283,12 +354,20 @@ export async function getCustomer(orgId: string, id: string) {
   const snap = await db.doc(`organizations/${orgId}/customers/${id}`).get();
   if (!snap.exists) return null;
   const customer = mapTimestamps({ id: snap.id, ...snap.data()! }) as CustomerRecord;
-  const props = await db.collection(`organizations/${orgId}/properties`).where('customerId', '==', id).get();
-  const properties = props.docs.map((d) => mapTimestamps({ id: d.id, ...d.data() }) as PropertyRecord);
+  const props = await db
+    .collection(`organizations/${orgId}/properties`)
+    .where('customerId', '==', id)
+    .get();
+  const properties = props.docs.map(
+    (d) => mapTimestamps({ id: d.id, ...d.data() }) as PropertyRecord,
+  );
   return { ...customer, properties };
 }
 
-export async function createCustomer(orgId: string, data: Omit<CustomerRecord, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>) {
+export async function createCustomer(
+  orgId: string,
+  data: Omit<CustomerRecord, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>,
+) {
   const db = getAdminFirestore();
   const ref = db.collection(`organizations/${orgId}/customers`).doc();
   const now = ts();
@@ -297,14 +376,10 @@ export async function createCustomer(orgId: string, data: Omit<CustomerRecord, '
   const customer = mapTimestamps({ id: snap.id, ...snap.data()! }) as CustomerRecord;
   try {
     const { fireAutomationTrigger } = await import('./automation360');
-    await fireAutomationTrigger(
-      orgId,
-      'new_lead_created',
-      {
-        customerId: customer.id,
-        customerName: `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || 'Customer',
-      },
-    );
+    await fireAutomationTrigger(orgId, 'new_lead_created', {
+      customerId: customer.id,
+      customerName: `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || 'Customer',
+    });
   } catch {
     // Automation should not block customer creation
   }
@@ -323,7 +398,10 @@ export async function deleteCustomer(orgId: string, id: string) {
   await db.doc(`organizations/${orgId}/customers/${id}`).delete();
 }
 
-export async function createProperty(orgId: string, data: Omit<PropertyRecord, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>) {
+export async function createProperty(
+  orgId: string,
+  data: Omit<PropertyRecord, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>,
+) {
   if (!data.customerId?.trim()) {
     throw new Error('createProperty requires customerId (Phase 0 relationship freeze)');
   }
@@ -349,9 +427,7 @@ export async function colList<T>(
   opts?: { limit?: number },
 ): Promise<T[]> {
   const db = getAdminFirestore();
-  let query = db
-    .collection(`organizations/${orgId}/${collection}`)
-    .orderBy(orderField, 'desc');
+  let query = db.collection(`organizations/${orgId}/${collection}`).orderBy(orderField, 'desc');
   if (opts?.limit && opts.limit > 0) {
     query = query.limit(opts.limit);
   }
@@ -374,14 +450,23 @@ export async function colCreate<T extends Record<string, unknown>>(
   const db = getAdminFirestore();
   const ref = db.collection(`organizations/${orgId}/${collection}`).doc();
   const now = ts();
-  await ref.set(stripUndefinedDeep({ organizationId: orgId, ...data, createdAt: now, updatedAt: now }));
+  await ref.set(
+    stripUndefinedDeep({ organizationId: orgId, ...data, createdAt: now, updatedAt: now }),
+  );
   const snap = await ref.get();
   return mapTimestamps({ id: snap.id, ...snap.data()! }) as T & { id: string };
 }
 
-export async function colUpdate(orgId: string, collection: string, id: string, data: Record<string, unknown>) {
+export async function colUpdate(
+  orgId: string,
+  collection: string,
+  id: string,
+  data: Record<string, unknown>,
+) {
   const db = getAdminFirestore();
-  await db.doc(`organizations/${orgId}/${collection}/${id}`).update(stripUndefinedDeep({ ...data, updatedAt: ts() }));
+  await db
+    .doc(`organizations/${orgId}/${collection}/${id}`)
+    .update(stripUndefinedDeep({ ...data, updatedAt: ts() }));
   return colGet(orgId, collection, id);
 }
 
@@ -395,7 +480,11 @@ export async function getByPublicToken<T>(
   token: string,
 ): Promise<T | null> {
   const db = getAdminFirestore();
-  const groupSnap = await db.collectionGroup(collection).where('publicToken', '==', token).limit(1).get();
+  const groupSnap = await db
+    .collectionGroup(collection)
+    .where('publicToken', '==', token)
+    .limit(1)
+    .get();
   if (groupSnap.empty) return null;
   const doc = groupSnap.docs[0]!;
   return mapTimestamps({ id: doc.id, ...doc.data()! }) as T;

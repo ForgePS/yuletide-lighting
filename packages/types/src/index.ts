@@ -21,6 +21,8 @@ export * from './reviews360';
 export * from './sign-tracker';
 export * from './automation360';
 export * from './creator';
+export * from './module-presets';
+export * from './configuration';
 export * from './logo-url';
 export * from './website-cms';
 export * from './website-cms-defaults';

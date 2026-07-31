@@ -1,0 +1,43 @@
+import { describe, expect, it } from 'vitest';
+import { MODULE_PRESETS, ORGANIZATION_CONFIG_SCHEMA_VERSION } from '@clcrm/types';
+import { buildOrganizationProvisioningFields } from './org-provisioning';
+
+describe('buildOrganizationProvisioningFields', () => {
+  it('newly provisioned trial orgs receive trial modules + schema version', () => {
+    const fields = buildOrganizationProvisioningFields({
+      subscriptionStatus: 'trialing',
+      subscriptionTier: 'trial',
+    });
+    expect(fields.enabledModules).toEqual([...MODULE_PRESETS.trial]);
+    expect(fields.subscriptionTier).toBe('trial');
+    expect(fields.configurationSchemaVersion).toBe(ORGANIZATION_CONFIG_SCHEMA_VERSION);
+    expect(fields.featureFlags?.followUpAutomation).toBe(false);
+  });
+
+  it('intersects with availableModules allow-list', () => {
+    const fields = buildOrganizationProvisioningFields({
+      subscriptionStatus: 'trialing',
+      availableModules: ['customers', 'proposals'],
+    });
+    expect(fields.enabledModules).toEqual(['customers', 'proposals']);
+  });
+
+  it('rejects empty intersection with availableModules', () => {
+    expect(() =>
+      buildOrganizationProvisioningFields({
+        subscriptionStatus: 'trialing',
+        availableModules: [],
+      }),
+    ).toThrow(/empty/);
+  });
+
+  it('preserves disabled modules', () => {
+    const fields = buildOrganizationProvisioningFields({
+      subscriptionStatus: 'active',
+      subscriptionTier: 'standard',
+      disabledModules: ['sign_tracker'],
+    });
+    expect(fields.enabledModules).not.toContain('sign_tracker');
+    expect(fields.disabledModules).toContain('sign_tracker');
+  });
+});

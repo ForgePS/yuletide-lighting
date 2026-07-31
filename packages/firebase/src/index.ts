@@ -42,3 +42,5 @@ export * from './documents360';
 export * from './onboarding360';
 export * from './public-season';
 export * from './module-entitlement';
+export * from './org-provisioning';
+export * from './follow-up-automation';

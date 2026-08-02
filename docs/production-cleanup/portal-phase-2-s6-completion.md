@@ -5,7 +5,7 @@
 **DATE:** 2026-08-02  
 **BRANCH:** `production/yuletide-cleanup-launch-readiness`  
 **S5 CHECKPOINT SHA:** `d9d8242ad6df0f9e6f58af27baa96bcf16135a3d`  
-**COMMIT SHA:** (this checkpoint commit — confirm with `git rev-parse HEAD`)  
+**COMMIT SHA:** `b7f2cc1edadfd4351f70e5b3682ac561751369eb`  
 **ENVIRONMENT:** EMULATOR  
 **Deployment:** NO  
 **Production writes:** 0
@@ -76,7 +76,7 @@ See `portal-phase-2-s6-gate-reconciliation.md`.
 ## CHECKPOINTS
 
 - S5 SHA: `d9d8242ad6df0f9e6f58af27baa96bcf16135a3d` (preserved)
-- S6 SHA: this commit
+- S6 SHA: `b7f2cc1edadfd4351f70e5b3682ac561751369eb`
 - Post-commit working tree: verified after commit
 - Post-commit production:check: required after commit
 
@@ -129,7 +129,7 @@ NO
 | 3   | DATE                           | 2026-08-02                                   |
 | 4   | BRANCH                         | production/yuletide-cleanup-launch-readiness |
 | 5   | S5_CHECKPOINT_SHA              | d9d8242ad6df0f9e6f58af27baa96bcf16135a3d     |
-| 6   | COMMIT_SHA                     | this checkpoint                              |
+| 6   | COMMIT_SHA                     | b7f2cc1edadfd4351f70e5b3682ac561751369eb     |
 | 7   | ENVIRONMENT                    | EMULATOR                                     |
 | 8   | DEPLOYMENT                     | NO                                           |
 | 9   | PRODUCTION_WRITES              | 0                                            |

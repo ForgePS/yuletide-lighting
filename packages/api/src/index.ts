@@ -2,6 +2,7 @@ export { appRouter, type AppRouter } from './routers/firestore';
 export {
   router,
   publicProcedure,
+  portalPublicProcedure,
   protectedProcedure,
   authProcedure,
   officeProcedure,

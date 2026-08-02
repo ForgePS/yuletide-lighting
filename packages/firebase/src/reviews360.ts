@@ -24,9 +24,15 @@ function mapReferral(raw: Record<string, unknown>, id: string): ReferralRecord {
   return mapTimestampsFromData({ id, ...raw }) as unknown as ReferralRecord;
 }
 
-async function findReviewByToken(token: string): Promise<(ReviewRequest360 & { _orgId: string }) | null> {
+async function findReviewByToken(
+  token: string,
+): Promise<(ReviewRequest360 & { _orgId: string }) | null> {
   const db = getAdminFirestore();
-  const snap = await db.collectionGroup('reviewRequests').where('publicToken', '==', token).limit(1).get();
+  const snap = await db
+    .collectionGroup('reviewRequests')
+    .where('publicToken', '==', token)
+    .limit(1)
+    .get();
   if (snap.empty) return null;
   const doc = snap.docs[0]!;
   const orgId = doc.ref.parent.parent?.id;
@@ -35,13 +41,23 @@ async function findReviewByToken(token: string): Promise<(ReviewRequest360 & { _
 }
 
 function referralCodeFromName(firstName: string) {
-  const prefix = firstName.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || 'GIFT';
+  const prefix =
+    firstName
+      .replace(/[^a-zA-Z]/g, '')
+      .slice(0, 4)
+      .toUpperCase() || 'GIFT';
   return `${prefix}${nanoid(4).toUpperCase()}`;
 }
 
-function pickChannel(customer: { phone?: string | null; mobilePhone?: string | null; email?: string | null; preferredContactMethod?: string | null }) {
+function pickChannel(customer: {
+  phone?: string | null;
+  mobilePhone?: string | null;
+  email?: string | null;
+  preferredContactMethod?: string | null;
+}) {
   if (customer.preferredContactMethod === 'email' && customer.email) return 'email' as const;
-  if (customer.preferredContactMethod === 'sms' && (customer.mobilePhone || customer.phone)) return 'sms' as const;
+  if (customer.preferredContactMethod === 'sms' && (customer.mobilePhone || customer.phone))
+    return 'sms' as const;
   if (customer.mobilePhone || customer.phone) return 'sms' as const;
   if (customer.email) return 'email' as const;
   return 'sms' as const;
@@ -51,7 +67,11 @@ export async function listReviewRequests360(orgId: string): Promise<ReviewReques
   const rows = await colList<Record<string, unknown>>(orgId, 'reviewRequests');
   return rows
     .map((r) => mapReview(r, String(r.id)))
-    .sort((a, b) => (b.sentAt?.getTime() ?? b.createdAt.getTime()) - (a.sentAt?.getTime() ?? a.createdAt.getTime()));
+    .sort(
+      (a, b) =>
+        (b.sentAt?.getTime() ?? b.createdAt.getTime()) -
+        (a.sentAt?.getTime() ?? a.createdAt.getTime()),
+    );
 }
 
 export async function getReviewsDashboard(orgId: string): Promise<ReviewsDashboard> {
@@ -103,7 +123,8 @@ export async function sendReviewRequest360(
   const org = await getOrganization(orgId);
   const platform = input.platform ?? 'google';
   const reviewUrl = platform === 'google' ? org?.reviewGoogleUrl : org?.reviewFacebookUrl;
-  const customerName = `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || 'Customer';
+  const customerName =
+    `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || 'Customer';
   const channel = input.channel ?? pickChannel(customer);
   const publicToken = nanoid(32);
   const reviewPageUrl = `${appBase()}/review/${publicToken}`;
@@ -144,7 +165,10 @@ export async function sendReviewRequest360(
   await colUpdate(orgId, 'reviewRequests', request.id, { status: 'sent', sentAt: new Date() });
 
   if (input.jobId) {
-    await colUpdate(orgId, 'jobs', input.jobId, { stage: 'review_requested', updatedAt: new Date() });
+    await colUpdate(orgId, 'jobs', input.jobId, {
+      stage: 'review_requested',
+      updatedAt: new Date(),
+    });
     await syncCustomerPipelineFromJob(orgId, input.customerId, 'installed', userId);
   }
 
@@ -185,7 +209,10 @@ export async function getPublicReviewByToken(token: string): Promise<PublicRevie
   if (!org) return null;
 
   if (review.status === 'sent') {
-    await colUpdate(_orgId, 'reviewRequests', review.id, { status: 'clicked', clickedAt: new Date() });
+    await colUpdate(_orgId, 'reviewRequests', review.id, {
+      status: 'clicked',
+      clickedAt: new Date(),
+    });
     review.status = 'clicked';
   }
 
@@ -235,7 +262,12 @@ export async function submitReviewFeedback(
       feedback: feedback ?? null,
       submittedAt: now,
     });
-    await logCustomerActivity(orgId, review.customerId, 'note_added', `Positive review (${rating}/5) — routed to Google`);
+    await logCustomerActivity(
+      orgId,
+      review.customerId,
+      'note_added',
+      `Positive review (${rating}/5) — routed to Google`,
+    );
     if (review.jobId) {
       await colUpdate(orgId, 'jobs', review.jobId, { stage: 'complete', updatedAt: now });
     }
@@ -266,9 +298,18 @@ export async function submitReviewFeedback(
 }
 
 export async function listReferrals(orgId: string, customerId?: string): Promise<ReferralRecord[]> {
-  const rows = await colList<Record<string, unknown>>(orgId, 'referrals');
-  const filtered = customerId ? rows.filter((r) => r.referringCustomerId === customerId) : rows;
-  return filtered
+  const db = getAdminFirestore();
+  let rows: Record<string, unknown>[];
+  if (customerId) {
+    const snap = await db
+      .collection(`organizations/${orgId}/referrals`)
+      .where('referringCustomerId', '==', customerId)
+      .get();
+    rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } else {
+    rows = await colList<Record<string, unknown>>(orgId, 'referrals');
+  }
+  return rows
     .map((r) => mapReferral(r, String(r.id)))
     .sort((a, b) => b.issuedAt.getTime() - a.issuedAt.getTime());
 }
@@ -282,10 +323,15 @@ export async function ensureReferralCode(
   const existing = (await listReferrals(orgId, customerId)).find((r) => r.status === 'issued');
   if (existing) return existing;
 
-  const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', customerId);
+  const customer = await colGet<{ firstName?: string; lastName?: string }>(
+    orgId,
+    'customers',
+    customerId,
+  );
   if (!customer) return null;
 
-  const customerName = `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || 'Customer';
+  const customerName =
+    `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || 'Customer';
   let code = referralCodeFromName(customer.firstName ?? 'GIFT');
   const allCodes = new Set((await listReferrals(orgId)).map((r) => r.code));
   while (allCodes.has(code)) {
@@ -343,7 +389,11 @@ export async function redeemReferralCode(
     updatedBy: userId,
   });
 
-  const referred = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', referredCustomerId);
+  const referred = await colGet<{ firstName?: string; lastName?: string }>(
+    orgId,
+    'customers',
+    referredCustomerId,
+  );
   if (referred) {
     await colUpdate(orgId, 'customers', referredCustomerId, {
       referralSource: `referral:${referral.code}`,

@@ -5,14 +5,7 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import {
-  ORG_A,
-  ORG_B,
-  createRulesTestEnv,
-  seedOrgPath,
-  seedRootDoc,
-  seedUsers,
-} from './helpers';
+import { ORG_A, ORG_B, createRulesTestEnv, seedOrgPath, seedRootDoc, seedUsers } from './helpers';
 
 describe('firestore.rules', () => {
   let testEnv: RulesTestEnvironment;
@@ -34,9 +27,11 @@ describe('firestore.rules', () => {
       { uid: 'ownerA', organizationId: ORG_A, role: 'owner', status: 'active' },
       { uid: 'adminB', organizationId: ORG_B, role: 'admin', status: 'active' },
       { uid: 'suspendedA', organizationId: ORG_A, role: 'admin', status: 'suspended' },
+      { uid: 'revokedA', organizationId: ORG_A, role: 'portal', status: 'revoked' },
       { uid: 'archivedA', organizationId: ORG_A, role: 'admin', status: 'archived' },
       { uid: 'pendingA', organizationId: ORG_A, role: 'admin', status: 'pending' },
       { uid: 'nostatusA', organizationId: ORG_A, role: 'office' },
+      { uid: 'portalUserA', organizationId: ORG_A, role: 'portal', status: 'active' },
     ]);
 
     await seedOrgPath(testEnv, ORG_A, 'customers/custA', { name: 'Customer A' });
@@ -72,6 +67,24 @@ describe('firestore.rules', () => {
     });
   });
 
+  describe('Portal Phase 2 unauthenticated access', () => {
+    it('denies reads from portal collections', async () => {
+      const db = testEnv.unauthenticatedContext().firestore();
+      for (const [collectionName, documentId] of [
+        ['portalAccounts', 'portalA'],
+        ['portalUsers', 'portalUserA'],
+        ['portalTimelineEvents', 'eventA'],
+        ['portalNotifications', 'notificationA'],
+        ['portalQrCodes', 'qrA'],
+        ['portalQrScans', 'scanA'],
+        ['portalQrVerifications', 'verificationA'],
+        ['portalQrAuditEvents', 'auditA'],
+      ] as const) {
+        await assertFails(getDoc(doc(db, 'organizations', ORG_A, collectionName, documentId)));
+      }
+    });
+  });
+
   describe('B. tenant isolation', () => {
     it('orgA user cannot read/write orgB customers, jobs, invoices, conversations/messages, settings, signLocations', async () => {
       const db = testEnv.authenticatedContext('adminA').firestore();
@@ -82,14 +95,10 @@ describe('firestore.rules', () => {
       );
 
       await assertFails(getDoc(doc(db, 'organizations', ORG_B, 'jobs', 'jobB')));
-      await assertFails(
-        setDoc(doc(db, 'organizations', ORG_B, 'jobs', 'jobB'), { title: 'hack' }),
-      );
+      await assertFails(setDoc(doc(db, 'organizations', ORG_B, 'jobs', 'jobB'), { title: 'hack' }));
 
       await assertFails(getDoc(doc(db, 'organizations', ORG_B, 'invoices', 'invB')));
-      await assertFails(
-        setDoc(doc(db, 'organizations', ORG_B, 'invoices', 'invB'), { total: 1 }),
-      );
+      await assertFails(setDoc(doc(db, 'organizations', ORG_B, 'invoices', 'invB'), { total: 1 }));
 
       await assertFails(getDoc(doc(db, 'organizations', ORG_B, 'conversations', 'convB')));
       await assertFails(
@@ -111,7 +120,7 @@ describe('firestore.rules', () => {
 
   describe('C. user status', () => {
     it('suspended, archived, and pending are denied; active and missing status allowed', async () => {
-      for (const uid of ['suspendedA', 'archivedA', 'pendingA'] as const) {
+      for (const uid of ['suspendedA', 'revokedA', 'archivedA', 'pendingA'] as const) {
         const db = testEnv.authenticatedContext(uid).firestore();
         await assertFails(getDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA')));
         await assertFails(getDoc(doc(db, 'organizations', ORG_A, 'jobs', 'jobA')));
@@ -186,15 +195,39 @@ describe('firestore.rules', () => {
 
       for (const uid of ['officeA', 'adminA', 'ownerA'] as const) {
         const db = testEnv.authenticatedContext(uid).firestore();
-        await assertSucceeds(
-          getDoc(doc(db, 'organizations', ORG_A, 'portalAccounts', 'portalA')),
-        );
+        await assertSucceeds(getDoc(doc(db, 'organizations', ORG_A, 'portalAccounts', 'portalA')));
         await assertSucceeds(
           setDoc(doc(db, 'organizations', ORG_A, 'portalAccounts', 'portalA'), {
             customerId: 'custA',
             updatedBy: uid,
           }),
         );
+      }
+    });
+
+    it('portal users cannot write protected identity, org, role, or customer data', async () => {
+      const db = testEnv.authenticatedContext('portalUserA').firestore();
+      await assertFails(
+        setDoc(doc(db, 'users', 'portalUserA'), {
+          firebaseUid: 'portalUserA',
+          organizationId: ORG_B,
+          role: 'admin',
+          status: 'active',
+        }),
+      );
+      await assertFails(setDoc(doc(db, 'organizations', ORG_A), { name: 'Nope' }));
+      await assertFails(
+        setDoc(doc(db, 'organizations', ORG_A, 'roles', 'portal'), { permissions: ['*'] }),
+      );
+      await assertFails(
+        setDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA'), { name: 'Nope' }),
+      );
+    });
+
+    it('suspended and revoked users cannot read portal collections', async () => {
+      for (const uid of ['suspendedA', 'revokedA'] as const) {
+        const db = testEnv.authenticatedContext(uid).firestore();
+        await assertFails(getDoc(doc(db, 'organizations', ORG_A, 'portalAccounts', 'portalA')));
       }
     });
   });

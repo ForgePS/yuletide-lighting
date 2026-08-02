@@ -32,11 +32,11 @@ export const portalAccountStatusSchema = z.enum([
 ]);
 
 export const portalTokenInputSchema = z.object({
-  token: z.string().min(8).max(128),
+  token: z.string().min(8).max(128).optional(),
 });
 
 export const portalServiceRequestSchema = z.object({
-  token: z.string().min(8).max(128),
+  token: z.string().min(8).max(128).optional(),
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
   category: z.string().optional(),
@@ -48,14 +48,14 @@ export const portalServiceRequestSchema = z.object({
 });
 
 export const portalUploadPhotoSchema = z.object({
-  token: z.string().min(8).max(128),
+  token: z.string().min(8).max(128).optional(),
   dataBase64: z.string().min(1).max(7_000_000),
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']),
   filename: z.string().max(120).optional(),
 });
 
 export const portalRebookSchema = z.object({
-  token: z.string().min(8).max(128),
+  token: z.string().min(8).max(128).optional(),
   notes: z.string().max(2000).optional(),
   preferredMonth: z.string().max(40).optional(),
   sameDesign: z.boolean().optional(),
@@ -71,12 +71,12 @@ export const portalAccountActionSchema = z.object({
 });
 
 export const portalMarkNotificationReadSchema = z.object({
-  token: z.string().min(8).max(128),
+  token: z.string().min(8).max(128).optional(),
   notificationId: z.string().min(1),
 });
 
 export const portalScheduleRequestSchema = z.object({
-  token: z.string().min(8).max(128),
+  token: z.string().min(8).max(128).optional(),
   appointmentType: z.enum([
     'estimate_visit',
     'design_consultation',
@@ -92,23 +92,25 @@ export const portalScheduleRequestSchema = z.object({
 });
 
 export const portalJobDetailSchema = z.object({
-  token: z.string().min(8).max(128),
+  token: z.string().min(8).max(128).optional(),
   jobId: z.string().min(1),
 });
 
 export const portalQrGenerateSchema = z.object({
   customerId: z.string().min(1),
   propertyId: z.string().optional().nullable(),
-  type: z.enum([
-    'customer_portal',
-    'property',
-    'proposal',
-    'invoice',
-    'service_request',
-    'installation',
-    'takedown',
-    'rebooking',
-  ]).optional(),
+  type: z
+    .enum([
+      'customer_portal',
+      'property',
+      'proposal',
+      'invoice',
+      'service_request',
+      'installation',
+      'takedown',
+      'rebooking',
+    ])
+    .optional(),
   targetRecordId: z.string().optional().nullable(),
   label: z.string().max(120).nullable().optional(),
   internalDescription: z.string().max(500).nullable().optional(),
@@ -134,16 +136,18 @@ export const portalQrBulkSchema = z.object({
   customerIds: z.array(z.string().min(1)).min(1).max(100),
   label: z.string().max(120).nullable().optional(),
   expiresAt: z.coerce.date().nullable().optional(),
-  type: z.enum([
-    'customer_portal',
-    'property',
-    'proposal',
-    'invoice',
-    'service_request',
-    'installation',
-    'takedown',
-    'rebooking',
-  ]).optional(),
+  type: z
+    .enum([
+      'customer_portal',
+      'property',
+      'proposal',
+      'invoice',
+      'service_request',
+      'installation',
+      'takedown',
+      'rebooking',
+    ])
+    .optional(),
   replaceExistingActivation: z.boolean().optional(),
 });
 
@@ -164,6 +168,58 @@ export const portalQrVerifySchema = z.object({
   code: z.string().min(4).max(12),
   acceptTerms: z.boolean(),
   userAgent: z.string().max(500).optional(),
+});
+
+export const portalInviteUserSchema = z.object({
+  customerId: z.string().min(1),
+  email: z.string().email().max(200),
+  role: z.enum([
+    'account_owner',
+    'authorized_contact',
+    'billing_contact',
+    'property_contact',
+    'view_only',
+  ]),
+  displayName: z.string().max(120).nullable().optional(),
+  contactId: z.string().min(1).nullable().optional(),
+  propertyIds: z.array(z.string().min(1)).max(50).optional(),
+});
+
+export const portalInviteActionSchema = z.object({
+  portalUserId: z.string().min(1),
+});
+
+export const portalClaimInvitationSchema = z.object({
+  invitationToken: z.string().min(16).max(200),
+  /** Firebase ID token — server extracts authUserId; clients must not send uid. */
+  idToken: z.string().min(20).max(4096),
+});
+
+export const portalEstablishSessionSchema = z.object({
+  /** Legacy magic access token (dual-write compatible). */
+  accessToken: z.string().min(8).max(128),
+});
+
+export const portalAuthorizeRouteSchema = z.object({
+  token: z.string().min(8).max(128).optional(),
+  feature: portalFeatureKeySchema.optional(),
+  action: z
+    .enum([
+      'view',
+      'request',
+      'create',
+      'edit',
+      'sign',
+      'pay',
+      'download',
+      'message',
+      'manage_users',
+      'manage_contacts',
+    ])
+    .optional(),
+  resourceType: z.string().min(1).max(64).optional(),
+  resourceId: z.string().min(1).max(128).optional(),
+  pathname: z.string().min(1).max(400).optional(),
 });
 
 export const updatePortalSettingsSchema = z.object({

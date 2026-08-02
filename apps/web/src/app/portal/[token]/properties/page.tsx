@@ -24,7 +24,11 @@ function PropertiesBody({ token }: { token: string }) {
   if (isLoading) return <LoadingState message="Loading properties..." />;
   if (isError) return <p className="text-base text-red-600">Could not load properties.</p>;
   if (!data?.length) {
-    return <p className="rounded-2xl border border-stone-200 bg-white p-6 text-base text-stone-600">No properties on file yet.</p>;
+    return (
+      <p className="rounded-2xl border border-stone-200 bg-white p-6 text-base text-stone-600">
+        No properties on file yet.
+      </p>
+    );
   }
 
   const selected = data.find((p) => p.id === selectedId) ?? data[0]!;
@@ -62,11 +66,22 @@ function PropertiesBody({ token }: { token: string }) {
       )}
       {selected.galleryPhotos.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-3">
-          {selected.galleryPhotos.map((g) => (
-            <div key={g.id} className="relative aspect-video overflow-hidden rounded-lg bg-stone-100">
-              <Image src={g.url} alt={g.label || selected.propertyName} fill className="object-cover" unoptimized />
-            </div>
-          ))}
+          {selected.galleryPhotos
+            .filter((g): g is typeof g & { url: string } => Boolean(g.url))
+            .map((g) => (
+              <div
+                key={g.id}
+                className="relative aspect-video overflow-hidden rounded-lg bg-stone-100"
+              >
+                <Image
+                  src={g.url}
+                  alt={g.label || selected.propertyName}
+                  fill
+                  className="object-cover"
+                  unoptimized
+                />
+              </div>
+            ))}
         </div>
       )}
     </div>
@@ -90,7 +105,9 @@ function PropertiesBody({ token }: { token: string }) {
                   onClick={() => setSelectedId(p.id)}
                 >
                   <span className="font-semibold text-stone-900">{p.propertyName}</span>
-                  <span className="mt-0.5 text-sm text-stone-500">{p.city}, {p.state}</span>
+                  <span className="mt-0.5 text-sm text-stone-500">
+                    {p.city}, {p.state}
+                  </span>
                 </button>
               </li>
             );

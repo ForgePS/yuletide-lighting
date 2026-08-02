@@ -1,7 +1,12 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
 import type { UserRole } from '@clcrm/validators';
-import type { PermissionAction, PermissionMatrix, PermissionResource, SettingsRole } from '@clcrm/types';
+import type {
+  PermissionAction,
+  PermissionMatrix,
+  PermissionResource,
+  SettingsRole,
+} from '@clcrm/types';
 import { hasPermission } from '@clcrm/types';
 
 export type AuthContext = {
@@ -18,6 +23,11 @@ export type AuthContext = {
 
 export type Context = {
   auth: AuthContext | null;
+  /**
+   * Raw `__portal_session` cookie value (portal-only).
+   * Never used as staff auth. Prefer over magic token when present (P2-S2).
+   */
+  portalSessionToken?: string | null;
   ip?: string | null;
   userAgent?: string | null;
 };
@@ -33,10 +43,25 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.auth) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
   }
+  // Portal session cookie must never satisfy staff CRM procedures.
   if (ctx.auth.subscriptionLocked) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'SUBSCRIPTION_LOCKED' });
   }
   return next({ ctx: { ...ctx, auth: ctx.auth } });
+});
+
+/**
+ * Public portal procedures: staff `__session` auth is ignored for authorization.
+ * Scope comes from magic token and/or `__portal_session` only (P2-S2).
+ */
+export const portalPublicProcedure = t.procedure.use(({ ctx, next }) => {
+  return next({
+    ctx: {
+      ...ctx,
+      auth: null,
+      portalSessionToken: ctx.portalSessionToken ?? null,
+    },
+  });
 });
 
 /** Authenticated but allowed when subscription is locked (billing pages). */
@@ -52,7 +77,10 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
   }
   if (ctx.auth.settingsRole === 'read_only') {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'Read-only role cannot perform admin actions' });
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Read-only role cannot perform admin actions',
+    });
   }
   return next({ ctx });
 });
@@ -107,7 +135,10 @@ export function requireModule(moduleKey: string) {
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
     }
     if (!ctx.auth.organizationId) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'MODULE_NOT_ENABLED: missing organization context' });
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'MODULE_NOT_ENABLED: missing organization context',
+      });
     }
 
     const { getOrganization, evaluateModuleEntitlement } = await import('@yuletide/firebase');
@@ -133,4 +164,5 @@ export function requireModule(moduleKey: string) {
   });
 }
 
-export const moduleProcedure = (moduleKey: string) => protectedProcedure.use(requireModule(moduleKey));
+export const moduleProcedure = (moduleKey: string) =>
+  protectedProcedure.use(requireModule(moduleKey));

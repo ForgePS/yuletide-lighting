@@ -1,11 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import type { PortalFeatureKey, PortalNotification } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
-import { LoadingState, ErrorState } from '@/components/ui/states';
+import { LoadingState } from '@/components/ui/states';
+import {
+  authorizePortalRouteClient,
+  clearPortalSessionCookie,
+  establishPortalSessionCookie,
+  type PortalRouteAuthClientResult,
+} from '@/lib/portal-session-client';
 
 type NavItem = {
   feature?: PortalFeatureKey;
@@ -19,22 +25,81 @@ type NavItem = {
 /** Spec primary: Home, Schedule, Service, Messages + More */
 const NAV: NavItem[] = [
   { key: 'home', label: 'Home', primary: true, href: (t) => `/portal/${t}` },
-  { feature: 'scheduling', key: 'schedule', label: 'Schedule', primary: true, href: (t) => `/portal/${t}/schedule` },
-  { feature: 'service_requests', key: 'service', label: 'Service', primary: true, href: (t) => `/portal/${t}/service-request` },
-  { feature: 'messaging', key: 'messages', label: 'Messages', primary: true, badge: 'messages', href: (t) => `/portal/${t}/messages` },
-  { key: 'notifications', label: 'Alerts', badge: 'notifications', href: (t) => `/portal/${t}/notifications` },
+  {
+    feature: 'scheduling',
+    key: 'schedule',
+    label: 'Schedule',
+    primary: true,
+    href: (t) => `/portal/${t}/schedule`,
+  },
+  {
+    feature: 'service_requests',
+    key: 'service',
+    label: 'Service',
+    primary: true,
+    href: (t) => `/portal/${t}/service-request`,
+  },
+  {
+    feature: 'messaging',
+    key: 'messages',
+    label: 'Messages',
+    primary: true,
+    badge: 'messages',
+    href: (t) => `/portal/${t}/messages`,
+  },
+  {
+    key: 'notifications',
+    label: 'Alerts',
+    badge: 'notifications',
+    href: (t) => `/portal/${t}/notifications`,
+  },
   { key: 'contacts', label: 'Account', href: (t) => `/portal/${t}/contacts` },
   { feature: 'e_sign', key: 'sign', label: 'Sign', href: (t) => `/portal/${t}/sign` },
   { feature: 'billing', key: 'billing', label: 'Billing', href: (t) => `/portal/${t}/billing` },
-  { feature: 'proposals', key: 'proposals', label: 'Proposals', href: (t) => `/portal/${t}/proposals` },
-  { feature: 'agreements', key: 'agreements', label: 'Agreements', href: (t) => `/portal/${t}/agreements` },
-  { feature: 'properties', key: 'properties', label: 'Properties', href: (t) => `/portal/${t}/properties` },
+  {
+    feature: 'proposals',
+    key: 'proposals',
+    label: 'Proposals',
+    href: (t) => `/portal/${t}/proposals`,
+  },
+  {
+    feature: 'agreements',
+    key: 'agreements',
+    label: 'Agreements',
+    href: (t) => `/portal/${t}/agreements`,
+  },
+  {
+    feature: 'properties',
+    key: 'properties',
+    label: 'Properties',
+    href: (t) => `/portal/${t}/properties`,
+  },
   { feature: 'mockups', key: 'mockups', label: 'Designs', href: (t) => `/portal/${t}/mockups` },
-  { feature: 'documents', key: 'documents', label: 'Documents', href: (t) => `/portal/${t}/documents` },
-  { feature: 'install_tracking', key: 'jobs', label: 'Installation', href: (t) => `/portal/${t}/jobs` },
-  { feature: 'takedowns', key: 'takedowns', label: 'Takedown', href: (t) => `/portal/${t}/takedowns` },
+  {
+    feature: 'documents',
+    key: 'documents',
+    label: 'Documents',
+    href: (t) => `/portal/${t}/documents`,
+  },
+  {
+    feature: 'install_tracking',
+    key: 'jobs',
+    label: 'Installation',
+    href: (t) => `/portal/${t}/jobs`,
+  },
+  {
+    feature: 'takedowns',
+    key: 'takedowns',
+    label: 'Takedown',
+    href: (t) => `/portal/${t}/takedowns`,
+  },
   { feature: 'storage', key: 'storage', label: 'Storage', href: (t) => `/portal/${t}/storage` },
-  { feature: 'consultations', key: 'consultations', label: 'Consultations', href: (t) => `/portal/${t}/consultations` },
+  {
+    feature: 'consultations',
+    key: 'consultations',
+    label: 'Consultations',
+    href: (t) => `/portal/${t}/consultations`,
+  },
   { feature: 'reviews', key: 'reviews', label: 'Reviews', href: (t) => `/portal/${t}/reviews` },
   { feature: 'rebooking', key: 'rebook', label: 'Rebook', href: (t) => `/portal/${t}/rebook` },
 ];
@@ -61,8 +126,14 @@ export function PortalShell({
 }) {
   const color = brandColor || '#B91C1C';
   const pathname = usePathname();
+  const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
   const unread = notifications.filter((n) => !n.readAt).length;
+
+  async function handleLogout() {
+    await clearPortalSessionCookie();
+    router.push('/portal/login');
+  }
 
   const items = NAV.filter((item) => {
     if (!item.feature) return true;
@@ -125,16 +196,24 @@ export function PortalShell({
         {/* Tablet + desktop side nav (portrait & landscape) */}
         <aside className="sticky top-4 hidden w-52 shrink-0 self-start md:block lg:w-56">
           <div className="max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-stone-200 bg-white p-3 shadow-sm lg:p-4">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">Customer portal</p>
-            <h1 className="mt-1 text-base font-bold lg:text-lg" style={{ color }}>{companyName}</h1>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">
+              Customer portal
+            </p>
+            <h1 className="mt-1 text-base font-bold lg:text-lg" style={{ color }}>
+              {companyName}
+            </h1>
             <nav className="mt-3 space-y-0.5" aria-label="Portal">
               {items.map((item) => (
                 <NavLink key={item.key} item={item} />
               ))}
             </nav>
-            <Link href="/portal/login" className="mt-3 block min-h-11 px-3 py-2 text-sm text-stone-500 hover:underline">
-              Switch account
-            </Link>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="mt-3 block min-h-11 w-full px-3 py-2 text-left text-sm text-stone-500 hover:underline"
+            >
+              Sign out
+            </button>
           </div>
         </aside>
 
@@ -142,8 +221,12 @@ export function PortalShell({
           <header className="sticky top-0 z-20 border-b border-stone-200/80 bg-white/95 backdrop-blur md:static md:border-0 md:bg-transparent md:backdrop-blur-none">
             <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:py-4 md:max-w-none md:px-0 md:pt-0">
               <div className="min-w-0 md:hidden">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">Customer portal</p>
-                <h1 className="truncate text-lg font-bold sm:text-xl" style={{ color }}>{companyName}</h1>
+                <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">
+                  Customer portal
+                </p>
+                <h1 className="truncate text-lg font-bold sm:text-xl" style={{ color }}>
+                  {companyName}
+                </h1>
               </div>
               <div className="hidden min-w-0 md:block">
                 <h1 className="text-xl font-bold text-stone-900 lg:text-2xl">Your account</h1>
@@ -157,6 +240,13 @@ export function PortalShell({
                     {unread} new
                   </Link>
                 )}
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="inline-flex min-h-11 items-center rounded-xl px-2 text-sm text-stone-600 hover:underline md:hidden"
+                >
+                  Sign out
+                </button>
               </div>
             </div>
           </header>
@@ -188,8 +278,18 @@ export function PortalShell({
       </nav>
 
       {moreOpen && (
-        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="More portal pages">
-          <button type="button" className="absolute inset-0 bg-stone-900/40" aria-label="Close" onClick={() => setMoreOpen(false)} />
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="More portal pages"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-stone-900/40"
+            aria-label="Close"
+            onClick={() => setMoreOpen(false)}
+          />
           <div className="absolute inset-x-0 bottom-0 max-h-[75vh] overflow-y-auto rounded-t-3xl bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-stone-200" />
             <p className="mb-3 text-base font-semibold text-stone-900">More</p>
@@ -236,34 +336,123 @@ export function PortalFeatureFallback({ title, message }: { title: string; messa
   );
 }
 
+function PortalAccessUnavailableScreen({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-stone-100 p-4">
+      <div className="w-full max-w-lg space-y-4">
+        <PortalFeatureFallback title={title} message={message} />
+        <div className="flex flex-wrap justify-center gap-3 text-sm">
+          <Link href="/portal/login" className="text-primary hover:underline">
+            Verify portal access again
+          </Link>
+          <button
+            type="button"
+            className="text-stone-600 hover:underline"
+            onClick={() => {
+              void clearPortalSessionCookie();
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PortalAuthedFrame({
   token,
   title,
   feature,
   children,
   stickyPad,
+  resourceType,
+  resourceId,
 }: {
   token: string;
   title: string;
   feature?: PortalFeatureKey;
   stickyPad?: boolean;
+  resourceType?: string;
+  resourceId?: string;
   children: (ctx: { token: string; enabledFeatures: PortalFeatureKey[] }) => React.ReactNode;
 }) {
-  const { data, isLoading, isError } = trpc.portal360.public.dashboard.useQuery({ token });
+  const pathname = usePathname();
+  const [routeAuth, setRouteAuth] = useState<PortalRouteAuthClientResult | null>(null);
+  const [routeAuthReady, setRouteAuthReady] = useState(false);
 
-  if (isLoading) return <LoadingState message="Loading..." />;
+  const routeAuthLoading = !routeAuthReady;
+  const routeDenied = routeAuthReady && routeAuth?.allowed === false;
+
+  const { data, isLoading, isError, isFetched } = trpc.portal360.public.dashboard.useQuery(
+    { token },
+    { enabled: routeAuthReady && !routeDenied },
+  );
+
+  useEffect(() => {
+    const accessToken = data?.accessToken || token;
+    if (!accessToken || accessToken.length < 8) return;
+    void establishPortalSessionCookie(accessToken);
+  }, [data?.accessToken, token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRouteAuthReady(false);
+    setRouteAuth(null);
+    void authorizePortalRouteClient({
+      token,
+      feature,
+      action: 'view',
+      resourceType,
+      resourceId,
+      pathname: pathname || undefined,
+    })
+      .then((result) => {
+        if (!cancelled) {
+          setRouteAuth(result);
+          setRouteAuthReady(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRouteAuth({
+            allowed: false,
+            message: 'This portal section is not available.',
+          });
+          setRouteAuthReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, feature, resourceType, resourceId, pathname]);
+
+  if (routeAuthLoading) return <LoadingState message="Loading..." />;
+
+  if (routeDenied) {
+    const message =
+      routeAuth && 'message' in routeAuth && routeAuth.message
+        ? routeAuth.message
+        : 'This portal section is not available.';
+    return <PortalAccessUnavailableScreen title={`${title} unavailable`} message={message} />;
+  }
+
+  if (isLoading || !isFetched) return <LoadingState message="Loading..." />;
+
   if (isError || !data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-100 p-4">
-        <ErrorState message="Portal access not found or disabled." />
-      </div>
+      <PortalAccessUnavailableScreen
+        title="Portal unavailable"
+        message="Portal access not found or disabled."
+      />
     );
   }
 
   const accessToken = data.accessToken || token;
   const features = data.enabledFeatures ?? [];
+  const featureHidden = Boolean(feature && !features.includes(feature));
 
-  if (feature && !features.includes(feature)) {
+  if (featureHidden) {
     return (
       <PortalShell
         token={accessToken}
@@ -272,13 +461,30 @@ export function PortalAuthedFrame({
         enabledFeatures={features}
         notifications={data.notifications ?? []}
       >
-        <Link href={`/portal/${accessToken}`} className="inline-flex min-h-11 items-center text-base text-primary hover:underline">
+        <Link
+          href={`/portal/${accessToken}`}
+          className="inline-flex min-h-11 items-center text-base text-primary hover:underline"
+        >
           ← Back to home
         </Link>
         <PortalFeatureFallback
           title={`${title} unavailable`}
-          message="This feature is not enabled for your portal. Contact your lighting company if you need access."
+          message="This portal section is not available."
         />
+        <div className="mt-4 flex flex-wrap justify-center gap-3 text-sm">
+          <Link href="/portal/login" className="text-primary hover:underline">
+            Verify portal access again
+          </Link>
+          <button
+            type="button"
+            className="text-stone-600 hover:underline"
+            onClick={() => {
+              void clearPortalSessionCookie();
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </PortalShell>
     );
   }
@@ -293,7 +499,10 @@ export function PortalAuthedFrame({
     >
       <div className={stickyPad ? 'pb-28 md:pb-0' : undefined}>
         <div>
-          <Link href={`/portal/${accessToken}`} className="inline-flex min-h-11 items-center text-base text-primary hover:underline">
+          <Link
+            href={`/portal/${accessToken}`}
+            className="inline-flex min-h-11 items-center text-base text-primary hover:underline"
+          >
             ← Back to home
           </Link>
           <h2 className="mt-1 text-xl font-bold text-stone-900 sm:text-2xl">{title}</h2>

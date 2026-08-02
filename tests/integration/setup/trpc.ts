@@ -12,6 +12,7 @@ export type AppCaller = ReturnType<typeof appRouter.createCaller>;
 export function createTestCaller(auth: AuthContext | null, extras?: Partial<Context>): AppCaller {
   const ctx: Context = {
     auth,
+    portalSessionToken: extras?.portalSessionToken ?? null,
     ip: extras?.ip ?? '127.0.0.1',
     userAgent: extras?.userAgent ?? 'integration-test',
   };

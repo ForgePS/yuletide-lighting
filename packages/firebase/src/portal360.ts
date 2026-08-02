@@ -2,23 +2,34 @@ import { nanoid } from 'nanoid';
 import type {
   CustomerPortalSettings,
   PortalAccount,
+  PortalAccountStatus,
+  PortalAction,
   PortalCustomerPublic,
   PortalFeatureKey,
   PortalNotification,
   PortalOrgPublic,
   PortalTimelineEvent,
   PortalUser,
+  PortalUserRole,
+  PortalUserStatus,
 } from '@clcrm/types';
 import {
   DEFAULT_PORTAL_FEATURES,
   PHASE1_ACTIVE_PORTAL_FEATURES,
+  resolvePortalPermission,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData, stripUndefinedDeep } from './firestore-utils';
-import { colCreate, colGet, colList, colUpdate, getOrganization, type CustomerRecord } from './firestore';
+import {
+  colCreate,
+  colGet,
+  colList,
+  colUpdate,
+  getOrganization,
+  type CustomerRecord,
+} from './firestore';
 import { getBrandingForCustomerFacing, getPortalSettings } from './settings360';
 import { createServiceIssue360 } from './service-issues';
-import { listCalendarEvents } from './schedule360';
 import { logCustomerActivity, createCommunication } from './customer360';
 import { processPortalRebook, getPortalRebookContext } from './rebooking360';
 import { getPlatformSettings } from './creator360';
@@ -32,7 +43,7 @@ export function buildPortalAccessUrl(token: string) {
   return portalAccessUrl(token);
 }
 
-function toPublicCustomer(customer: CustomerRecord): PortalCustomerPublic {
+export function toPublicCustomer(customer: CustomerRecord): PortalCustomerPublic {
   return {
     id: customer.id,
     firstName: customer.firstName ?? null,
@@ -43,23 +54,70 @@ function toPublicCustomer(customer: CustomerRecord): PortalCustomerPublic {
   };
 }
 
+/**
+ * Canonical customer-scoped portal query (P2-S4).
+ * Fail closed: never scan the organization collection and filter in memory.
+ */
 async function colListByCustomerId<T extends { id: string }>(
   orgId: string,
   collection: string,
   customerId: string,
 ): Promise<T[]> {
+  if (!orgId || !customerId) return [];
   const db = getAdminFirestore();
-  try {
-    const snap = await db
-      .collection(`organizations/${orgId}/${collection}`)
-      .where('customerId', '==', customerId)
-      .get();
-    return snap.docs.map((d) => mapTimestampsFromData({ id: d.id, ...d.data() }) as T);
-  } catch {
-    // Fallback if composite index missing — filter in memory from limited list
-    const all = await colList<T & { customerId?: string }>(orgId, collection);
-    return all.filter((row) => row.customerId === customerId);
-  }
+  const snap = await db
+    .collection(`organizations/${orgId}/${collection}`)
+    .where('customerId', '==', customerId)
+    .get();
+  return snap.docs.map((d) => mapTimestampsFromData({ id: d.id, ...d.data() }) as T);
+}
+
+/** Customer-scoped calendar events — no organization-wide read. */
+async function listPortalCalendarEventsForCustomer(
+  orgId: string,
+  customerId: string,
+  limit = 100,
+): Promise<
+  Array<{
+    id: string;
+    customerId?: string;
+    title: string;
+    appointmentType: string;
+    category?: string;
+    startAt: Date;
+    endAt: Date;
+    propertyAddress?: string | null;
+    propertyId?: string | null;
+    jobId?: string | null;
+    dispatchStatus: string;
+  }>
+> {
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(`organizations/${orgId}/calendarEvents`)
+    .where('customerId', '==', customerId)
+    .limit(limit)
+    .get();
+  return snap.docs.map((d) => {
+    const mapped = mapTimestampsFromData({ id: d.id, ...d.data() }) as Record<string, unknown>;
+    return {
+      id: String(mapped.id),
+      customerId: mapped.customerId ? String(mapped.customerId) : undefined,
+      title: String(mapped.title ?? 'Event'),
+      appointmentType: String(mapped.appointmentType ?? 'other'),
+      category: mapped.category ? String(mapped.category) : undefined,
+      startAt:
+        mapped.startAt instanceof Date
+          ? mapped.startAt
+          : new Date(String(mapped.startAt ?? Date.now())),
+      endAt:
+        mapped.endAt instanceof Date ? mapped.endAt : new Date(String(mapped.endAt ?? Date.now())),
+      propertyAddress: (mapped.propertyAddress as string | null) ?? null,
+      propertyId: (mapped.propertyId as string | null) ?? null,
+      jobId: (mapped.jobId as string | null) ?? null,
+      dispatchStatus: String(mapped.dispatchStatus ?? 'scheduled'),
+    };
+  });
 }
 
 export async function resolvePortalFeatures(orgId: string): Promise<{
@@ -74,48 +132,120 @@ export async function resolvePortalFeatures(orgId: string): Promise<{
     getOrganization(orgId),
   ]);
   const enabledModules = (org as { enabledModules?: string[] } | null)?.enabledModules ?? [];
-  const platformModules = platform.availableModules?.length
-    ? platform.availableModules
-    : [];
-  const portalOffered =
-    platformModules.length === 0 || platformModules.includes('customer_portal');
+  const platformModules = platform.availableModules?.length ? platform.availableModules : [];
+  const portalOffered = platformModules.length === 0 || platformModules.includes('customer_portal');
   // Org-level deny only when modules are explicitly set AND portal key is present in platform but omitted from org.
   // Soft migration: orgs whose module lists predate `customer_portal` keep access when settings.enabled.
   const orgHasLegacyModuleList =
     enabledModules.length > 0 && !enabledModules.includes('customer_portal');
   const orgAllowsPortal =
-    enabledModules.length === 0
-    || enabledModules.includes('customer_portal')
-    || orgHasLegacyModuleList;
+    enabledModules.length === 0 ||
+    enabledModules.includes('customer_portal') ||
+    orgHasLegacyModuleList;
 
   const moduleEnabled = Boolean(settings.enabled && portalOffered && orgAllowsPortal);
-  const available = (platform.availablePortalFeatures?.length
-    ? platform.availablePortalFeatures
-    : DEFAULT_PORTAL_FEATURES) as PortalFeatureKey[];
+  const available = (
+    platform.availablePortalFeatures?.length
+      ? platform.availablePortalFeatures
+      : DEFAULT_PORTAL_FEATURES
+  ) as PortalFeatureKey[];
 
-  const stored = (settings.enabledFeatures?.length
-    ? settings.enabledFeatures
-    : PHASE1_ACTIVE_PORTAL_FEATURES) as PortalFeatureKey[];
+  // Explicit tenant enabledFeatures is authoritative (P2-S5). Soft-enable newly shipped
+  // surfaces only when the tenant has not saved an explicit feature list (legacy default path).
+  const hasExplicitFeatureList = Boolean(settings.enabledFeatures?.length);
+  const stored = (
+    hasExplicitFeatureList ? settings.enabledFeatures! : PHASE1_ACTIVE_PORTAL_FEATURES
+  ) as PortalFeatureKey[];
 
-  // Soft-enable newly shipped portal surfaces for tenants that saved an older feature list.
   const newlyShipped: PortalFeatureKey[] = [
-    'agreements', 'e_sign', 'documents', 'storage', 'messaging', 'reviews', 'referrals',
-    'consultations', 'takedowns',
+    'agreements',
+    'e_sign',
+    'documents',
+    'storage',
+    'messaging',
+    'reviews',
+    'referrals',
+    'consultations',
+    'takedowns',
   ];
-  const tenantRequested = Array.from(new Set([
-    ...stored,
-    ...newlyShipped.filter((f) => available.includes(f)),
-  ])) as PortalFeatureKey[];
+  const tenantRequested = (
+    hasExplicitFeatureList
+      ? stored
+      : Array.from(new Set([...stored, ...newlyShipped.filter((f) => available.includes(f))]))
+  ) as PortalFeatureKey[];
 
-  const enabled = moduleEnabled
-    ? tenantRequested.filter((f) => available.includes(f))
-    : [];
+  const enabled = moduleEnabled ? tenantRequested.filter((f) => available.includes(f)) : [];
 
   return { moduleEnabled, available, enabled, settings };
 }
 
 export function portalHasFeature(enabled: PortalFeatureKey[], feature: PortalFeatureKey) {
   return enabled.includes(feature);
+}
+
+/** Typed public-safe feature denial (no entitlement internals). */
+export class PortalFeatureNotEnabledError extends Error {
+  readonly code = 'PORTAL_FEATURE_NOT_ENABLED' as const;
+  constructor(feature?: PortalFeatureKey) {
+    super('PORTAL_FEATURE_NOT_ENABLED');
+    this.name = 'PortalFeatureNotEnabledError';
+    void feature;
+  }
+}
+
+/** Typed public-safe permission denial (no role matrix internals). */
+export class PortalActionNotPermittedError extends Error {
+  readonly code = 'PORTAL_ACTION_NOT_PERMITTED' as const;
+  readonly reason: string;
+  constructor(reason = 'action_not_permitted') {
+    super('PORTAL_ACTION_NOT_PERMITTED');
+    this.name = 'PortalActionNotPermittedError';
+    this.reason = reason;
+  }
+}
+
+export class PortalAccessDeniedError extends Error {
+  readonly code = 'PORTAL_ACCESS_DENIED' as const;
+  constructor() {
+    super('Invalid portal access');
+    this.name = 'PortalAccessDeniedError';
+  }
+}
+
+export function requirePortalFeatureEnabled(
+  enabled: PortalFeatureKey[],
+  feature: PortalFeatureKey,
+): void {
+  if (!portalHasFeature(enabled, feature)) {
+    throw new PortalFeatureNotEnabledError(feature);
+  }
+}
+
+export function assertPortalUserAction(args: {
+  role: PortalUserRole | null | undefined;
+  feature: PortalFeatureKey;
+  action: PortalAction;
+  accountStatus: PortalAccountStatus;
+  userStatus: PortalUserStatus | null | undefined;
+  featureEnabled: boolean;
+}): void {
+  if (!args.role || !args.userStatus) {
+    throw new PortalActionNotPermittedError('user_inactive');
+  }
+  const decision = resolvePortalPermission({
+    role: args.role,
+    feature: args.feature,
+    action: args.action,
+    accountStatus: args.accountStatus,
+    userStatus: args.userStatus,
+    featureEnabled: args.featureEnabled,
+  });
+  if (!decision.allowed) {
+    if (decision.reason === 'feature_disabled') {
+      throw new PortalFeatureNotEnabledError(args.feature);
+    }
+    throw new PortalActionNotPermittedError(decision.reason);
+  }
 }
 
 export type PortalAccessContext = {
@@ -130,10 +260,104 @@ export type PortalAccessContext = {
   accessToken: string;
 };
 
-async function findAccountByAccessToken(token: string): Promise<{ orgId: string; account: PortalAccount } | null> {
+export type PortalAuthorizedContext = PortalAccessContext & {
+  /** Server-resolved acting portal user — never client-selected. */
+  actingUser: PortalUser;
+};
+
+/** Magic token and/or dedicated portal session cookie (P2-S2). */
+export type PortalAuthInput = {
+  token?: string | null;
+  sessionToken?: string | null;
+};
+
+export function asPortalAuth(input: string | PortalAuthInput): PortalAuthInput {
+  return typeof input === 'string' ? { token: input } : input;
+}
+
+/**
+ * Canonical portal authorization gate (P2-S1).
+ * Resolves magic-token access and/or verified portal session, then fail-closed
+ * permission check via resolvePortalPermission. Client cannot supply role/org/customer.
+ */
+async function resolvePortalAuthorizedContext(args: {
+  token?: string | null;
+  sessionToken?: string | null;
+}): Promise<PortalAccessContext | null> {
+  if (args.token) {
+    const viaMagicToken = await requirePortalAccess(args.token);
+    if (viaMagicToken) return viaMagicToken;
+  }
+  if (!args.sessionToken) return null;
+
+  const { verifyPortalSessionTokenServer } = await import('./portal-session');
+  const session = await verifyPortalSessionTokenServer(args.sessionToken);
+  if (!session) return null;
+
+  const account = await getPortalAccount(session.organizationId, session.portalAccountId);
+  const acting = await getPortalUser(session.organizationId, session.portalUserId);
+  if (
+    !account?.portalEnabled ||
+    account.customerId !== session.customerId ||
+    !acting ||
+    acting.portalAccountId !== account.id ||
+    acting.customerId !== session.customerId ||
+    acting.revokedAt
+  ) {
+    return null;
+  }
+
+  const viaToken = await requirePortalAccess(account.accessToken);
+  if (!viaToken) return null;
+  return { ...viaToken, primaryUser: acting };
+}
+
+export async function requirePortalAuthorized(args: {
+  token?: string | null;
+  sessionToken?: string | null;
+  feature: PortalFeatureKey;
+  action: PortalAction;
+  /** Extra tenant settings gate (e.g. allowServiceRequests). Default true. */
+  settingsAllows?: boolean | ((settings: CustomerPortalSettings) => boolean);
+}): Promise<PortalAuthorizedContext> {
+  const ctx = await resolvePortalAuthorizedContext(args);
+  if (!ctx) throw new PortalAccessDeniedError();
+
+  const actingUser = ctx.primaryUser;
+  if (!actingUser || actingUser.revokedAt) {
+    throw new PortalAccessDeniedError();
+  }
+
+  const settingsAllows =
+    typeof args.settingsAllows === 'function'
+      ? args.settingsAllows(ctx.settings)
+      : args.settingsAllows !== false;
+  const featureEnabled = settingsAllows && portalHasFeature(ctx.enabledFeatures, args.feature);
+
+  const accountStatus: PortalAccountStatus = ctx.account?.status ?? 'active';
+
+  assertPortalUserAction({
+    role: actingUser.role,
+    feature: args.feature,
+    action: args.action,
+    accountStatus,
+    userStatus: actingUser.status,
+    featureEnabled,
+  });
+
+  return { ...ctx, actingUser };
+}
+
+async function findAccountByAccessToken(
+  token: string,
+): Promise<{ orgId: string; account: PortalAccount } | null> {
   const db = getAdminFirestore();
   try {
-    const snap = await db.collectionGroup('portalAccounts').where('accessToken', '==', token).limit(1).get();
+    const snap = await db
+      .collectionGroup('portalAccounts')
+      .where('accessToken', '==', token)
+      .limit(1)
+      .get();
     if (!snap.empty) {
       const doc = snap.docs[0]!;
       const account = mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as PortalAccount;
@@ -146,31 +370,61 @@ async function findAccountByAccessToken(token: string): Promise<{ orgId: string;
   return null;
 }
 
-export async function requirePortalAccess(token: string): Promise<PortalAccessContext | null> {
+async function findCustomerByPortalToken(
+  token: string,
+): Promise<{ orgId: string; customer: CustomerRecord } | null> {
   const db = getAdminFirestore();
+  try {
+    const snap = await db
+      .collectionGroup('customers')
+      .where('portalToken', '==', token)
+      .limit(1)
+      .get();
+    if (snap.empty) return null;
+    const doc = snap.docs[0]!;
+    const customer = mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as CustomerRecord;
+    const orgId = String(customer.organizationId ?? doc.ref.parent.parent?.id ?? '');
+    if (!orgId || !customer.portalEnabled) return null;
+    return { orgId, customer };
+  } catch {
+    return null;
+  }
+}
+
+export async function requirePortalAccess(token: string): Promise<PortalAccessContext | null> {
   let orgId = '';
   let customer: CustomerRecord | null = null;
   let account: PortalAccount | null = null;
   let accessToken = token;
 
-  const byAccount = await findAccountByAccessToken(token);
+  const [byAccount, byCustomer] = await Promise.all([
+    findAccountByAccessToken(token),
+    findCustomerByPortalToken(token),
+  ]);
+
   if (byAccount) {
     orgId = byAccount.orgId;
     account = byAccount.account;
-    if (!account.portalEnabled || account.status === 'locked' || account.status === 'suspended' || account.status === 'archived') {
+    if (
+      !account.portalEnabled ||
+      account.status === 'locked' ||
+      account.status === 'suspended' ||
+      account.status === 'archived'
+    ) {
       return null;
     }
     customer = await colGet<CustomerRecord>(orgId, 'customers', account.customerId);
     accessToken = account.accessToken;
-  } else {
-    const snap = await db.collectionGroup('customers').where('portalToken', '==', token).limit(1).get();
-    if (snap.empty) return null;
-    const doc = snap.docs[0]!;
-    customer = mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as CustomerRecord;
-    orgId = String(customer.organizationId ?? doc.ref.parent.parent?.id ?? '');
-    if (!orgId || !customer.portalEnabled) return null;
+  } else if (byCustomer) {
+    orgId = byCustomer.orgId;
+    customer = byCustomer.customer;
     account = await getPortalAccountByCustomer(orgId, customer.id);
-    if (account && (account.status === 'locked' || account.status === 'suspended' || account.status === 'archived')) {
+    if (
+      account &&
+      (account.status === 'locked' ||
+        account.status === 'suspended' ||
+        account.status === 'archived')
+    ) {
       return null;
     }
   }
@@ -220,13 +474,21 @@ export async function getCustomerByPortalToken(token: string) {
     organizationId: ctx.organizationId,
     customer: ctx.customer,
     organization: organization
-      ? { ...organization, companyName: branding.companyName, brandColor: branding.brandColor, logoUrl: branding.logoUrl }
+      ? {
+          ...organization,
+          companyName: branding.companyName,
+          brandColor: branding.brandColor,
+          logoUrl: branding.logoUrl,
+        }
       : null,
     settings: ctx.settings,
   };
 }
 
-export async function getPortalAccountByCustomer(orgId: string, customerId: string): Promise<PortalAccount | null> {
+export async function getPortalAccountByCustomer(
+  orgId: string,
+  customerId: string,
+): Promise<PortalAccount | null> {
   const db = getAdminFirestore();
   const snap = await db
     .collection(`organizations/${orgId}/portalAccounts`)
@@ -236,6 +498,57 @@ export async function getPortalAccountByCustomer(orgId: string, customerId: stri
   if (snap.empty) return null;
   const doc = snap.docs[0]!;
   return mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as PortalAccount;
+}
+
+export async function getPortalAccount(
+  orgId: string,
+  portalAccountId: string,
+): Promise<PortalAccount | null> {
+  return colGet<PortalAccount>(orgId, 'portalAccounts', portalAccountId);
+}
+
+export async function getPortalUser(
+  orgId: string,
+  portalUserId: string,
+): Promise<PortalUser | null> {
+  return colGet<PortalUser>(orgId, 'portalUsers', portalUserId);
+}
+
+/** Bump session versions so existing portal cookies are rejected. */
+export async function invalidatePortalSessions(
+  orgId: string,
+  args: { portalAccountId: string; portalUserId?: string | null; actorId?: string | null },
+): Promise<void> {
+  const account = await getPortalAccount(orgId, args.portalAccountId);
+  if (!account) return;
+  const nextAccountVersion = (account.sessionVersion ?? 0) + 1;
+  await colUpdate(orgId, 'portalAccounts', account.id, {
+    sessionVersion: nextAccountVersion,
+    updatedBy: args.actorId ?? null,
+  });
+  if (args.portalUserId) {
+    const user = await getPortalUser(orgId, args.portalUserId);
+    if (user) {
+      await colUpdate(orgId, 'portalUsers', user.id, {
+        sessionVersion: (user.sessionVersion ?? 0) + 1,
+        updatedBy: args.actorId ?? null,
+      });
+    }
+  } else {
+    const db = getAdminFirestore();
+    const snap = await db
+      .collection(`organizations/${orgId}/portalUsers`)
+      .where('portalAccountId', '==', account.id)
+      .get();
+    await Promise.all(
+      snap.docs.map((doc) =>
+        colUpdate(orgId, 'portalUsers', doc.id, {
+          sessionVersion: ((doc.data().sessionVersion as number) ?? 0) + 1,
+          updatedBy: args.actorId ?? null,
+        }),
+      ),
+    );
+  }
 }
 
 async function getPrimaryPortalUser(orgId: string, customerId: string): Promise<PortalUser | null> {
@@ -277,11 +590,16 @@ export async function ensurePortalAccount(
     });
     existing = created as PortalAccount;
   } else if (opts?.token || opts?.status != null || opts?.portalEnabled != null) {
-    await colUpdate(orgId, 'portalAccounts', existing.id, stripUndefinedDeep({
-      accessToken: opts?.token ?? existing.accessToken,
-      status: opts?.status ?? existing.status,
-      portalEnabled: opts?.portalEnabled ?? existing.portalEnabled,
-    }));
+    await colUpdate(
+      orgId,
+      'portalAccounts',
+      existing.id,
+      stripUndefinedDeep({
+        accessToken: opts?.token ?? existing.accessToken,
+        status: opts?.status ?? existing.status,
+        portalEnabled: opts?.portalEnabled ?? existing.portalEnabled,
+      }),
+    );
     existing = (await colGet<PortalAccount>(orgId, 'portalAccounts', existing.id))!;
   }
 
@@ -293,9 +611,10 @@ export async function ensurePortalAccount(
   let user = await getPrimaryPortalUser(orgId, customerId);
   if (!user) {
     let contactId: string | null = null;
-    let displayName = customer.businessName
-      || `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim()
-      || 'Account owner';
+    let displayName =
+      customer.businessName ||
+      `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() ||
+      'Account owner';
     let email = customer.email ?? null;
     try {
       const { listContacts360 } = await import('./contacts');
@@ -320,6 +639,10 @@ export async function ensurePortalAccount(
       permissions: ['*'],
       displayName,
       email,
+      normalizedEmail: email ? String(email).trim().toLowerCase() : null,
+      invitationStatus: 'none',
+      failedVerificationCount: 0,
+      sessionVersion: 0,
       lastLoginAt: null,
     });
     user = (await colGet<PortalUser>(orgId, 'portalUsers', createdUser.id))!;
@@ -331,13 +654,19 @@ export async function ensurePortalAccount(
       const { items } = await listContacts360(orgId, { customerId, pageSize: 50 });
       const primary = items.find((c) => c.isPrimary) ?? items[0] ?? null;
       if (primary) {
-        await colUpdate(orgId, 'portalUsers', user.id, stripUndefinedDeep({
-          contactId: primary.id,
-          email: user.email ?? primary.email ?? null,
-          displayName: user.displayName
-            || `${primary.firstName ?? ''} ${primary.lastName ?? ''}`.trim()
-            || undefined,
-        }));
+        await colUpdate(
+          orgId,
+          'portalUsers',
+          user.id,
+          stripUndefinedDeep({
+            contactId: primary.id,
+            email: user.email ?? primary.email ?? null,
+            displayName:
+              user.displayName ||
+              `${primary.firstName ?? ''} ${primary.lastName ?? ''}`.trim() ||
+              undefined,
+          }),
+        );
         user = { ...user, contactId: primary.id };
       }
     } catch {
@@ -348,7 +677,10 @@ export async function ensurePortalAccount(
   return { account: existing, user, token };
 }
 
-export async function ensureCustomerPortalToken(orgId: string, customerId: string): Promise<string> {
+export async function ensureCustomerPortalToken(
+  orgId: string,
+  customerId: string,
+): Promise<string> {
   const { token } = await ensurePortalAccount(orgId, customerId);
   return token;
 }
@@ -396,7 +728,14 @@ export async function enableCustomerPortal(
     occurredAt: now,
   });
 
-  await logCustomerActivity(orgId, customerId, 'email_sent', 'Customer portal access enabled', userId, 'System');
+  await logCustomerActivity(
+    orgId,
+    customerId,
+    'email_sent',
+    'Customer portal access enabled',
+    userId,
+    'System',
+  );
   const fresh = (await colGet<PortalAccount>(orgId, 'portalAccounts', account.id))!;
   return { token, accessUrl: portalAccessUrl(token), account: fresh };
 }
@@ -412,9 +751,19 @@ export async function revokeCustomerPortal(
     await colUpdate(orgId, 'portalAccounts', account.id, {
       portalEnabled: false,
       status: 'archived',
+      revokedAt: new Date(),
+      revokedBy: userId ?? null,
     });
+    await invalidatePortalSessions(orgId, { portalAccountId: account.id, actorId: userId });
   }
-  await logCustomerActivity(orgId, customerId, 'note_added', 'Customer portal access revoked', userId, 'System');
+  await logCustomerActivity(
+    orgId,
+    customerId,
+    'note_added',
+    'Customer portal access revoked',
+    userId,
+    'System',
+  );
   return account ? colGet<PortalAccount>(orgId, 'portalAccounts', account.id) : null;
 }
 
@@ -429,9 +778,21 @@ export async function suspendCustomerPortal(
     status: 'suspended',
     portalEnabled: false,
     suspendedAt: now,
+    suspendedBy: userId ?? null,
   });
   await colUpdate(orgId, 'customers', customerId, { portalEnabled: false });
-  await logCustomerActivity(orgId, customerId, 'note_added', 'Customer portal suspended', userId, 'System');
+  await invalidatePortalSessions(orgId, {
+    portalAccountId: account.account.id,
+    actorId: userId,
+  });
+  await logCustomerActivity(
+    orgId,
+    customerId,
+    'note_added',
+    'Customer portal suspended',
+    userId,
+    'System',
+  );
   return colGet<PortalAccount>(orgId, 'portalAccounts', account.account.id);
 }
 
@@ -449,12 +810,74 @@ export async function rotatePortalAccessToken(
   await colUpdate(orgId, 'customers', customerId, { portalToken: token, portalEnabled: true });
   await colUpdate(orgId, 'portalAccounts', account.id, {
     accessToken: token,
+    accessTokenHash: null,
     portalEnabled: true,
     status: 'active',
   });
-  await logCustomerActivity(orgId, customerId, 'note_added', 'Customer portal access link rotated', userId, 'System');
+  await invalidatePortalSessions(orgId, { portalAccountId: account.id, actorId: userId });
+  await logCustomerActivity(
+    orgId,
+    customerId,
+    'note_added',
+    'Customer portal access link rotated',
+    userId,
+    'System',
+  );
   const fresh = (await colGet<PortalAccount>(orgId, 'portalAccounts', account.id))!;
   return { token, accessUrl: portalAccessUrl(token), account: fresh };
+}
+
+/** Bump session versions for all users on a portal account (logout-all). */
+export async function logoutAllPortalSessions(
+  orgId: string,
+  customerId: string,
+  actorId?: string | null,
+): Promise<{ sessionVersion: number }> {
+  const account = await getPortalAccountByCustomer(orgId, customerId);
+  if (!account) throw new Error('Portal account not found');
+  await invalidatePortalSessions(orgId, { portalAccountId: account.id, actorId });
+  const fresh = await getPortalAccount(orgId, account.id);
+  return { sessionVersion: fresh?.sessionVersion ?? 0 };
+}
+
+/** Staff role change — invalidates sessions so role/entitlements refresh. */
+export async function changePortalUserRole(
+  orgId: string,
+  portalUserId: string,
+  role: PortalUserRole,
+  actorId?: string | null,
+): Promise<PortalUser | null> {
+  if (
+    ![
+      'account_owner',
+      'authorized_contact',
+      'billing_contact',
+      'property_contact',
+      'view_only',
+    ].includes(role)
+  ) {
+    throw new Error('Invalid portal role');
+  }
+  const user = await getPortalUser(orgId, portalUserId);
+  if (!user) return null;
+  await colUpdate(orgId, 'portalUsers', user.id, {
+    role,
+    updatedBy: actorId ?? null,
+  });
+  await invalidatePortalSessions(orgId, {
+    portalAccountId: user.portalAccountId,
+    portalUserId: user.id,
+    actorId,
+  });
+  await logCustomerActivity(
+    orgId,
+    user.customerId,
+    'note_added',
+    'Portal user role changed',
+    actorId,
+    'System',
+  );
+  return getPortalUser(orgId, user.id);
 }
 
 export async function getStaffPortalAccountView(orgId: string, customerId: string) {
@@ -473,11 +896,15 @@ export async function getStaffPortalAccountView(orgId: string, customerId: strin
     inviteSentAt: account?.invitedAt ?? customer.portalInviteSentAt ?? null,
     lastLoginAt: account?.lastLoginAt ?? customer.portalLastLoginAt ?? null,
     accessUrl: token ? portalAccessUrl(token) : null,
-    accessLinkPlaceholder: token ? portalAccessUrl(token) : portalAccessUrl('').replace(/\/$/, '') + '/login',
+    accessLinkPlaceholder: token
+      ? portalAccessUrl(token)
+      : portalAccessUrl('').replace(/\/$/, '') + '/login',
   };
 }
 
-export async function backfillPortalAccountsForOrg(orgId: string): Promise<{ created: number; skipped: number }> {
+export async function backfillPortalAccountsForOrg(
+  orgId: string,
+): Promise<{ created: number; skipped: number }> {
   const customers = await colList<CustomerRecord>(orgId, 'customers');
   let created = 0;
   let skipped = 0;
@@ -501,7 +928,11 @@ export async function backfillPortalAccountsForOrg(orgId: string): Promise<{ cre
   return { created, skipped };
 }
 
-export async function recordPortalLogin(orgId: string, customerId: string, accountId?: string | null) {
+export async function recordPortalLogin(
+  orgId: string,
+  customerId: string,
+  accountId?: string | null,
+) {
   const now = new Date();
   await colUpdate(orgId, 'customers', customerId, { portalLastLoginAt: now });
   if (accountId) {
@@ -540,9 +971,16 @@ export async function createPortalTimelineEvent(
   return created as PortalTimelineEvent;
 }
 
-export async function listPortalTimeline(token: string, limit = 20): Promise<PortalTimelineEvent[]> {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) return [];
+export async function listPortalTimeline(
+  auth: string | PortalAuthInput,
+  limit = 20,
+): Promise<PortalTimelineEvent[]> {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'dashboard',
+    action: 'view',
+  });
   const db = getAdminFirestore();
   try {
     const snap = await db
@@ -552,43 +990,95 @@ export async function listPortalTimeline(token: string, limit = 20): Promise<Por
       .orderBy('occurredAt', 'desc')
       .limit(limit)
       .get();
-    return snap.docs.map((d) => mapTimestampsFromData({ id: d.id, ...d.data() }) as PortalTimelineEvent);
+    return snap.docs.map((d) => {
+      const row = mapTimestampsFromData({ id: d.id, ...d.data() }) as Record<string, unknown>;
+      return {
+        id: d.id,
+        organizationId: ctx.organizationId,
+        customerId: ctx.customer.id,
+        propertyId: (row.propertyId as string | null) ?? null,
+        eventType: String(row.eventType ?? 'activity'),
+        title: String(row.title ?? 'Activity'),
+        description: (row.description as string | null) ?? null,
+        relatedRecordType: (row.relatedRecordType as string | null) ?? null,
+        relatedRecordId: (row.relatedRecordId as string | null) ?? null,
+        customerVisible: row.customerVisible === true,
+        occurredAt: row.occurredAt instanceof Date ? row.occurredAt : new Date(0),
+        createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(0),
+        updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(0),
+      };
+    });
   } catch {
-    const all = await colListByCustomerId<PortalTimelineEvent>(ctx.organizationId, 'portalTimelineEvents', ctx.customer.id);
-    return all
-      .filter((e) => e.customerVisible)
-      .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
-      .slice(0, limit);
+    // Fail closed — do not broaden to organization scans when index/query fails.
+    return [];
   }
 }
 
-export async function listPortalNotifications(token: string, limit = 20): Promise<PortalNotification[]> {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx?.primaryUser) return [];
+export async function listPortalNotifications(
+  auth: string | PortalAuthInput,
+  limit = 20,
+): Promise<PortalNotification[]> {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'dashboard',
+    action: 'view',
+  });
   const db = getAdminFirestore();
   try {
     const snap = await db
       .collection(`organizations/${ctx.organizationId}/portalNotifications`)
-      .where('portalUserId', '==', ctx.primaryUser.id)
+      .where('portalUserId', '==', ctx.actingUser.id)
       .orderBy('createdAt', 'desc')
       .limit(limit)
       .get();
-    return snap.docs.map((d) => mapTimestampsFromData({ id: d.id, ...d.data() }) as PortalNotification);
+    return snap.docs.map((d) => {
+      const row = mapTimestampsFromData({ id: d.id, ...d.data() }) as Record<string, unknown>;
+      return {
+        id: d.id,
+        organizationId: ctx.organizationId,
+        portalUserId: ctx.actingUser.id,
+        customerId: ctx.customer.id,
+        category: String(row.category ?? 'account'),
+        title: String(row.title ?? 'Notification'),
+        body: String(row.body ?? ''),
+        actionUrl: (row.actionUrl as string | null) ?? null,
+        readAt: row.readAt instanceof Date ? row.readAt : null,
+        createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(0),
+        updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(0),
+      };
+    });
   } catch {
-    const all = await colList<PortalNotification>(ctx.organizationId, 'portalNotifications');
-    return all
-      .filter((n) => n.portalUserId === ctx.primaryUser!.id)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, limit);
+    // Fail closed — do not scan organization notifications.
+    return [];
   }
 }
 
-export async function markPortalNotificationRead(token: string, notificationId: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx?.primaryUser) throw new Error('Invalid portal access');
-  const note = await colGet<PortalNotification>(ctx.organizationId, 'portalNotifications', notificationId);
-  if (!note || note.portalUserId !== ctx.primaryUser.id) throw new Error('Notification not found');
-  await colUpdate(ctx.organizationId, 'portalNotifications', notificationId, { readAt: new Date() });
+export async function markPortalNotificationRead(
+  auth: string | PortalAuthInput,
+  notificationId: string,
+) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'dashboard',
+    action: 'view',
+  });
+  const note = await colGet<PortalNotification & { customerId?: string }>(
+    ctx.organizationId,
+    'portalNotifications',
+    notificationId,
+  );
+  if (
+    !note ||
+    note.portalUserId !== ctx.actingUser.id ||
+    (note.customerId != null && note.customerId !== ctx.customer.id)
+  ) {
+    throw new Error('PORTAL_RESOURCE_NOT_FOUND');
+  }
+  await colUpdate(ctx.organizationId, 'portalNotifications', notificationId, {
+    readAt: new Date(),
+  });
   return { success: true };
 }
 
@@ -598,7 +1088,12 @@ export type PortalDashboardPublic = {
   organization: PortalOrgPublic | null;
   settings: Pick<
     CustomerPortalSettings,
-    'portalPrimaryColor' | 'portalLogoUrl' | 'allowOnlinePayments' | 'allowServiceRequests' | 'allowSelfScheduling' | 'permissions'
+    | 'portalPrimaryColor'
+    | 'portalLogoUrl'
+    | 'allowOnlinePayments'
+    | 'allowServiceRequests'
+    | 'allowSelfScheduling'
+    | 'permissions'
   >;
   enabledFeatures: PortalFeatureKey[];
   accessToken: string;
@@ -644,15 +1139,29 @@ export type PortalDashboardPublic = {
     scheduledStart?: Date | null;
     scheduledEnd?: Date | null;
   }>;
-  properties: Array<{ id: string; label: string; addressLine1: string; city: string; state: string }>;
+  properties: Array<{
+    id: string;
+    label: string;
+    addressLine1: string;
+    city: string;
+    state: string;
+  }>;
   timeline: PortalTimelineEvent[];
   notifications: PortalNotification[];
   featureDisabledMessage?: string | null;
 };
 
-export async function getPortalDashboard(token: string): Promise<PortalDashboardPublic | null> {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) return null;
+export async function getPortalDashboard(
+  auth: string | PortalAuthInput,
+): Promise<PortalDashboardPublic | null> {
+  const creds = asPortalAuth(auth);
+  let ctx: PortalAuthorizedContext;
+  try {
+    ctx = await requirePortalAuthorized({ ...creds, feature: 'dashboard', action: 'view' });
+  } catch (error) {
+    if (error instanceof PortalAccessDeniedError) return null;
+    throw error;
+  }
 
   const { organizationId, customer, settings, enabledFeatures } = ctx;
   await recordPortalLogin(organizationId, customer.id, ctx.account?.id);
@@ -668,16 +1177,28 @@ export async function getPortalDashboard(token: string): Promise<PortalDashboard
     notifications,
   ] = await Promise.all([
     portalHasFeature(enabledFeatures, 'proposals')
-      ? colListByCustomerId<Record<string, unknown> & { id: string }>(organizationId, 'proposals', customer.id)
+      ? colListByCustomerId<Record<string, unknown> & { id: string }>(
+          organizationId,
+          'proposals',
+          customer.id,
+        )
       : Promise.resolve([]),
     portalHasFeature(enabledFeatures, 'billing')
-      ? colListByCustomerId<Record<string, unknown> & { id: string }>(organizationId, 'invoices', customer.id)
+      ? colListByCustomerId<Record<string, unknown> & { id: string }>(
+          organizationId,
+          'invoices',
+          customer.id,
+        )
       : Promise.resolve([]),
     portalHasFeature(enabledFeatures, 'scheduling')
-      ? listCalendarEvents(organizationId)
+      ? listPortalCalendarEventsForCustomer(organizationId, customer.id, 100)
       : Promise.resolve([]),
     portalHasFeature(enabledFeatures, 'install_tracking')
-      ? colListByCustomerId<Record<string, unknown> & { id: string }>(organizationId, 'jobs', customer.id)
+      ? colListByCustomerId<Record<string, unknown> & { id: string }>(
+          organizationId,
+          'jobs',
+          customer.id,
+        )
       : Promise.resolve([]),
     portalHasFeature(enabledFeatures, 'mockups')
       ? colListByCustomerId<{
@@ -700,8 +1221,8 @@ export async function getPortalDashboard(token: string): Promise<PortalDashboard
           state?: string;
         }>(organizationId, 'properties', customer.id)
       : Promise.resolve([]),
-    listPortalTimeline(token, 10),
-    listPortalNotifications(token, 10),
+    listPortalTimeline(auth, 10),
+    listPortalNotifications(auth, 10),
   ]);
 
   const proposals = proposalsRaw
@@ -711,8 +1232,18 @@ export async function getPortalDashboard(token: string): Promise<PortalDashboard
       status: String(p.status ?? 'draft'),
       subtotalCents: Number(p.subtotalCents ?? 0),
       publicToken: (p.publicToken as string) ?? null,
-      installDate: p.installDate instanceof Date ? p.installDate : p.installDate ? new Date(String(p.installDate)) : null,
-      removalDate: p.removalDate instanceof Date ? p.removalDate : p.removalDate ? new Date(String(p.removalDate)) : null,
+      installDate:
+        p.installDate instanceof Date
+          ? p.installDate
+          : p.installDate
+            ? new Date(String(p.installDate))
+            : null,
+      removalDate:
+        p.removalDate instanceof Date
+          ? p.removalDate
+          : p.removalDate
+            ? new Date(String(p.removalDate))
+            : null,
     }))
     .sort((a, b) => b.subtotalCents - a.subtotalCents);
 
@@ -726,16 +1257,18 @@ export async function getPortalDashboard(token: string): Promise<PortalDashboard
     dueDate: i.dueDate instanceof Date ? i.dueDate : i.dueDate ? new Date(String(i.dueDate)) : null,
   }));
 
-  const schedule = (events as Array<{
-    id: string;
-    customerId?: string;
-    title: string;
-    appointmentType: string;
-    startAt: Date;
-    endAt: Date;
-    propertyAddress?: string | null;
-    dispatchStatus: string;
-  }>)
+  const schedule = (
+    events as Array<{
+      id: string;
+      customerId?: string;
+      title: string;
+      appointmentType: string;
+      startAt: Date;
+      endAt: Date;
+      propertyAddress?: string | null;
+      dispatchStatus: string;
+    }>
+  )
     .filter((e) => e.customerId === customer.id && e.startAt >= new Date(Date.now() - 86400000))
     .map((e) => ({
       id: e.id,
@@ -752,8 +1285,18 @@ export async function getPortalDashboard(token: string): Promise<PortalDashboard
     id: String(j.id),
     title: String(j.title ?? 'Job'),
     stage: String(j.stage ?? 'draft_proposal'),
-    scheduledStart: j.scheduledStart instanceof Date ? j.scheduledStart : j.scheduledStart ? new Date(String(j.scheduledStart)) : null,
-    scheduledEnd: j.scheduledEnd instanceof Date ? j.scheduledEnd : j.scheduledEnd ? new Date(String(j.scheduledEnd)) : null,
+    scheduledStart:
+      j.scheduledStart instanceof Date
+        ? j.scheduledStart
+        : j.scheduledStart
+          ? new Date(String(j.scheduledStart))
+          : null,
+    scheduledEnd:
+      j.scheduledEnd instanceof Date
+        ? j.scheduledEnd
+        : j.scheduledEnd
+          ? new Date(String(j.scheduledEnd))
+          : null,
   }));
 
   const mockups = mockupsRaw.map((m) => ({
@@ -765,10 +1308,13 @@ export async function getPortalDashboard(token: string): Promise<PortalDashboard
     approvalToken: m.approvalToken ?? null,
   }));
 
-  const canProposals = portalHasFeature(enabledFeatures, 'proposals') && settings.permissions.viewProposals;
-  const canInvoices = portalHasFeature(enabledFeatures, 'billing') && settings.permissions.viewInvoices;
+  const canProposals =
+    portalHasFeature(enabledFeatures, 'proposals') && settings.permissions.viewProposals;
+  const canInvoices =
+    portalHasFeature(enabledFeatures, 'billing') && settings.permissions.viewInvoices;
   const canMockups = portalHasFeature(enabledFeatures, 'mockups');
-  const canPay = portalHasFeature(enabledFeatures, 'online_payments') && settings.allowOnlinePayments;
+  const canPay =
+    portalHasFeature(enabledFeatures, 'online_payments') && settings.allowOnlinePayments;
 
   return {
     organizationId,
@@ -807,7 +1353,7 @@ export async function getPortalDashboard(token: string): Promise<PortalDashboard
 }
 
 export async function submitPortalServiceRequest(
-  token: string,
+  auth: string | PortalAuthInput,
   input: {
     title: string;
     description?: string;
@@ -819,19 +1365,18 @@ export async function submitPortalServiceRequest(
     photoUrls?: string[];
   },
 ) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (
-    !portalHasFeature(ctx.enabledFeatures, 'service_requests') ||
-    !ctx.settings.allowServiceRequests ||
-    !ctx.settings.permissions.requestService
-  ) {
-    throw new Error('Service requests are not enabled');
-  }
-
-  const customerName = ctx.customer.businessName
-    || `${ctx.customer.firstName ?? ''} ${ctx.customer.lastName ?? ''}`.trim()
-    || 'Customer';
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'service_requests',
+    action: 'create',
+    settingsAllows: (settings) =>
+      settings.allowServiceRequests && settings.permissions.requestService,
+  });
+  const customerName =
+    ctx.customer.businessName ||
+    `${ctx.customer.firstName ?? ''} ${ctx.customer.lastName ?? ''}`.trim() ||
+    'Customer';
 
   let propertyLabel: string | undefined;
   if (input.propertyId) {
@@ -850,7 +1395,17 @@ export async function submitPortalServiceRequest(
     input.description ?? '',
     input.locationNote ? `Location: ${input.locationNote}` : '',
     input.accessInstructions ? `Access: ${input.accessInstructions}` : '',
-  ].filter(Boolean).join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  const photoUrls = (
+    await Promise.all(
+      (input.photoUrls ?? [])
+        .slice(0, 6)
+        .map((url) => resolvePortalPhotoUrlForPersist(ctx.organizationId, ctx.customer.id, url)),
+    )
+  ).filter((u): u is string => !!u);
 
   const issue = await createServiceIssue360(ctx.organizationId, {
     customerId: ctx.customer.id,
@@ -863,7 +1418,7 @@ export async function submitPortalServiceRequest(
     priority: input.priority ?? 'normal',
     status: 'reported',
     warranty: false,
-    photoUrls: (input.photoUrls ?? []).slice(0, 6),
+    photoUrls,
     source: 'portal',
   });
 
@@ -896,35 +1451,108 @@ export async function submitPortalServiceRequest(
   return issue;
 }
 
+async function resolvePortalPhotoUrlForPersist(
+  organizationId: string,
+  customerId: string,
+  raw: string,
+): Promise<string | null> {
+  const value = raw.trim();
+  if (!value) return null;
+  const { verifyPortalFileTicket, resolvePortalStoragePath, assertSafePortalStoragePath } =
+    await import('./portal-file-access');
+  // Accept short-lived portal tickets and persist durable staff-proxy path (not public ACL).
+  if (value.includes('/api/portal/files') && value.includes('ticket=')) {
+    try {
+      const url = value.startsWith('http') ? new URL(value) : new URL(value, 'http://portal.local');
+      const ticket = url.searchParams.get('ticket');
+      if (!ticket) return null;
+      const payload = verifyPortalFileTicket(ticket);
+      if (!payload) return null;
+      if (payload.organizationId !== organizationId || payload.customerId !== customerId) {
+        return null;
+      }
+      return `/api/files?path=${encodeURIComponent(payload.storagePath)}`;
+    } catch {
+      return null;
+    }
+  }
+  const storagePath = resolvePortalStoragePath(organizationId, value);
+  if (!storagePath) return null;
+  try {
+    assertSafePortalStoragePath(organizationId, customerId, storagePath);
+  } catch {
+    return null;
+  }
+  return `/api/files?path=${encodeURIComponent(storagePath)}`;
+}
+
 export async function uploadPortalPhoto(
-  token: string,
+  auth: string | PortalAuthInput,
   input: { dataBase64: string; contentType: string; filename?: string },
-): Promise<{ path: string; url: string }> {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
+): Promise<{ url: string; canPreview: boolean; canDownload: boolean }> {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'service_requests',
+    action: 'create',
+    settingsAllows: (settings) =>
+      settings.allowServiceRequests && settings.permissions.requestService,
+  });
+  const { getPortalSecurityConfig } = await import('./portal-security-config');
+  const { createPortalFileAccess, sanitizePortalFilename } = await import('./portal-file-access');
+  const cfg = getPortalSecurityConfig();
+  const allowed = new Set(['image/jpeg', 'image/png', 'image/webp']);
+  if (!allowed.has(input.contentType)) {
+    throw new Error('Unsupported photo type');
+  }
   const buffer = Buffer.from(input.dataBase64, 'base64');
   if (buffer.length < 32) throw new Error('Invalid photo data');
-  if (buffer.length > 4_500_000) throw new Error('Photo must be under 4.5 MB');
+  if (buffer.length > cfg.maxUploadBytes) {
+    throw new Error('Photo exceeds maximum upload size');
+  }
   const { uploadFile } = await import('./storage');
-  return uploadFile(
+  const uploaded = await uploadFile(
     ctx.organizationId,
     `portal-service/${ctx.customer.id}`,
     buffer,
     input.contentType,
-    input.filename ?? `photo-${Date.now()}.jpg`,
+    sanitizePortalFilename(input.filename ?? `photo-${Date.now()}.jpg`),
   );
+  const file = await createPortalFileAccess({
+    authorized: ctx,
+    fileId: uploaded.path.split('/').pop() ?? 'photo',
+    name: sanitizePortalFilename(input.filename ?? 'photo.jpg'),
+    contentType: input.contentType,
+    size: buffer.length,
+    sourceUrlOrPath: uploaded.path,
+    visibility: 'customer_visible',
+  });
+  if (!file.accessUrl) {
+    throw new Error('Could not create secure photo access');
+  }
+  // Public DTO: ticket URL only — never raw Storage path or permanent bucket URL.
+  return {
+    url: file.accessUrl,
+    canPreview: file.canPreview,
+    canDownload: file.canDownload,
+  };
 }
 
 export async function submitPortalRebookRequest(
-  token: string,
-  input: { notes?: string; preferredMonth?: string; sameDesign?: boolean; upgradeRequested?: boolean },
+  auth: string | PortalAuthInput,
+  input: {
+    notes?: string;
+    preferredMonth?: string;
+    sameDesign?: boolean;
+    upgradeRequested?: boolean;
+  },
 ) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'rebooking')) {
-    throw new Error('Rebooking is not enabled');
-  }
-
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'rebooking',
+    action: 'request',
+  });
   const result = await processPortalRebook(ctx.organizationId, ctx.customer.id, {
     sameDesign: input.sameDesign ?? true,
     upgradeRequested: input.upgradeRequested ?? false,
@@ -933,15 +1561,21 @@ export async function submitPortalRebookRequest(
   });
 
   const body = [
-    input.upgradeRequested ? 'Customer requested upgrade for next season.' : 'Customer rebooked same design for next season.',
+    input.upgradeRequested
+      ? 'Customer requested upgrade for next season.'
+      : 'Customer rebooked same design for next season.',
     input.preferredMonth ? `Preferred month: ${input.preferredMonth}` : null,
     input.notes ? `Notes: ${input.notes}` : null,
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   await createCommunication(ctx.organizationId, ctx.customer.id, {
     type: 'portal_message',
     direction: 'inbound',
-    subject: input.upgradeRequested ? 'Upgrade request — next season' : 'Rebook request — next season',
+    subject: input.upgradeRequested
+      ? 'Upgrade request — next season'
+      : 'Rebook request — next season',
     body,
     employeeId: null,
     employeeName: null,
@@ -952,30 +1586,40 @@ export async function submitPortalRebookRequest(
     relatedJobId: null,
     relatedQuoteId: result.newProposalId,
   });
-  await logCustomerActivity(ctx.organizationId, ctx.customer.id, 'note_added', 'Rebook submitted via portal', null, 'Portal');
+  await logCustomerActivity(
+    ctx.organizationId,
+    ctx.customer.id,
+    'note_added',
+    'Rebook submitted via portal',
+    null,
+    'Portal',
+  );
   await createPortalTimelineEvent(ctx.organizationId, {
     customerId: ctx.customer.id,
     eventType: 'rebook_request',
     title: 'Rebook request submitted',
-    description: input.upgradeRequested ? 'Upgrade requested for next season' : 'Same design requested for next season',
+    description: input.upgradeRequested
+      ? 'Upgrade requested for next season'
+      : 'Same design requested for next season',
     customerVisible: true,
   });
 
   return { success: true, ...result };
 }
 
-export async function getPortalRebookInfo(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) return null;
-  if (!portalHasFeature(ctx.enabledFeatures, 'rebooking')) {
-    return null;
-  }
+export async function getPortalRebookInfo(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'rebooking',
+    action: 'view',
+  });
   const rebook = await getPortalRebookContext(ctx.organizationId, ctx.customer.id);
   return {
     ...rebook,
     customerName:
-      ctx.customer.businessName
-      || `${ctx.customer.firstName ?? ''} ${ctx.customer.lastName ?? ''}`.trim(),
+      ctx.customer.businessName ||
+      `${ctx.customer.firstName ?? ''} ${ctx.customer.lastName ?? ''}`.trim(),
   };
 }
 
@@ -1014,7 +1658,11 @@ export async function notifyPortalCustomer(
 ): Promise<PortalNotification | null> {
   try {
     const account = await getPortalAccountByCustomer(orgId, customerId);
-    if (!account?.portalEnabled || account.status === 'suspended' || account.status === 'archived') {
+    if (
+      !account?.portalEnabled ||
+      account.status === 'suspended' ||
+      account.status === 'archived'
+    ) {
       return null;
     }
     let user = await getPrimaryPortalUser(orgId, customerId);
@@ -1035,28 +1683,44 @@ export async function notifyPortalCustomer(
   }
 }
 
-export async function markAllPortalNotificationsRead(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  const rows = await listPortalNotifications(token, 50);
+export async function markAllPortalNotificationsRead(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({ ...creds, feature: 'dashboard', action: 'view' });
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(`organizations/${ctx.organizationId}/portalNotifications`)
+    .where('portalUserId', '==', ctx.actingUser.id)
+    .get();
+  const unread = snap.docs.filter((d) => !d.data().readAt);
   await Promise.all(
-    rows.filter((n) => !n.readAt).map((n) => markPortalNotificationRead(token, n.id)),
+    unread.map((d) =>
+      colUpdate(ctx.organizationId, 'portalNotifications', d.id, { readAt: new Date() }),
+    ),
   );
   return { success: true };
 }
 
-export async function listPortalContacts(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  const { listContacts360 } = await import('./contacts');
-  const { items } = await listContacts360(ctx.organizationId, {
-    customerId: ctx.customer.id,
-    pageSize: 100,
+export async function listPortalContacts(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'dashboard',
+    action: 'view',
   });
-  return items.map((c) => ({
+  const items = await colListByCustomerId<{
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    role?: string | null;
+    title?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    isPrimary?: boolean;
+  }>(ctx.organizationId, 'contacts', ctx.customer.id);
+  return items.slice(0, 100).map((c) => ({
     id: c.id,
-    firstName: c.firstName,
-    lastName: c.lastName,
+    firstName: c.firstName ?? null,
+    lastName: c.lastName ?? null,
     role: c.role ?? null,
     title: c.title ?? null,
     phone: c.phone ?? null,
@@ -1065,28 +1729,37 @@ export async function listPortalContacts(token: string) {
   }));
 }
 
-export async function listPortalServiceRequests(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'service_requests')) {
-    throw new Error('Service requests are not enabled');
-  }
-  const { listServiceIssues360 } = await import('./service-issues');
-  const { items } = await listServiceIssues360(ctx.organizationId, {
-    customerId: ctx.customer.id,
-    pageSize: 50,
-    maxScan: 200,
+export async function listPortalServiceRequests(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'service_requests',
+    action: 'view',
+    settingsAllows: (settings) => settings.allowServiceRequests,
   });
-  return items.map((i) => ({
-    id: i.id,
-    title: i.title,
-    status: i.status,
-    category: i.category,
-    priority: i.priority,
-    propertyLabel: i.propertyLabel ?? null,
-    createdAt: i.createdAt,
-    updatedAt: i.updatedAt,
-  }));
+  const items = await colListByCustomerId<{
+    id: string;
+    title?: string;
+    status?: string;
+    category?: string;
+    priority?: string;
+    propertyLabel?: string | null;
+    createdAt?: Date;
+    updatedAt?: Date;
+  }>(ctx.organizationId, 'serviceIssues', ctx.customer.id);
+  return items
+    .sort((a, b) => (b.updatedAt?.getTime?.() ?? 0) - (a.updatedAt?.getTime?.() ?? 0))
+    .slice(0, 50)
+    .map((i) => ({
+      id: i.id,
+      title: i.title ?? 'Service request',
+      status: i.status ?? 'open',
+      category: i.category ?? 'other',
+      priority: i.priority ?? 'normal',
+      propertyLabel: i.propertyLabel ?? null,
+      createdAt: i.createdAt ?? null,
+      updatedAt: i.updatedAt ?? null,
+    }));
 }
 
 export async function sendPortalInviteEmail(
@@ -1120,9 +1793,10 @@ export async function sendPortalInviteEmail(
 
   const branding = await getBrandingForCustomerFacing(orgId);
   const companyName = branding.companyName || 'Your lighting company';
-  const customerName = customer.businessName
-    || `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim()
-    || 'there';
+  const customerName =
+    customer.businessName ||
+    `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() ||
+    'there';
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -1158,7 +1832,14 @@ export async function sendPortalInviteEmail(
     description: `Invite sent to ${email}`,
     customerVisible: false,
   });
-  await logCustomerActivity(orgId, customerId, 'email_sent', `Portal invite emailed to ${email}`, userId, 'System');
+  await logCustomerActivity(
+    orgId,
+    customerId,
+    'email_sent',
+    `Portal invite emailed to ${email}`,
+    userId,
+    'System',
+  );
   await notifyPortalCustomer(orgId, customerId, {
     category: 'account',
     title: 'Welcome to your portal',
@@ -1169,66 +1850,129 @@ export async function sendPortalInviteEmail(
   return { sent: true, accessUrl, email };
 }
 
-export async function listPortalAgreements(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'agreements')) {
-    throw new Error('Agreements are not enabled');
-  }
-  const { listMultiYearAgreements360 } = await import('./agreements');
-  const { items } = await listMultiYearAgreements360(ctx.organizationId, {
-    customerId: ctx.customer.id,
-    pageSize: 100,
+export async function listPortalAgreements(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'agreements',
+    action: 'view',
   });
-  return items.map((a) => ({
-    id: a.id,
-    title: a.title,
-    status: a.status,
-    optionCode: a.optionCode,
-    optionLabel: a.optionLabel,
-    startSeason: a.startSeason,
-    endSeason: a.endSeason,
-    annualValueCents: a.annualValueCents,
-    totalValueCents: a.totalValueCents,
-    depositPercent: a.depositPercent,
-    propertyLabel: a.propertyLabel ?? null,
-    signedAt: a.signedAt ?? null,
-    signedByName: a.signedByName ?? null,
-    publicToken: a.publicToken ?? null,
-    signedDocumentUrl: a.signedDocumentUrl ?? null,
-  }));
+  const items = await colListByCustomerId<{
+    id: string;
+    title?: string;
+    status?: string;
+    optionCode?: string | null;
+    optionLabel?: string | null;
+    startSeason?: number | null;
+    endSeason?: number | null;
+    annualValueCents?: number | null;
+    totalValueCents?: number | null;
+    depositPercent?: number | null;
+    propertyLabel?: string | null;
+    signedAt?: Date | null;
+    signedByName?: string | null;
+    publicToken?: string | null;
+    signedDocumentUrl?: string | null;
+  }>(ctx.organizationId, 'multiYearAgreements', ctx.customer.id);
+  const { createPortalFileAccess } = await import('./portal-file-access');
+  return Promise.all(
+    items.slice(0, 100).map(async (a) => {
+      const file = a.signedDocumentUrl
+        ? await createPortalFileAccess({
+            authorized: ctx,
+            fileId: `${a.id}-signed`,
+            name: `${a.title ?? 'Agreement'}.pdf`,
+            contentType: 'application/pdf',
+            sourceUrlOrPath: a.signedDocumentUrl,
+            visibility: 'customer_visible',
+            parent: { collection: 'multiYearAgreements', id: a.id },
+          })
+        : null;
+      return {
+        id: a.id,
+        title: a.title ?? 'Agreement',
+        status: a.status ?? 'draft',
+        optionCode: a.optionCode ?? null,
+        optionLabel: a.optionLabel ?? null,
+        startSeason: a.startSeason ?? null,
+        endSeason: a.endSeason ?? null,
+        annualValueCents: a.annualValueCents ?? null,
+        totalValueCents: a.totalValueCents ?? null,
+        depositPercent: a.depositPercent ?? null,
+        propertyLabel: a.propertyLabel ?? null,
+        signedAt: a.signedAt ?? null,
+        signedByName: a.signedByName ?? null,
+        publicToken: a.publicToken ?? null,
+        signedDocumentUrl: file?.accessUrl ?? null,
+        canDownloadSigned: Boolean(file?.canDownload),
+      };
+    }),
+  );
 }
 
-export async function listPortalDocuments(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'documents')) {
-    throw new Error('Documents are not enabled');
-  }
+export async function listPortalDocuments(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'documents',
+    action: 'view',
+  });
   const { listCustomerDocuments360 } = await import('./documents360');
+  const { createPortalFileAccess } = await import('./portal-file-access');
   const docs = await listCustomerDocuments360(ctx.organizationId, ctx.customer.id);
-  return docs
-    .filter((d) => !!d.url)
-    .map((d) => ({
-      id: d.id,
-      title: d.title,
-      category: d.category,
-      url: d.url,
-      createdAt: d.createdAt,
-    }));
+  const visible = docs.filter((d) => {
+    if (!d.url) return false;
+    const visibility = String(
+      (d as { visibility?: string }).visibility ?? 'customer_visible',
+    ).toLowerCase();
+    if (visibility !== 'customer_visible') return false;
+    const category = String(d.category ?? '').toLowerCase();
+    if (category === 'internal' || category === 'staff_only' || category === 'loto') return false;
+    return true;
+  });
+  return Promise.all(
+    visible.map(async (d) => {
+      const file = await createPortalFileAccess({
+        authorized: ctx,
+        fileId: d.id,
+        name: d.title,
+        contentType: 'application/octet-stream',
+        category: d.category,
+        createdAt: d.createdAt,
+        sourceUrlOrPath: d.url,
+        visibility: 'customer_visible',
+      });
+      return {
+        id: d.id,
+        title: d.title,
+        category: d.category,
+        createdAt: d.createdAt,
+        canPreview: file.canPreview,
+        canDownload: file.canDownload,
+        url: file.accessUrl,
+      };
+    }),
+  );
 }
 
-export async function listPortalStorage(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'storage')) {
-    throw new Error('Storage is not enabled');
-  }
+export async function listPortalStorage(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'storage',
+    action: 'view',
+  });
   const { listStorageRecords, getStorageRecord } = await import('./storage360');
   const records = await listStorageRecords(ctx.organizationId, ctx.customer.id);
   return Promise.all(
     records.map(async (r) => {
+      if (r.customerId !== ctx.customer.id) {
+        return null;
+      }
       const detail = await getStorageRecord(ctx.organizationId, r.id);
+      if (detail && detail.record.customerId !== ctx.customer.id) {
+        return null;
+      }
       const items = (detail?.items ?? []).map((item) => ({
         name: String((item as { name?: string }).name ?? 'Item'),
         quantity: Number((item as { quantity?: number }).quantity ?? 1),
@@ -1246,35 +1990,41 @@ export async function listPortalStorage(token: string) {
         items,
       };
     }),
-  );
+  ).then((rows) => rows.filter((row): row is NonNullable<typeof row> => row != null));
 }
 
-export async function listPortalReviews(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'reviews')) {
-    throw new Error('Reviews are not enabled');
-  }
-  const { listReviewRequests360 } = await import('./reviews360');
-  const all = await listReviewRequests360(ctx.organizationId);
-  return all
-    .filter((r) => r.customerId === ctx.customer.id)
-    .map((r) => ({
-      id: r.id,
-      status: r.status,
-      rating: r.rating ?? null,
-      submittedAt: r.submittedAt ?? null,
-      publicToken: r.publicToken ?? null,
-      sentAt: r.sentAt ?? null,
-    }));
+export async function listPortalReviews(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'reviews',
+    action: 'view',
+  });
+  const rows = await colListByCustomerId<{
+    id: string;
+    status?: string;
+    rating?: number | null;
+    submittedAt?: Date | null;
+    publicToken?: string | null;
+    sentAt?: Date | null;
+  }>(ctx.organizationId, 'reviewRequests', ctx.customer.id);
+  return rows.map((r) => ({
+    id: r.id,
+    status: r.status ?? 'pending',
+    rating: r.rating ?? null,
+    submittedAt: r.submittedAt ?? null,
+    publicToken: r.publicToken ?? null,
+    sentAt: r.sentAt ?? null,
+  }));
 }
 
-export async function listPortalReferrals(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'referrals')) {
-    throw new Error('Referrals are not enabled');
-  }
+export async function listPortalReferrals(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'referrals',
+    action: 'view',
+  });
   const { listReferrals, ensureReferralCode } = await import('./reviews360');
   let referrals = await listReferrals(ctx.organizationId, ctx.customer.id);
   if (!referrals.length) {
@@ -1292,35 +2042,60 @@ export async function listPortalReferrals(token: string) {
   }));
 }
 
-export async function getPortalMessages(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'messaging')) {
-    throw new Error('Messaging is not enabled');
-  }
+export async function getPortalMessages(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'messaging',
+    action: 'view',
+  });
   const { getConversationByCustomer } = await import('./messages360');
-  const { conversation, messages } = await getConversationByCustomer(ctx.organizationId, ctx.customer.id);
+  const { createPortalFileAccess } = await import('./portal-file-access');
+  const { conversation, messages } = await getConversationByCustomer(
+    ctx.organizationId,
+    ctx.customer.id,
+  );
   return {
     conversationId: conversation.id,
-    messages: messages.map((m) => ({
-      id: m.id,
-      direction: m.direction,
-      channel: m.channel,
-      body: m.body,
-      createdAt: m.createdAt,
-      attachmentUrls: m.attachmentUrls ?? [],
-      status: m.status ?? null,
-      readAt: m.readAt ?? null,
-    })),
+    messages: await Promise.all(
+      messages.map(async (m) => {
+        const raw = m.attachmentUrls ?? [];
+        const attachments = await Promise.all(
+          raw.map(async (url, index) => {
+            const file = await createPortalFileAccess({
+              authorized: ctx,
+              fileId: `${m.id}-att-${index}`,
+              name: `attachment-${index + 1}`,
+              sourceUrlOrPath: url,
+              visibility: 'customer_visible',
+              // Conversation is the customer-owned parent (messages are nested).
+              parent: { collection: 'conversations', id: conversation.id },
+            });
+            return file.accessUrl;
+          }),
+        );
+        return {
+          id: m.id,
+          direction: m.direction,
+          channel: m.channel,
+          body: m.body,
+          createdAt: m.createdAt,
+          attachmentUrls: attachments.filter((u): u is string => !!u),
+          status: m.status ?? null,
+          readAt: m.readAt ?? null,
+        };
+      }),
+    ),
   };
 }
 
-export async function sendPortalMessage(token: string, body: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'messaging')) {
-    throw new Error('Messaging is not enabled');
-  }
+export async function sendPortalMessage(auth: string | PortalAuthInput, body: string) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'messaging',
+    action: 'message',
+  });
   const trimmed = body.trim();
   if (!trimmed) throw new Error('Message cannot be empty');
   const { receivePortalMessage } = await import('./messages360');
@@ -1347,12 +2122,13 @@ export async function sendPortalMessage(token: string, body: string) {
   };
 }
 
-export async function listPortalProperties(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'properties')) {
-    throw new Error('Properties are not enabled');
-  }
+export async function listPortalProperties(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'properties',
+    action: 'view',
+  });
   const rows = await colListByCustomerId<{
     id: string;
     propertyName?: string;
@@ -1369,31 +2145,56 @@ export async function listPortalProperties(token: string) {
     galleryPhotos?: Array<{ id: string; url: string; label?: string | null }>;
   }>(ctx.organizationId, 'properties', ctx.customer.id);
 
-  return rows.map((p) => ({
-    id: p.id,
-    propertyName: String(p.propertyName ?? p.label ?? 'Property'),
-    label: String(p.label ?? p.propertyName ?? 'Property'),
-    propertyType: p.propertyType ?? null,
-    addressLine1: String(p.addressLine1 ?? ''),
-    addressLine2: p.addressLine2 ?? null,
-    city: String(p.city ?? ''),
-    state: String(p.state ?? ''),
-    postalCode: String(p.postalCode ?? ''),
-    accessInstructions: p.accessInstructions ?? null,
-    powerSourceLocations: p.powerSourceLocations ?? null,
-    previousYearDesignNotes: p.previousYearDesignNotes ?? null,
-    galleryPhotos: (p.galleryPhotos ?? [])
-      .filter((g) => !!g?.url)
-      .map((g) => ({ id: g.id, url: g.url, label: g.label ?? null })),
-  }));
+  const { createPortalFileAccess } = await import('./portal-file-access');
+  return Promise.all(
+    rows.map(async (p) => {
+      const galleryPhotos = await Promise.all(
+        (p.galleryPhotos ?? [])
+          .filter((g) => !!g?.url)
+          .map(async (g) => {
+            const file = await createPortalFileAccess({
+              authorized: ctx,
+              fileId: g.id,
+              name: g.label ?? 'Photo',
+              contentType: 'image/jpeg',
+              sourceUrlOrPath: g.url,
+              visibility: 'customer_visible',
+              parent: { collection: 'properties', id: p.id },
+            });
+            return {
+              id: g.id,
+              url: file.accessUrl,
+              label: g.label ?? null,
+              canPreview: file.canPreview,
+            };
+          }),
+      );
+      return {
+        id: p.id,
+        propertyName: String(p.propertyName ?? p.label ?? 'Property'),
+        label: String(p.label ?? p.propertyName ?? 'Property'),
+        propertyType: p.propertyType ?? null,
+        addressLine1: String(p.addressLine1 ?? ''),
+        addressLine2: p.addressLine2 ?? null,
+        city: String(p.city ?? ''),
+        state: String(p.state ?? ''),
+        postalCode: String(p.postalCode ?? ''),
+        accessInstructions: p.accessInstructions ?? null,
+        powerSourceLocations: p.powerSourceLocations ?? null,
+        previousYearDesignNotes: p.previousYearDesignNotes ?? null,
+        galleryPhotos: galleryPhotos.filter((g) => !!g.url),
+      };
+    }),
+  );
 }
 
-export async function listPortalConsultations(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'consultations')) {
-    throw new Error('Consultations are not enabled');
-  }
+export async function listPortalConsultations(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'consultations',
+    action: 'view',
+  });
   const { listConsultations360 } = await import('./consultations360');
   const rows = await listConsultations360(ctx.organizationId, ctx.customer.id);
   return rows.map((c) => ({
@@ -1411,23 +2212,22 @@ export async function listPortalConsultations(token: string) {
   }));
 }
 
-export async function listPortalTakedowns(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'takedowns')) {
-    throw new Error('Takedowns are not enabled');
-  }
-
-  const { listCalendarEvents } = await import('./schedule360');
+export async function listPortalTakedowns(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'takedowns',
+    action: 'view',
+  });
   const { inferAppointmentTypeFromJob } = await import('./jobs360');
   type OrgJobRecord = import('./jobs360').OrgJobRecord;
   const [events, jobs] = await Promise.all([
-    listCalendarEvents(ctx.organizationId, undefined, undefined, { readOnly: true }),
+    listPortalCalendarEventsForCustomer(ctx.organizationId, ctx.customer.id, 200),
     colListByCustomerId<OrgJobRecord>(ctx.organizationId, 'jobs', ctx.customer.id),
   ]);
 
   const fromEvents = events
-    .filter((e) => e.customerId === ctx.customer.id && (e.appointmentType === 'takedown' || e.category === 'takedown'))
+    .filter((e) => e.appointmentType === 'takedown' || e.category === 'takedown')
     .map((e) => ({
       id: e.id,
       source: 'calendar' as const,
@@ -1447,8 +2247,18 @@ export async function listPortalTakedowns(token: string) {
       source: 'job' as const,
       title: String(j.title ?? 'Takedown'),
       status: String(j.stage ?? 'removal_scheduled'),
-      scheduledStart: j.scheduledStart instanceof Date ? j.scheduledStart : j.scheduledStart ? new Date(String(j.scheduledStart)) : null,
-      scheduledEnd: j.scheduledEnd instanceof Date ? j.scheduledEnd : j.scheduledEnd ? new Date(String(j.scheduledEnd)) : null,
+      scheduledStart:
+        j.scheduledStart instanceof Date
+          ? j.scheduledStart
+          : j.scheduledStart
+            ? new Date(String(j.scheduledStart))
+            : null,
+      scheduledEnd:
+        j.scheduledEnd instanceof Date
+          ? j.scheduledEnd
+          : j.scheduledEnd
+            ? new Date(String(j.scheduledEnd))
+            : null,
       propertyAddress: null as string | null,
       propertyId: j.propertyId ?? null,
     }));
@@ -1461,9 +2271,14 @@ export async function listPortalTakedowns(token: string) {
 }
 
 export async function submitPortalScheduleRequest(
-  token: string,
+  auth: string | PortalAuthInput,
   input: {
-    appointmentType: 'estimate_visit' | 'design_consultation' | 'installation' | 'takedown' | 'service_call';
+    appointmentType:
+      | 'estimate_visit'
+      | 'design_consultation'
+      | 'installation'
+      | 'takedown'
+      | 'service_call';
     propertyId?: string;
     preferredStartAt?: Date | null;
     preferredEndAt?: Date | null;
@@ -1471,14 +2286,19 @@ export async function submitPortalScheduleRequest(
     notes?: string;
   },
 ) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'scheduling') || !ctx.settings.allowSelfScheduling) {
-    throw new Error('Self-scheduling is not enabled');
-  }
-
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'scheduling',
+    action: 'request',
+    settingsAllows: (settings) => settings.allowSelfScheduling,
+  });
   if (input.propertyId) {
-    const prop = await colGet<{ customerId?: string }>(ctx.organizationId, 'properties', input.propertyId);
+    const prop = await colGet<{ customerId?: string }>(
+      ctx.organizationId,
+      'properties',
+      input.propertyId,
+    );
     if (!prop || prop.customerId !== ctx.customer.id) {
       throw new Error('Invalid property for this account');
     }
@@ -1488,10 +2308,14 @@ export async function submitPortalScheduleRequest(
   const body = [
     `Schedule request: ${label}`,
     input.preferredWindows ? `Preferred windows: ${input.preferredWindows}` : null,
-    input.preferredStartAt ? `Preferred start: ${new Date(input.preferredStartAt).toISOString()}` : null,
+    input.preferredStartAt
+      ? `Preferred start: ${new Date(input.preferredStartAt).toISOString()}`
+      : null,
     input.preferredEndAt ? `Preferred end: ${new Date(input.preferredEndAt).toISOString()}` : null,
     input.notes ? `Notes: ${input.notes}` : null,
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   await createCommunication(ctx.organizationId, ctx.customer.id, {
     type: 'portal_message',
@@ -1513,7 +2337,8 @@ export async function submitPortalScheduleRequest(
     propertyId: input.propertyId ?? null,
     eventType: 'schedule_request',
     title: `Schedule request: ${label}`,
-    description: input.preferredWindows || input.notes || 'Customer requested an appointment window',
+    description:
+      input.preferredWindows || input.notes || 'Customer requested an appointment window',
     customerVisible: true,
   });
 
@@ -1545,7 +2370,8 @@ function mapPortalInvoice(i: Record<string, unknown> & { id: string }) {
     publicToken: (i.publicToken as string) ?? null,
     dueDate: i.dueDate instanceof Date ? i.dueDate : i.dueDate ? new Date(String(i.dueDate)) : null,
     paidAt: i.paidAt instanceof Date ? i.paidAt : i.paidAt ? new Date(String(i.paidAt)) : null,
-    issuedAt: i.issuedAt instanceof Date ? i.issuedAt : i.issuedAt ? new Date(String(i.issuedAt)) : null,
+    issuedAt:
+      i.issuedAt instanceof Date ? i.issuedAt : i.issuedAt ? new Date(String(i.issuedAt)) : null,
   };
 }
 
@@ -1556,24 +2382,86 @@ function mapPortalProposal(p: Record<string, unknown> & { id: string }) {
     status: String(p.status ?? 'draft'),
     subtotalCents: Number(p.subtotalCents ?? 0),
     publicToken: (p.publicToken as string) ?? null,
-    installDate: p.installDate instanceof Date ? p.installDate : p.installDate ? new Date(String(p.installDate)) : null,
-    removalDate: p.removalDate instanceof Date ? p.removalDate : p.removalDate ? new Date(String(p.removalDate)) : null,
+    installDate:
+      p.installDate instanceof Date
+        ? p.installDate
+        : p.installDate
+          ? new Date(String(p.installDate))
+          : null,
+    removalDate:
+      p.removalDate instanceof Date
+        ? p.removalDate
+        : p.removalDate
+          ? new Date(String(p.removalDate))
+          : null,
   };
 }
 
-function mapPortalMockup(m: {
-  id: string;
-  name: string;
-  imageUrl: string;
-  renderedImageUrl?: string | null;
-  status?: string;
-  approvalToken?: string | null;
-}) {
+const CUSTOMER_VISIBLE_MOCKUP_STATUSES = new Set([
+  'published',
+  'approved',
+  'pending_approval',
+  'sent',
+  'customer_review',
+  'in_review',
+  'revision_requested',
+]);
+
+async function mapPortalMockup(
+  ctx: PortalAuthorizedContext,
+  m: {
+    id: string;
+    name: string;
+    imageUrl: string;
+    renderedImageUrl?: string | null;
+    status?: string;
+    approvalToken?: string | null;
+    visibility?: string | null;
+  },
+) {
+  const status = String(m.status ?? '').toLowerCase();
+  const visibility = String(m.visibility ?? 'customer_visible').toLowerCase();
+  if (visibility === 'staff_only' || visibility === 'internal' || visibility === 'system') {
+    return null;
+  }
+  // Fail closed for explicitly internal/draft; allow legacy empty status + published set.
+  if (status === 'draft' || status === 'internal') {
+    return null;
+  }
+  if (status && !CUSTOMER_VISIBLE_MOCKUP_STATUSES.has(status)) {
+    // Unknown non-empty status: deny (do not infer customer visibility).
+    return null;
+  }
+
+  const { createPortalFileAccess } = await import('./portal-file-access');
+  const primary = await createPortalFileAccess({
+    authorized: ctx,
+    fileId: `${m.id}-image`,
+    name: m.name,
+    contentType: 'image/jpeg',
+    sourceUrlOrPath: m.imageUrl,
+    visibility: 'customer_visible',
+    parent: { collection: 'mockups', id: m.id },
+  });
+  const rendered = m.renderedImageUrl
+    ? await createPortalFileAccess({
+        authorized: ctx,
+        fileId: `${m.id}-rendered`,
+        name: `${m.name}-rendered`,
+        contentType: 'image/jpeg',
+        sourceUrlOrPath: m.renderedImageUrl,
+        visibility: 'customer_visible',
+        parent: { collection: 'mockups', id: m.id },
+      })
+    : null;
+
   return {
     id: m.id,
     name: m.name,
-    imageUrl: m.imageUrl,
-    renderedImageUrl: m.renderedImageUrl ?? null,
+    imageUrl: primary.accessUrl,
+    renderedImageUrl: rendered?.accessUrl ?? null,
+    canPreview: primary.canPreview,
+    canDownload: primary.canDownload,
     status: m.status ?? null,
     approvalToken: m.approvalToken ?? null,
   };
@@ -1585,18 +2473,30 @@ function mapPortalJobSummary(j: Record<string, unknown> & { id: string }) {
     title: String(j.title ?? 'Job'),
     stage: String(j.stage ?? 'draft_proposal'),
     jobType: (j.jobType as string) ?? null,
-    scheduledStart: j.scheduledStart instanceof Date ? j.scheduledStart : j.scheduledStart ? new Date(String(j.scheduledStart)) : null,
-    scheduledEnd: j.scheduledEnd instanceof Date ? j.scheduledEnd : j.scheduledEnd ? new Date(String(j.scheduledEnd)) : null,
+    scheduledStart:
+      j.scheduledStart instanceof Date
+        ? j.scheduledStart
+        : j.scheduledStart
+          ? new Date(String(j.scheduledStart))
+          : null,
+    scheduledEnd:
+      j.scheduledEnd instanceof Date
+        ? j.scheduledEnd
+        : j.scheduledEnd
+          ? new Date(String(j.scheduledEnd))
+          : null,
     propertyId: (j.propertyId as string) ?? null,
   };
 }
 
-export async function listPortalInvoices(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'billing') || !ctx.settings.permissions.viewInvoices) {
-    throw new Error('Billing is not enabled');
-  }
+export async function listPortalInvoices(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'billing',
+    action: 'view',
+    settingsAllows: (settings) => settings.permissions.viewInvoices,
+  });
   const rows = await colListByCustomerId<Record<string, unknown> & { id: string }>(
     ctx.organizationId,
     'invoices',
@@ -1607,12 +2507,14 @@ export async function listPortalInvoices(token: string) {
     .sort((a, b) => (b.dueDate?.getTime?.() ?? 0) - (a.dueDate?.getTime?.() ?? 0));
 }
 
-export async function listPortalProposals(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'proposals') || !ctx.settings.permissions.viewProposals) {
-    throw new Error('Proposals are not enabled');
-  }
+export async function listPortalProposals(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'proposals',
+    action: 'view',
+    settingsAllows: (settings) => settings.permissions.viewProposals,
+  });
   const rows = await colListByCustomerId<Record<string, unknown> & { id: string }>(
     ctx.organizationId,
     'proposals',
@@ -1621,12 +2523,13 @@ export async function listPortalProposals(token: string) {
   return rows.map(mapPortalProposal).sort((a, b) => b.subtotalCents - a.subtotalCents);
 }
 
-export async function listPortalMockups(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'mockups')) {
-    throw new Error('Mockups are not enabled');
-  }
+export async function listPortalMockups(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'mockups',
+    action: 'view',
+  });
   const rows = await colListByCustomerId<{
     id: string;
     name: string;
@@ -1634,16 +2537,19 @@ export async function listPortalMockups(token: string) {
     renderedImageUrl?: string | null;
     status?: string;
     approvalToken?: string | null;
+    visibility?: string | null;
   }>(ctx.organizationId, 'mockups', ctx.customer.id);
-  return rows.map(mapPortalMockup);
+  const mapped = await Promise.all(rows.map((m) => mapPortalMockup(ctx, m)));
+  return mapped.filter((m): m is NonNullable<typeof m> => m != null);
 }
 
-export async function listPortalJobs(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'install_tracking')) {
-    throw new Error('Install tracking is not enabled');
-  }
+export async function listPortalJobs(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'install_tracking',
+    action: 'view',
+  });
   const rows = await colListByCustomerId<Record<string, unknown> & { id: string }>(
     ctx.organizationId,
     'jobs',
@@ -1654,13 +2560,13 @@ export async function listPortalJobs(token: string) {
     .sort((a, b) => (b.scheduledStart?.getTime?.() ?? 0) - (a.scheduledStart?.getTime?.() ?? 0));
 }
 
-export async function getPortalJobDetail(token: string, jobId: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'install_tracking')) {
-    throw new Error('Install tracking is not enabled');
-  }
-
+export async function getPortalJobDetail(auth: string | PortalAuthInput, jobId: string) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'install_tracking',
+    action: 'view',
+  });
   const job = await colGet<{
     id: string;
     customerId?: string;
@@ -1677,7 +2583,7 @@ export async function getPortalJobDetail(token: string, jobId: string) {
   }>(ctx.organizationId, 'jobs', jobId);
 
   if (!job || job.customerId !== ctx.customer.id) {
-    throw new Error('Job not found');
+    throw new Error('PORTAL_RESOURCE_NOT_FOUND');
   }
 
   const property = job.propertyId
@@ -1687,23 +2593,59 @@ export async function getPortalJobDetail(token: string, jobId: string) {
         state?: string;
         postalCode?: string;
         label?: string;
+        customerId?: string;
       }>(ctx.organizationId, 'properties', job.propertyId)
     : null;
+  if (property && property.customerId && property.customerId !== ctx.customer.id) {
+    throw new Error('PORTAL_RESOURCE_NOT_FOUND');
+  }
 
-  const events = await listCalendarEvents(ctx.organizationId, undefined, undefined, { readOnly: true });
-  const event = events.find((e) => e.jobId === jobId && e.customerId === ctx.customer.id);
+  const events = await listPortalCalendarEventsForCustomer(
+    ctx.organizationId,
+    ctx.customer.id,
+    100,
+  );
+  const event = events.find((e) => e.jobId === jobId);
+
+  const { createPortalFileAccess } = await import('./portal-file-access');
+  const mockupPhotoUrls = (
+    await Promise.all(
+      (job.mockupPhotoUrls ?? []).filter(Boolean).map(async (url, index) => {
+        const file = await createPortalFileAccess({
+          authorized: ctx,
+          fileId: `${jobId}-mockup-${index}`,
+          name: `Job photo ${index + 1}`,
+          contentType: 'image/jpeg',
+          sourceUrlOrPath: url,
+          visibility: 'customer_visible',
+          parent: { collection: 'jobs', id: jobId },
+        });
+        return file.accessUrl;
+      }),
+    )
+  ).filter((u): u is string => !!u);
 
   return {
     id: jobId,
     title: String(job.title ?? 'Job'),
     stage: String(job.stage ?? 'draft_proposal'),
     jobType: job.jobType ?? null,
-    scheduledStart: job.scheduledStart instanceof Date ? job.scheduledStart : job.scheduledStart ? new Date(String(job.scheduledStart)) : null,
-    scheduledEnd: job.scheduledEnd instanceof Date ? job.scheduledEnd : job.scheduledEnd ? new Date(String(job.scheduledEnd)) : null,
+    scheduledStart:
+      job.scheduledStart instanceof Date
+        ? job.scheduledStart
+        : job.scheduledStart
+          ? new Date(String(job.scheduledStart))
+          : null,
+    scheduledEnd:
+      job.scheduledEnd instanceof Date
+        ? job.scheduledEnd
+        : job.scheduledEnd
+          ? new Date(String(job.scheduledEnd))
+          : null,
     scopeSummary: job.scopeSummary ?? null,
     accessNotes: job.accessNotes ?? null,
     approvedPackageName: job.approvedPackageName ?? null,
-    mockupPhotoUrls: (job.mockupPhotoUrls ?? []).filter(Boolean),
+    mockupPhotoUrls,
     property: property
       ? {
           label: String(property.label ?? property.addressLine1 ?? 'Property'),
@@ -1726,13 +2668,13 @@ export async function getPortalJobDetail(token: string, jobId: string) {
   };
 }
 
-export async function getPortalSigningHub(token: string) {
-  const ctx = await requirePortalAccess(token);
-  if (!ctx) throw new Error('Invalid portal access');
-  if (!portalHasFeature(ctx.enabledFeatures, 'e_sign')) {
-    throw new Error('E-sign is not enabled');
-  }
-
+export async function getPortalSigningHub(auth: string | PortalAuthInput) {
+  const creds = asPortalAuth(auth);
+  const ctx = await requirePortalAuthorized({
+    ...creds,
+    feature: 'e_sign',
+    action: 'view',
+  });
   const canApprove = ctx.settings.permissions.approveDesigns;
   const items: Array<{
     id: string;
@@ -1744,7 +2686,7 @@ export async function getPortalSigningHub(token: string) {
   }> = [];
 
   if (portalHasFeature(ctx.enabledFeatures, 'agreements')) {
-    const agreements = await listPortalAgreements(token);
+    const agreements = await listPortalAgreements(auth);
     for (const a of agreements) {
       if (!['awaiting_signature', 'sent', 'draft'].includes(a.status)) continue;
       if (!a.publicToken) continue;
@@ -1759,10 +2701,18 @@ export async function getPortalSigningHub(token: string) {
     }
   }
 
-  if (portalHasFeature(ctx.enabledFeatures, 'proposals') && ctx.settings.permissions.viewProposals) {
-    const proposals = await listPortalProposals(token);
+  if (
+    portalHasFeature(ctx.enabledFeatures, 'proposals') &&
+    ctx.settings.permissions.viewProposals
+  ) {
+    const proposals = await listPortalProposals(auth);
     for (const p of proposals) {
-      if (['approved', 'deposit_paid', 'scheduled', 'declined', 'expired', 'cancelled'].includes(p.status)) continue;
+      if (
+        ['approved', 'deposit_paid', 'scheduled', 'declined', 'expired', 'cancelled'].includes(
+          p.status,
+        )
+      )
+        continue;
       if (!p.publicToken) continue;
       items.push({
         id: p.id,
@@ -1776,7 +2726,7 @@ export async function getPortalSigningHub(token: string) {
   }
 
   if (portalHasFeature(ctx.enabledFeatures, 'mockups')) {
-    const mockups = await listPortalMockups(token);
+    const mockups = await listPortalMockups(auth);
     for (const m of mockups) {
       if (m.status !== 'in_review' || !m.approvalToken) continue;
       items.push({

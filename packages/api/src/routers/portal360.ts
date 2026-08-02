@@ -48,6 +48,21 @@ import {
   getPortalQrLanding,
   sendPortalQrVerificationCode,
   verifyPortalQrCodeAndActivate,
+  createPortalUserInvitation,
+  resendPortalUserInvitation,
+  revokePortalInvitation,
+  claimPortalInvitation,
+  establishPortalSessionFromAccessToken,
+  createPortalSessionContext,
+  logoutAllPortalSessions,
+  changePortalUserRole,
+  getAdminAuth,
+  requirePortalRouteAccess,
+  authorizePortalPath,
+  PortalAccessDeniedError,
+  PortalActionNotPermittedError,
+  PortalFeatureNotEnabledError,
+  PORTAL_PUBLIC_MESSAGES,
 } from '@yuletide/firebase';
 import {
   portalTokenInputSchema,
@@ -66,258 +81,438 @@ import {
   portalQrAccessTokenSchema,
   portalQrSendCodeSchema,
   portalQrVerifySchema,
+  portalInviteUserSchema,
+  portalInviteActionSchema,
+  portalClaimInvitationSchema,
+  portalEstablishSessionSchema,
+  portalAuthorizeRouteSchema,
 } from '@clcrm/validators';
-import { router, officeProcedure, adminProcedure, publicProcedure } from '../trpc';
+import { router, officeProcedure, adminProcedure, portalPublicProcedure } from '../trpc';
 
 function mapPortalErr(err: unknown, fallback: string): never {
+  if (err instanceof PortalAccessDeniedError) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: PORTAL_PUBLIC_MESSAGES.accessUnavailable });
+  }
+  if (err instanceof PortalFeatureNotEnabledError) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'PORTAL_FEATURE_NOT_ENABLED' });
+  }
+  if (err instanceof PortalActionNotPermittedError) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'PORTAL_ACTION_NOT_PERMITTED' });
+  }
+  if (err instanceof Error && err.message === 'PORTAL_RESOURCE_NOT_FOUND') {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'PORTAL_RESOURCE_NOT_FOUND' });
+  }
+  if (err instanceof Error && err.name === 'PortalResourceNotFoundError') {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'PORTAL_RESOURCE_NOT_FOUND' });
+  }
   throw new TRPCError({
     code: 'BAD_REQUEST',
     message: err instanceof Error ? err.message : fallback,
   });
 }
 
+const PORTAL_ENUMERATION_SAFE = PORTAL_PUBLIC_MESSAGES.verificationSent;
+
+function portalAuth(ctx: { portalSessionToken?: string | null }, input: { token?: string }) {
+  return { token: input.token ?? null, sessionToken: ctx.portalSessionToken ?? null };
+}
+
 export const portal360Router = router({
+  /**
+   * Auth-surface procedures kept in a small nested router so client AppRouter
+   * inference does not drop them from the large `public` procedure map.
+   */
+  auth: router({
+    /** Claim invitation — authUserId is derived from verified Firebase ID token only. */
+    claimInvitation: portalPublicProcedure
+      .input(portalClaimInvitationSchema)
+      .mutation(async ({ input }) => {
+        try {
+          const decoded = await getAdminAuth().verifyIdToken(input.idToken);
+          const result = await claimPortalInvitation({
+            invitationToken: input.invitationToken,
+            authUserId: decoded.uid,
+          });
+          if (!result.ok) {
+            return { ok: false as const, message: PORTAL_PUBLIC_MESSAGES.accessUnavailable };
+          }
+          const session = await createPortalSessionContext({
+            organizationId: result.organizationId,
+            customerId: result.customerId,
+            portalAccountId: result.portalAccountId,
+            portalUserId: result.portalUserId,
+          });
+          if (!session) {
+            return { ok: false as const, message: PORTAL_PUBLIC_MESSAGES.accessUnavailable };
+          }
+          return {
+            ok: true as const,
+            message: 'Access confirmed.',
+            sessionToken: session.token,
+            expiresAt: session.expiresAt.toISOString(),
+            context: session.context,
+          };
+        } catch {
+          return { ok: false as const, message: PORTAL_PUBLIC_MESSAGES.accessUnavailable };
+        }
+      }),
+
+    /** Establish portal session from magic access token (compatibility). Cookie set via /api/portal/session. */
+    establishSession: portalPublicProcedure
+      .input(portalEstablishSessionSchema)
+      .mutation(async ({ input }) => {
+        const session = await establishPortalSessionFromAccessToken(input.accessToken);
+        if (!session) {
+          throw new TRPCError({
+            code: 'UNAUTHORIZED',
+            message: PORTAL_PUBLIC_MESSAGES.accessUnavailable,
+          });
+        }
+        return {
+          ok: true,
+          sessionToken: session.token,
+          expiresAt: session.expiresAt.toISOString(),
+          context: session.context,
+        };
+      }),
+
+    /**
+     * Canonical route authorization (P2-S5). Returns only safe public fields.
+     * Does not embed customer data — use feature APIs after allow.
+     */
+    authorizeRoute: portalPublicProcedure
+      .input(portalAuthorizeRouteSchema)
+      .query(async ({ ctx, input }) => {
+        const auth = portalAuth(ctx, input);
+        if (input.pathname) {
+          const parts = input.pathname.split('/').filter(Boolean);
+          const resourceId =
+            input.resourceId ||
+            (parts[0] === 'portal' && parts[2] === 'jobs' && parts[3] ? parts[3] : undefined);
+          const result = await authorizePortalPath({
+            pathname: input.pathname,
+            auth,
+            resourceId,
+          });
+          if ('public' in result && result.public) {
+            return { allowed: true as const };
+          }
+          if (!result.allowed) {
+            return {
+              allowed: false as const,
+              reason: result.reason,
+              message: result.publicMessage,
+            };
+          }
+          return { allowed: true as const };
+        }
+
+        const result = await requirePortalRouteAccess({
+          auth,
+          feature: input.feature,
+          action: input.action,
+          resource:
+            input.resourceType && input.resourceId
+              ? { type: input.resourceType, id: input.resourceId }
+              : undefined,
+        });
+        if (!result.allowed) {
+          return {
+            allowed: false as const,
+            reason: result.reason,
+            message: result.publicMessage,
+          };
+        }
+        return { allowed: true as const };
+      }),
+  }),
+
   public: router({
-    dashboard: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
-      const data = await getPortalDashboard(input.token);
-      if (!data) throw new TRPCError({ code: 'NOT_FOUND', message: 'Portal access not found or disabled.' });
-      return data;
-    }),
-
-    timeline: publicProcedure.input(portalTokenInputSchema.extend({ limit: z.number().int().min(1).max(50).optional() })).query(async ({ input }) => {
-      return listPortalTimeline(input.token, input.limit ?? 20);
-    }),
-
-    notifications: publicProcedure.input(portalTokenInputSchema.extend({ limit: z.number().int().min(1).max(50).optional() })).query(async ({ input }) => {
-      return listPortalNotifications(input.token, input.limit ?? 20);
-    }),
-
-    markNotificationRead: publicProcedure.input(portalMarkNotificationReadSchema).mutation(async ({ input }) => {
+    dashboard: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await markPortalNotificationRead(input.token, input.notificationId);
+        const data = await getPortalDashboard(portalAuth(ctx, input));
+        if (!data)
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: PORTAL_PUBLIC_MESSAGES.accessUnavailable,
+          });
+        return data;
       } catch (err) {
-        mapPortalErr(err, 'Could not update notification');
+        if (err instanceof TRPCError) throw err;
+        mapPortalErr(err, 'Could not load portal dashboard');
       }
     }),
 
-    markAllNotificationsRead: publicProcedure.input(portalTokenInputSchema).mutation(async ({ input }) => {
-      try {
-        return await markAllPortalNotificationsRead(input.token);
-      } catch (err) {
-        mapPortalErr(err, 'Could not update notifications');
-      }
-    }),
+    timeline: portalPublicProcedure
+      .input(portalTokenInputSchema.extend({ limit: z.number().int().min(1).max(50).optional() }))
+      .query(async ({ ctx, input }) => {
+        try {
+          return await listPortalTimeline(portalAuth(ctx, input), input.limit ?? 20);
+        } catch (err) {
+          mapPortalErr(err, 'Could not load timeline');
+        }
+      }),
 
-    contacts: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    notifications: portalPublicProcedure
+      .input(portalTokenInputSchema.extend({ limit: z.number().int().min(1).max(50).optional() }))
+      .query(async ({ ctx, input }) => {
+        try {
+          return await listPortalNotifications(portalAuth(ctx, input), input.limit ?? 20);
+        } catch (err) {
+          mapPortalErr(err, 'Could not load notifications');
+        }
+      }),
+
+    markNotificationRead: portalPublicProcedure
+      .input(portalMarkNotificationReadSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await markPortalNotificationRead(portalAuth(ctx, input), input.notificationId);
+        } catch (err) {
+          mapPortalErr(err, 'Could not update notification');
+        }
+      }),
+
+    markAllNotificationsRead: portalPublicProcedure
+      .input(portalTokenInputSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await markAllPortalNotificationsRead(portalAuth(ctx, input));
+        } catch (err) {
+          mapPortalErr(err, 'Could not update notifications');
+        }
+      }),
+
+    contacts: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalContacts(input.token);
+        return await listPortalContacts(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load contacts');
       }
     }),
 
-    serviceRequests: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
-      try {
-        return await listPortalServiceRequests(input.token);
-      } catch (err) {
-        mapPortalErr(err, 'Could not load service requests');
-      }
-    }),
+    serviceRequests: portalPublicProcedure
+      .input(portalTokenInputSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await listPortalServiceRequests(portalAuth(ctx, input));
+        } catch (err) {
+          mapPortalErr(err, 'Could not load service requests');
+        }
+      }),
 
-    agreements: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
-      try {
-        return await listPortalAgreements(input.token);
-      } catch (err) {
-        mapPortalErr(err, 'Could not load agreements');
-      }
-    }),
+    agreements: portalPublicProcedure
+      .input(portalTokenInputSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await listPortalAgreements(portalAuth(ctx, input));
+        } catch (err) {
+          mapPortalErr(err, 'Could not load agreements');
+        }
+      }),
 
-    documents: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    documents: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalDocuments(input.token);
+        return await listPortalDocuments(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load documents');
       }
     }),
 
-    storage: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    storage: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalStorage(input.token);
+        return await listPortalStorage(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load storage');
       }
     }),
 
-    reviews: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    reviews: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalReviews(input.token);
+        return await listPortalReviews(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load reviews');
       }
     }),
 
-    referrals: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    referrals: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalReferrals(input.token);
+        return await listPortalReferrals(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load referrals');
       }
     }),
 
-    messages: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    messages: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await getPortalMessages(input.token);
+        return await getPortalMessages(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load messages');
       }
     }),
 
-    sendMessage: publicProcedure
+    sendMessage: portalPublicProcedure
       .input(portalTokenInputSchema.extend({ body: z.string().min(1).max(5000) }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
         try {
-          return await sendPortalMessage(input.token, input.body);
+          return await sendPortalMessage(portalAuth(ctx, input), input.body);
         } catch (err) {
           mapPortalErr(err, 'Could not send message');
         }
       }),
 
-    properties: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
-      try {
-        return await listPortalProperties(input.token);
-      } catch (err) {
-        mapPortalErr(err, 'Could not load properties');
-      }
-    }),
+    properties: portalPublicProcedure
+      .input(portalTokenInputSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await listPortalProperties(portalAuth(ctx, input));
+        } catch (err) {
+          mapPortalErr(err, 'Could not load properties');
+        }
+      }),
 
-    consultations: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
-      try {
-        return await listPortalConsultations(input.token);
-      } catch (err) {
-        mapPortalErr(err, 'Could not load consultations');
-      }
-    }),
+    consultations: portalPublicProcedure
+      .input(portalTokenInputSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await listPortalConsultations(portalAuth(ctx, input));
+        } catch (err) {
+          mapPortalErr(err, 'Could not load consultations');
+        }
+      }),
 
-    takedowns: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    takedowns: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalTakedowns(input.token);
+        return await listPortalTakedowns(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load takedowns');
       }
     }),
 
-    submitScheduleRequest: publicProcedure.input(portalScheduleRequestSchema).mutation(async ({ input }) => {
-      try {
-        return await submitPortalScheduleRequest(input.token, {
-          appointmentType: input.appointmentType,
-          propertyId: input.propertyId,
-          preferredStartAt: input.preferredStartAt ?? null,
-          preferredEndAt: input.preferredEndAt ?? null,
-          preferredWindows: input.preferredWindows,
-          notes: input.notes,
-        });
-      } catch (err) {
-        mapPortalErr(err, 'Could not submit schedule request');
-      }
-    }),
+    submitScheduleRequest: portalPublicProcedure
+      .input(portalScheduleRequestSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await submitPortalScheduleRequest(portalAuth(ctx, input), {
+            appointmentType: input.appointmentType,
+            propertyId: input.propertyId,
+            preferredStartAt: input.preferredStartAt ?? null,
+            preferredEndAt: input.preferredEndAt ?? null,
+            preferredWindows: input.preferredWindows,
+            notes: input.notes,
+          });
+        } catch (err) {
+          mapPortalErr(err, 'Could not submit schedule request');
+        }
+      }),
 
-    invoices: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    invoices: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalInvoices(input.token);
+        return await listPortalInvoices(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load invoices');
       }
     }),
 
-    proposals: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    proposals: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalProposals(input.token);
+        return await listPortalProposals(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load proposals');
       }
     }),
 
-    mockups: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    mockups: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalMockups(input.token);
+        return await listPortalMockups(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load mockups');
       }
     }),
 
-    jobs: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
+    jobs: portalPublicProcedure.input(portalTokenInputSchema).query(async ({ ctx, input }) => {
       try {
-        return await listPortalJobs(input.token);
+        return await listPortalJobs(portalAuth(ctx, input));
       } catch (err) {
         mapPortalErr(err, 'Could not load jobs');
       }
     }),
 
-    jobDetail: publicProcedure.input(portalJobDetailSchema).query(async ({ input }) => {
+    jobDetail: portalPublicProcedure.input(portalJobDetailSchema).query(async ({ ctx, input }) => {
       try {
-        return await getPortalJobDetail(input.token, input.jobId);
+        return await getPortalJobDetail(portalAuth(ctx, input), input.jobId);
       } catch (err) {
         mapPortalErr(err, 'Could not load job');
       }
     }),
 
-    signingHub: publicProcedure.input(portalTokenInputSchema).query(async ({ input }) => {
-      try {
-        return await getPortalSigningHub(input.token);
-      } catch (err) {
-        mapPortalErr(err, 'Could not load signing items');
-      }
-    }),
+    signingHub: portalPublicProcedure
+      .input(portalTokenInputSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await getPortalSigningHub(portalAuth(ctx, input));
+        } catch (err) {
+          mapPortalErr(err, 'Could not load signing items');
+        }
+      }),
 
-    submitServiceRequest: publicProcedure.input(portalServiceRequestSchema).mutation(async ({ input }) => {
-      try {
-        return await submitPortalServiceRequest(input.token, {
-          title: input.title,
-          description: input.description,
-          category: input.category,
-          propertyId: input.propertyId,
-          priority: input.priority,
-          accessInstructions: input.accessInstructions,
-          locationNote: input.locationNote,
-          photoUrls: input.photoUrls,
-        });
-      } catch (err) {
-        mapPortalErr(err, 'Could not submit service request');
-      }
-    }),
+    submitServiceRequest: portalPublicProcedure
+      .input(portalServiceRequestSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await submitPortalServiceRequest(portalAuth(ctx, input), {
+            title: input.title,
+            description: input.description,
+            category: input.category,
+            propertyId: input.propertyId,
+            priority: input.priority,
+            accessInstructions: input.accessInstructions,
+            locationNote: input.locationNote,
+            photoUrls: input.photoUrls,
+          });
+        } catch (err) {
+          mapPortalErr(err, 'Could not submit service request');
+        }
+      }),
 
-    uploadServicePhoto: publicProcedure.input(portalUploadPhotoSchema).mutation(async ({ input }) => {
-      try {
-        return await uploadPortalPhoto(input.token, {
-          dataBase64: input.dataBase64,
-          contentType: input.contentType,
-          filename: input.filename,
-        });
-      } catch (err) {
-        mapPortalErr(err, 'Could not upload photo');
-      }
-    }),
+    uploadServicePhoto: portalPublicProcedure
+      .input(portalUploadPhotoSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await uploadPortalPhoto(portalAuth(ctx, input), {
+            dataBase64: input.dataBase64,
+            contentType: input.contentType,
+            filename: input.filename,
+          });
+        } catch (err) {
+          mapPortalErr(err, 'Could not upload photo');
+        }
+      }),
 
-    submitRebook: publicProcedure.input(portalRebookSchema).mutation(async ({ input }) => {
-      try {
-        return await submitPortalRebookRequest(input.token, {
-          notes: input.notes,
-          preferredMonth: input.preferredMonth,
-          sameDesign: input.sameDesign,
-          upgradeRequested: input.upgradeRequested,
-        });
-      } catch (err) {
-        mapPortalErr(err, 'Could not submit rebook request');
-      }
-    }),
+    submitRebook: portalPublicProcedure
+      .input(portalRebookSchema)
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await submitPortalRebookRequest(portalAuth(ctx, input), {
+            notes: input.notes,
+            preferredMonth: input.preferredMonth,
+            sameDesign: input.sameDesign,
+            upgradeRequested: input.upgradeRequested,
+          });
+        } catch (err) {
+          mapPortalErr(err, 'Could not submit rebook request');
+        }
+      }),
 
-    rebookInfo: publicProcedure.input(portalTokenInputSchema).query(({ input }) => getPortalRebookInfo(input.token)),
+    rebookInfo: portalPublicProcedure
+      .input(portalTokenInputSchema)
+      .query(({ ctx, input }) => getPortalRebookInfo(portalAuth(ctx, input))),
 
-    qrLanding: publicProcedure.input(portalQrAccessTokenSchema).query(async ({ input }) => {
+    qrLanding: portalPublicProcedure.input(portalQrAccessTokenSchema).query(async ({ input }) => {
       return getPortalQrLanding(input.token, { userAgent: input.userAgent });
     }),
 
-    qrSendCode: publicProcedure.input(portalQrSendCodeSchema).mutation(async ({ input }) => {
+    qrSendCode: portalPublicProcedure.input(portalQrSendCodeSchema).mutation(async ({ input }) => {
       try {
         return await sendPortalQrVerificationCode(input.token, {
           channel: input.channel,
@@ -329,7 +524,7 @@ export const portal360Router = router({
       }
     }),
 
-    qrVerify: publicProcedure.input(portalQrVerifySchema).mutation(async ({ input }) => {
+    qrVerify: portalPublicProcedure.input(portalQrVerifySchema).mutation(async ({ input }) => {
       try {
         return await verifyPortalQrCodeAndActivate(input.token, {
           code: input.code,
@@ -342,6 +537,34 @@ export const portal360Router = router({
     }),
   }),
 
+  logoutAllSessions: officeProcedure
+    .input(portalAccountActionSchema)
+    .mutation(({ ctx, input }) =>
+      logoutAllPortalSessions(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
+    ),
+
+  changeUserRole: officeProcedure
+    .input(
+      z.object({
+        portalUserId: z.string().min(1),
+        role: z.enum([
+          'account_owner',
+          'authorized_contact',
+          'billing_contact',
+          'property_contact',
+          'view_only',
+        ]),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      changePortalUserRole(
+        ctx.auth.organizationId,
+        input.portalUserId,
+        input.role,
+        ctx.auth.userId,
+      ),
+    ),
+
   enable: officeProcedure.input(portalEnableSchema).mutation(async ({ ctx, input }) => {
     try {
       return await enableCustomerPortal(ctx.auth.organizationId, input.customerId, ctx.auth.userId);
@@ -352,15 +575,79 @@ export const portal360Router = router({
 
   invite: officeProcedure.input(portalEnableSchema).mutation(async ({ ctx, input }) => {
     try {
-      return await sendPortalInviteEmail(ctx.auth.organizationId, input.customerId, ctx.auth.userId);
+      return await sendPortalInviteEmail(
+        ctx.auth.organizationId,
+        input.customerId,
+        ctx.auth.userId,
+      );
     } catch (err) {
       mapPortalErr(err, 'Could not send portal invite');
     }
   }),
 
-  qrList: officeProcedure.input(portalAccountActionSchema).query(({ ctx, input }) =>
-    getStaffPortalQrView(ctx.auth.organizationId, input.customerId),
-  ),
+  inviteUser: officeProcedure.input(portalInviteUserSchema).mutation(async ({ ctx, input }) => {
+    try {
+      const result = await createPortalUserInvitation({
+        organizationId: ctx.auth.organizationId,
+        customerId: input.customerId,
+        role: input.role,
+        email: input.email,
+        displayName: input.displayName,
+        contactId: input.contactId,
+        propertyIds: input.propertyIds,
+        actorId: ctx.auth.userId,
+      });
+      return {
+        portalUserId: result.portalUser.id,
+        invitationStatus: result.portalUser.invitationStatus,
+        invitationExpiresAt: result.portalUser.invitationExpiresAt?.toISOString() ?? null,
+        role: result.portalUser.role,
+        deliveryChannel: result.delivery.channel,
+        message: result.delivery.message,
+        // Raw token only at emulator/test delivery boundary — never from live staff list/detail.
+        invitationToken: result.delivery.invitationToken ?? null,
+      };
+    } catch (err) {
+      mapPortalErr(err, 'Could not create portal invitation');
+    }
+  }),
+
+  resendInvitation: officeProcedure
+    .input(portalInviteActionSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await resendPortalUserInvitation({
+          organizationId: ctx.auth.organizationId,
+          portalUserId: input.portalUserId,
+          actorId: ctx.auth.userId,
+        });
+        return {
+          portalUserId: result.portalUser.id,
+          invitationStatus: result.portalUser.invitationStatus,
+          invitationExpiresAt: result.portalUser.invitationExpiresAt?.toISOString() ?? null,
+          role: result.portalUser.role,
+          deliveryChannel: result.delivery.channel,
+          message: result.delivery.message,
+          invitationToken: result.delivery.invitationToken ?? null,
+        };
+      } catch (err) {
+        mapPortalErr(err, 'Could not resend portal invitation');
+      }
+    }),
+
+  revokeInvitation: officeProcedure
+    .input(portalInviteActionSchema)
+    .mutation(async ({ ctx, input }) => {
+      return revokePortalInvitation({
+        organizationId: ctx.auth.organizationId,
+        portalUserId: input.portalUserId,
+        actorId: ctx.auth.userId,
+      });
+    }),
+
+  qrList: officeProcedure
+    .input(portalAccountActionSchema)
+    .query(({ ctx, input }) => getStaffPortalQrView(ctx.auth.organizationId, input.customerId)),
 
   qrGenerate: officeProcedure.input(portalQrGenerateSchema).mutation(async ({ ctx, input }) => {
     try {
@@ -418,26 +705,34 @@ export const portal360Router = router({
     }
   }),
 
-  qrScans: officeProcedure.input(portalQrCodeActionSchema.extend({ limit: z.number().int().min(1).max(100).optional() })).query(({ ctx, input }) =>
-    listPortalQrScans(ctx.auth.organizationId, input.qrCodeId, input.limit ?? 50),
-  ),
+  qrScans: officeProcedure
+    .input(portalQrCodeActionSchema.extend({ limit: z.number().int().min(1).max(100).optional() }))
+    .query(({ ctx, input }) =>
+      listPortalQrScans(ctx.auth.organizationId, input.qrCodeId, input.limit ?? 50),
+    ),
 
   qrOrgList: officeProcedure
-    .input(z.object({
-      status: z.enum([
-        'all',
-        'draft',
-        'active',
-        'used_for_activation',
-        'reusable',
-        'expired',
-        'revoked',
-        'replaced',
-        'suspended',
-        'invalid',
-      ]).optional(),
-      limit: z.number().int().min(1).max(200).optional(),
-    }).optional())
+    .input(
+      z
+        .object({
+          status: z
+            .enum([
+              'all',
+              'draft',
+              'active',
+              'used_for_activation',
+              'reusable',
+              'expired',
+              'revoked',
+              'replaced',
+              'suspended',
+              'invalid',
+            ])
+            .optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+        })
+        .optional(),
+    )
     .query(({ ctx, input }) =>
       listOrgPortalQrCodes(ctx.auth.organizationId, {
         status: input?.status,
@@ -447,21 +742,29 @@ export const portal360Router = router({
 
   qrAnalytics: officeProcedure.query(({ ctx }) => getPortalQrAnalytics(ctx.auth.organizationId)),
 
-  revoke: officeProcedure.input(portalAccountActionSchema).mutation(({ ctx, input }) =>
-    revokeCustomerPortal(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
-  ),
+  revoke: officeProcedure
+    .input(portalAccountActionSchema)
+    .mutation(({ ctx, input }) =>
+      revokeCustomerPortal(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
+    ),
 
-  suspend: officeProcedure.input(portalAccountActionSchema).mutation(({ ctx, input }) =>
-    suspendCustomerPortal(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
-  ),
+  suspend: officeProcedure
+    .input(portalAccountActionSchema)
+    .mutation(({ ctx, input }) =>
+      suspendCustomerPortal(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
+    ),
 
-  rotateToken: officeProcedure.input(portalAccountActionSchema).mutation(({ ctx, input }) =>
-    rotatePortalAccessToken(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
-  ),
+  rotateToken: officeProcedure
+    .input(portalAccountActionSchema)
+    .mutation(({ ctx, input }) =>
+      rotatePortalAccessToken(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
+    ),
 
-  getAccount: officeProcedure.input(portalAccountActionSchema).query(({ ctx, input }) =>
-    getStaffPortalAccountView(ctx.auth.organizationId, input.customerId),
-  ),
+  getAccount: officeProcedure
+    .input(portalAccountActionSchema)
+    .query(({ ctx, input }) =>
+      getStaffPortalAccountView(ctx.auth.organizationId, input.customerId),
+    ),
 
   features: officeProcedure.query(({ ctx }) => resolvePortalFeatures(ctx.auth.organizationId)),
 

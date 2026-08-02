@@ -38,3 +38,11 @@ Working tree: format gate clean before batch
 ### Earlier diagnostic batch (not acceptance)
 
 An earlier five-run loop saw Run 1 PASS and Runs 2–5 FAIL on `format-changed` only (docs written mid-loop were unformatted). Firebase rules still **PASS**ed on every run in that batch — confirming the prior emulator flake is corrected. After `npm run format:changed`, the acceptance batch above passed 5/5.
+
+## Customer Portal Phase 2
+
+**ENVIRONMENT=EMULATOR**
+
+The earlier stability batch predates this Phase 2 documentation package and is not evidence that the complete Phase 2 browser, accessibility, responsive, or expanded rules scope passed. Phase 2 unit/integration tests exist, but a fresh full-gate result is not claimed here. Run emulator suites serially with the existing port-release/retry safeguards and retain secret-free output before changing completion status.
+
+**NO DEPLOYMENT / NO PRODUCTION WRITES.**

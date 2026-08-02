@@ -29,3 +29,4 @@ export * from './website-cms-defaults';
 export * from './crm-ui-config';
 export * from './site-cms-extended';
 export * from './portal';
+export * from './portal-permissions';

@@ -22,7 +22,11 @@ function AgreementsBody({ token }: { token: string }) {
   if (isLoading) return <LoadingState message="Loading agreements..." />;
   if (isError) return <p className="text-base text-red-600">Could not load agreements.</p>;
   if (!data?.length) {
-    return <p className="rounded-2xl border border-stone-200 bg-white p-6 text-base text-stone-600">No agreements yet.</p>;
+    return (
+      <p className="rounded-2xl border border-stone-200 bg-white p-6 text-base text-stone-600">
+        No agreements yet.
+      </p>
+    );
   }
 
   return (
@@ -47,7 +51,7 @@ function AgreementsBody({ token }: { token: string }) {
         {
           key: 'value',
           header: 'Annual',
-          cell: (a) => formatCurrency(a.annualValueCents),
+          cell: (a) => formatCurrency(a.annualValueCents ?? 0),
         },
         {
           key: 'status',
@@ -60,13 +64,30 @@ function AgreementsBody({ token }: { token: string }) {
           className: 'text-right',
           cell: (a) => {
             if (a.publicToken && ['awaiting_signature', 'sent', 'draft'].includes(a.status)) {
-              return <Link href={`/a/${a.publicToken}`} className="btn-primary text-sm">Sign</Link>;
+              return (
+                <Link href={`/a/${a.publicToken}`} className="btn-primary text-sm">
+                  Sign
+                </Link>
+              );
             }
             if (a.signedDocumentUrl) {
-              return <a href={a.signedDocumentUrl} target="_blank" rel="noreferrer" className="btn-secondary text-sm">PDF</a>;
+              return (
+                <a
+                  href={a.signedDocumentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-secondary text-sm"
+                >
+                  PDF
+                </a>
+              );
             }
             if (a.publicToken) {
-              return <Link href={`/a/${a.publicToken}`} className="btn-secondary text-sm">View</Link>;
+              return (
+                <Link href={`/a/${a.publicToken}`} className="btn-secondary text-sm">
+                  View
+                </Link>
+              );
             }
             return null;
           },
@@ -82,11 +103,12 @@ function AgreementsBody({ token }: { token: string }) {
               </p>
               {a.propertyLabel && <p className="text-sm text-stone-400">{a.propertyLabel}</p>}
               <p className="mt-2 text-base text-stone-700">
-                {formatCurrency(a.annualValueCents)}/yr
+                {formatCurrency(a.annualValueCents ?? 0)}/yr
               </p>
               {a.signedAt && (
                 <p className="mt-1 text-sm text-stone-500">
-                  Signed {formatDate(a.signedAt)}{a.signedByName ? ` by ${a.signedByName}` : ''}
+                  Signed {formatDate(a.signedAt)}
+                  {a.signedByName ? ` by ${a.signedByName}` : ''}
                 </p>
               )}
             </div>
@@ -94,13 +116,30 @@ function AgreementsBody({ token }: { token: string }) {
           </div>
           <div className="mt-4 flex flex-col gap-2">
             {a.publicToken && ['awaiting_signature', 'sent', 'draft'].includes(a.status) && (
-              <Link href={`/a/${a.publicToken}`} className="btn-primary inline-flex min-h-11 items-center justify-center text-base">Review & sign</Link>
+              <Link
+                href={`/a/${a.publicToken}`}
+                className="btn-primary inline-flex min-h-11 items-center justify-center text-base"
+              >
+                Review & sign
+              </Link>
             )}
             {a.signedDocumentUrl && (
-              <a href={a.signedDocumentUrl} target="_blank" rel="noreferrer" className="btn-secondary inline-flex min-h-11 items-center justify-center text-base">View PDF</a>
+              <a
+                href={a.signedDocumentUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-secondary inline-flex min-h-11 items-center justify-center text-base"
+              >
+                View PDF
+              </a>
             )}
             {a.publicToken && !['awaiting_signature', 'sent', 'draft'].includes(a.status) && (
-              <Link href={`/a/${a.publicToken}`} className="btn-secondary inline-flex min-h-11 items-center justify-center text-base">View</Link>
+              <Link
+                href={`/a/${a.publicToken}`}
+                className="btn-secondary inline-flex min-h-11 items-center justify-center text-base"
+              >
+                View
+              </Link>
             )}
           </div>
         </div>

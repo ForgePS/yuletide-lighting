@@ -12,7 +12,13 @@ export default function PortalJobDetailPage() {
   const token = params.token as string;
   const jobId = params.jobId as string;
   return (
-    <PortalAuthedFrame token={token} title="Job details" feature="install_tracking">
+    <PortalAuthedFrame
+      token={token}
+      title="Job details"
+      feature="install_tracking"
+      resourceType="job"
+      resourceId={jobId}
+    >
       {({ token: accessToken }) => <JobDetailBody token={accessToken} jobId={jobId} />}
     </PortalAuthedFrame>
   );
@@ -40,7 +46,9 @@ function JobDetailBody({ token, jobId }: { token: string; jobId: string }) {
           {data.schedule ? (
             <p className="mt-2 text-sm text-stone-700">
               {formatDate(data.schedule.startAt)}
-              <span className="ml-2 capitalize text-stone-500">{data.schedule.dispatchStatus.replace(/_/g, ' ')}</span>
+              <span className="ml-2 capitalize text-stone-500">
+                {data.schedule.dispatchStatus.replace(/_/g, ' ')}
+              </span>
             </p>
           ) : data.scheduledStart ? (
             <p className="mt-2 text-sm text-stone-700">{formatDate(data.scheduledStart)}</p>
@@ -55,7 +63,9 @@ function JobDetailBody({ token, jobId }: { token: string; jobId: string }) {
           <p className="text-sm text-stone-600">
             {data.property.addressLine1}
             <br />
-            {[data.property.city, data.property.state, data.property.postalCode].filter(Boolean).join(', ')}
+            {[data.property.city, data.property.state, data.property.postalCode]
+              .filter(Boolean)
+              .join(', ')}
           </p>
         </section>
       )}
@@ -79,7 +89,10 @@ function JobDetailBody({ token, jobId }: { token: string; jobId: string }) {
           <h4 className="font-semibold text-stone-900">Photos</h4>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {data.mockupPhotoUrls.map((url) => (
-              <div key={url} className="relative aspect-video overflow-hidden rounded-lg bg-stone-100">
+              <div
+                key={url}
+                className="relative aspect-video overflow-hidden rounded-lg bg-stone-100"
+              >
                 <Image src={url} alt="Job photo" fill className="object-cover" unoptimized />
               </div>
             ))}

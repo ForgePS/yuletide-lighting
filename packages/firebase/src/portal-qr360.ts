@@ -4,7 +4,7 @@
  * QR identifies the account and starts access; it never permanently bypasses authentication.
  */
 
-import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import type {
   PortalQrAccessMode,
   PortalQrAuditAction,
@@ -17,7 +17,14 @@ import type {
 } from '@clcrm/types';
 import { getAdminFirestore } from './admin';
 import { mapTimestampsFromData, stripUndefinedDeep } from './firestore-utils';
-import { colCreate, colGet, colList, colUpdate, getOrganization, type CustomerRecord } from './firestore';
+import {
+  colCreate,
+  colGet,
+  colList,
+  colUpdate,
+  getOrganization,
+  type CustomerRecord,
+} from './firestore';
 import { getBrandingForCustomerFacing } from './settings360';
 import { logCustomerActivity } from './customer360';
 import {
@@ -28,10 +35,16 @@ import {
   resolvePortalFeatures,
   getPortalAccountByCustomer,
 } from './portal360';
+import { createPortalOtpCode, hashPortalSecret, timingSafeEqualHex } from './portal-security';
+import {
+  getPortalSecurityConfig,
+  portalOtpTtlMs,
+  PORTAL_PUBLIC_MESSAGES,
+} from './portal-security-config';
+import { getPortalDeliveryProvider } from './portal-delivery';
+import { consumePortalRateLimit, portalRateLimitKey } from './portal-rate-limit';
 
 const TOKEN_BYTES = 32;
-const OTP_TTL_MS = 10 * 60 * 1000;
-const MAX_OTP_ATTEMPTS = 5;
 const GENERIC_BLOCK_MESSAGE =
   'This portal access code is no longer active. Please contact Yuletide Lighting Company for assistance.';
 
@@ -116,7 +129,8 @@ function parseDevice(ua?: string | null): {
   let operatingSystemFamily: string | null = null;
   if (s.includes('windows')) operatingSystemFamily = 'Windows';
   else if (s.includes('android')) operatingSystemFamily = 'Android';
-  else if (s.includes('iphone') || s.includes('ipad') || s.includes('ios')) operatingSystemFamily = 'iOS';
+  else if (s.includes('iphone') || s.includes('ipad') || s.includes('ios'))
+    operatingSystemFamily = 'iOS';
   else if (s.includes('mac os')) operatingSystemFamily = 'macOS';
   return { deviceClass, browserFamily, operatingSystemFamily };
 }
@@ -132,11 +146,17 @@ function isInactiveStatus(status: PortalQrCodeStatus) {
   return ['revoked', 'replaced', 'suspended', 'invalid', 'expired', 'draft'].includes(status);
 }
 
-async function findQrByRawToken(rawToken: string): Promise<{ orgId: string; qr: PortalQrCode } | null> {
+async function findQrByRawToken(
+  rawToken: string,
+): Promise<{ orgId: string; qr: PortalQrCode } | null> {
   const db = getAdminFirestore();
   const tokenHash = hashPortalQrToken(rawToken);
   try {
-    const byHash = await db.collectionGroup('portalQrCodes').where('tokenHash', '==', tokenHash).limit(1).get();
+    const byHash = await db
+      .collectionGroup('portalQrCodes')
+      .where('tokenHash', '==', tokenHash)
+      .limit(1)
+      .get();
     if (!byHash.empty) {
       const doc = byHash.docs[0]!;
       const qr = mapQr({ id: doc.id, ...doc.data()! });
@@ -148,14 +168,22 @@ async function findQrByRawToken(rawToken: string): Promise<{ orgId: string; qr: 
   }
   try {
     // Legacy plaintext migration path
-    const byToken = await db.collectionGroup('portalQrCodes').where('token', '==', rawToken).limit(1).get();
+    const byToken = await db
+      .collectionGroup('portalQrCodes')
+      .where('token', '==', rawToken)
+      .limit(1)
+      .get();
     if (!byToken.empty) {
       const doc = byToken.docs[0]!;
       const qr = mapQr({ id: doc.id, ...doc.data()! });
       const orgId = String(qr.organizationId ?? doc.ref.parent.parent?.id ?? '');
       if (orgId) {
         if (!qr.tokenHash) {
-          await colUpdate(orgId, 'portalQrCodes', qr.id, { tokenHash, tokenVersion: 1, token: null });
+          await colUpdate(orgId, 'portalQrCodes', qr.id, {
+            tokenHash,
+            tokenVersion: 1,
+            token: null,
+          });
         }
         return { orgId, qr: { ...qr, tokenHash } };
       }
@@ -180,17 +208,21 @@ async function writeQrAudit(
     batchId?: string | null;
   },
 ) {
-  await colCreate(orgId, 'portalQrAuditEvents', stripUndefinedDeep({
-    customerId: input.customerId,
-    propertyId: input.propertyId ?? null,
-    qrCodeId: input.qrCodeId ?? null,
-    action: input.action,
-    userId: input.userId ?? null,
-    previousStatus: input.previousStatus ?? null,
-    newStatus: input.newStatus ?? null,
-    reason: input.reason ?? null,
-    batchId: input.batchId ?? null,
-  }));
+  await colCreate(
+    orgId,
+    'portalQrAuditEvents',
+    stripUndefinedDeep({
+      customerId: input.customerId,
+      propertyId: input.propertyId ?? null,
+      qrCodeId: input.qrCodeId ?? null,
+      action: input.action,
+      userId: input.userId ?? null,
+      previousStatus: input.previousStatus ?? null,
+      newStatus: input.newStatus ?? null,
+      reason: input.reason ?? null,
+      batchId: input.batchId ?? null,
+    }),
+  );
   await logCustomerActivity(
     orgId,
     input.customerId,
@@ -215,18 +247,22 @@ async function recordScan(
   },
 ) {
   const device = parseDevice(input.userAgent);
-  await colCreate(orgId, 'portalQrScans', stripUndefinedDeep({
-    qrCodeId: input.qrCodeId,
-    customerId: input.customerId,
-    propertyId: input.propertyId ?? null,
-    scannedAt: new Date(),
-    validationResult: input.validationResult,
-    authenticationResult: input.authenticationResult ?? null,
-    ...device,
-    userAgent: input.userAgent ?? null,
-    failureReason: input.failureReason ?? null,
-    diagnosticReference: input.diagnosticReference,
-  }));
+  await colCreate(
+    orgId,
+    'portalQrScans',
+    stripUndefinedDeep({
+      qrCodeId: input.qrCodeId,
+      customerId: input.customerId,
+      propertyId: input.propertyId ?? null,
+      scannedAt: new Date(),
+      validationResult: input.validationResult,
+      authenticationResult: input.authenticationResult ?? null,
+      ...device,
+      userAgent: input.userAgent ?? null,
+      failureReason: input.failureReason ?? null,
+      diagnosticReference: input.diagnosticReference,
+    }),
+  );
   await writeQrAudit(orgId, {
     customerId: input.customerId,
     propertyId: input.propertyId,
@@ -236,7 +272,10 @@ async function recordScan(
   });
 }
 
-export async function listPortalQrCodes(orgId: string, customerId: string): Promise<PortalQrCode[]> {
+export async function listPortalQrCodes(
+  orgId: string,
+  customerId: string,
+): Promise<PortalQrCode[]> {
   const rows = await colList<Record<string, unknown> & { id: string }>(orgId, 'portalQrCodes');
   return rows
     .filter((r) => r.customerId === customerId)
@@ -244,8 +283,15 @@ export async function listPortalQrCodes(orgId: string, customerId: string): Prom
     .sort((a, b) => (b.createdAt?.getTime?.() ?? 0) - (a.createdAt?.getTime?.() ?? 0));
 }
 
-export async function getPortalQrCode(orgId: string, qrCodeId: string): Promise<PortalQrCode | null> {
-  const raw = await colGet<Record<string, unknown> & { id: string }>(orgId, 'portalQrCodes', qrCodeId);
+export async function getPortalQrCode(
+  orgId: string,
+  qrCodeId: string,
+): Promise<PortalQrCode | null> {
+  const raw = await colGet<Record<string, unknown> & { id: string }>(
+    orgId,
+    'portalQrCodes',
+    qrCodeId,
+  );
   if (!raw) return null;
   return mapQr({ ...raw, organizationId: orgId });
 }
@@ -279,10 +325,10 @@ export async function generatePortalQrCode(
   }
 
   const type = input.type ?? 'customer_portal';
-  const accessMode = input.accessMode
-    ?? (type === 'customer_portal' ? 'activation' : 'authenticated_deep_link');
+  const accessMode =
+    input.accessMode ?? (type === 'customer_portal' ? 'activation' : 'authenticated_deep_link');
   const requireIdentityVerification = input.requireIdentityVerification ?? true;
-  const reusable = input.reusable ?? (accessMode !== 'activation');
+  const reusable = input.reusable ?? accessMode !== 'activation';
 
   if (accessMode === 'activation' && !input.replaceExistingActivation) {
     const existing = await listPortalQrCodes(orgId, input.customerId);
@@ -290,7 +336,9 @@ export async function generatePortalQrCode(
       (c) => c.accessMode === 'activation' && c.status === 'active' && !isExpired(c),
     );
     if (activeActivation) {
-      throw new Error('An active activation QR already exists. Replace it intentionally to create another.');
+      throw new Error(
+        'An active activation QR already exists. Replace it intentionally to create another.',
+      );
     }
   }
 
@@ -298,36 +346,42 @@ export async function generatePortalQrCode(
   const rawToken = createPortalQrRawToken();
   const tokenHash = hashPortalQrToken(rawToken);
 
-  const created = await colCreate(orgId, 'portalQrCodes', stripUndefinedDeep({
-    organizationId: orgId,
-    customerId: input.customerId,
-    propertyId: input.propertyId ?? null,
-    portalAccountId: account.id,
-    type,
-    targetRecordId: input.targetRecordId ?? null,
-    tokenHash,
-    tokenVersion: 1,
-    token: null,
-    status: 'active' as PortalQrCodeStatus,
-    accessMode,
-    reusable,
-    requireIdentityVerification,
-    expiresAt: input.expiresAt ?? null,
-    activatedAt: null,
-    revokedAt: null,
-    replacedByQrCodeId: null,
-    replacesId: null,
-    label: input.label ?? null,
-    internalDescription: input.internalDescription ?? null,
-    campaignId: null,
-    printTemplateId: null,
-    scanCount: 0,
-    failedVerificationCount: 0,
-    lastScannedAt: null,
-    createdBy: input.userId ?? null,
-  }));
+  const created = await colCreate(
+    orgId,
+    'portalQrCodes',
+    stripUndefinedDeep({
+      organizationId: orgId,
+      customerId: input.customerId,
+      propertyId: input.propertyId ?? null,
+      portalAccountId: account.id,
+      type,
+      targetRecordId: input.targetRecordId ?? null,
+      tokenHash,
+      tokenVersion: 1,
+      token: null,
+      status: 'active' as PortalQrCodeStatus,
+      accessMode,
+      reusable,
+      requireIdentityVerification,
+      expiresAt: input.expiresAt ?? null,
+      activatedAt: null,
+      revokedAt: null,
+      replacedByQrCodeId: null,
+      replacesId: null,
+      label: input.label ?? null,
+      internalDescription: input.internalDescription ?? null,
+      campaignId: null,
+      printTemplateId: null,
+      scanCount: 0,
+      failedVerificationCount: 0,
+      lastScannedAt: null,
+      createdBy: input.userId ?? null,
+    }),
+  );
 
-  const qr = mapQr({ ...created, organizationId: orgId } as Record<string, unknown> & { id: string });
+  const qr = mapQr({ ...created, organizationId: orgId } as Record<string, unknown> & {
+    id: string;
+  });
   await writeQrAudit(orgId, {
     customerId: input.customerId,
     propertyId: input.propertyId,
@@ -391,9 +445,10 @@ export async function replacePortalQrCode(
     targetRecordId: opts?.targetRecordId ?? previous.targetRecordId,
     label: opts?.label ?? previous.label ?? 'Replacement',
     internalDescription: opts?.internalDescription ?? previous.internalDescription,
-    expiresAt: opts?.expiresAt === undefined ? previous.expiresAt ?? null : opts.expiresAt,
+    expiresAt: opts?.expiresAt === undefined ? (previous.expiresAt ?? null) : opts.expiresAt,
     reusable: opts?.reusable ?? previous.reusable,
-    requireIdentityVerification: opts?.requireIdentityVerification ?? previous.requireIdentityVerification,
+    requireIdentityVerification:
+      opts?.requireIdentityVerification ?? previous.requireIdentityVerification,
     accessMode: opts?.accessMode ?? previous.accessMode,
     userId: opts?.userId,
     replaceExistingActivation: true,
@@ -431,7 +486,8 @@ export async function bulkGeneratePortalQrCodes(
   opts?: Omit<GeneratePortalQrInput, 'customerId'> & { replaceExistingActivation?: boolean },
 ) {
   const batchId = `batch_${Date.now().toString(36)}_${randomBytes(2).toString('hex')}`;
-  const created: Array<{ customerId: string; qrId: string; accessUrl: string; rawToken: string }> = [];
+  const created: Array<{ customerId: string; qrId: string; accessUrl: string; rawToken: string }> =
+    [];
   const errors: Array<{ customerId: string; message: string }> = [];
   for (const customerId of Array.from(new Set(customerIds.filter(Boolean)))) {
     try {
@@ -459,7 +515,11 @@ export async function listPortalQrScans(orgId: string, qrCodeId: string, limit =
   return rows
     .filter((r) => r.qrCodeId === qrCodeId)
     .map((r) => mapTimestampsFromData(r) as PortalQrScanEvent)
-    .sort((a, b) => (b.scannedAt?.getTime?.() ?? b.createdAt?.getTime?.() ?? 0) - (a.scannedAt?.getTime?.() ?? a.createdAt?.getTime?.() ?? 0))
+    .sort(
+      (a, b) =>
+        (b.scannedAt?.getTime?.() ?? b.createdAt?.getTime?.() ?? 0) -
+        (a.scannedAt?.getTime?.() ?? a.createdAt?.getTime?.() ?? 0),
+    )
     .slice(0, limit);
 }
 
@@ -508,7 +568,11 @@ export async function getPortalQrLanding(
   meta?: { userAgent?: string | null },
 ): Promise<PortalQrLandingPublic> {
   const diagnosticReference = diagnosticRef();
-  const brandingFallback = { companyName: 'Yuletide Lighting', brandColor: '#B91C1C', logoUrl: null as string | null };
+  const brandingFallback = {
+    companyName: 'Yuletide Lighting',
+    brandColor: '#B91C1C',
+    logoUrl: null as string | null,
+  };
 
   const found = await findQrByRawToken(rawToken);
   if (!found) {
@@ -579,7 +643,11 @@ export async function getPortalQrLanding(
     return blockedLanding(branding, support, diagnosticReference, validationResult);
   }
 
-  if (account?.status === 'suspended' || account?.status === 'locked' || account?.status === 'archived') {
+  if (
+    account?.status === 'suspended' ||
+    account?.status === 'locked' ||
+    account?.status === 'archived'
+  ) {
     await recordScan(orgId, {
       qrCodeId: qr.id,
       customerId: qr.customerId,
@@ -598,7 +666,9 @@ export async function getPortalQrLanding(
   });
 
   const portalActive = Boolean(
-    account?.portalEnabled && account.status === 'active' && (account.activatedAt || account.lastLoginAt),
+    account?.portalEnabled &&
+    account.status === 'active' &&
+    (account.activatedAt || account.lastLoginAt),
   );
 
   // Existing active portal users: sign-in flow — no PII before auth
@@ -661,7 +731,10 @@ export async function getPortalQrLanding(
     const prop = await colGet<{ addressLine1?: string }>(orgId, 'properties', qr.propertyId);
     maskedProperty = maskStreet(prop?.addressLine1);
   } else {
-    const props = await colList<{ customerId?: string; addressLine1?: string }>(orgId, 'properties');
+    const props = await colList<{ customerId?: string; addressLine1?: string }>(
+      orgId,
+      'properties',
+    );
     const first = props.find((p) => p.customerId === qr.customerId);
     maskedProperty = maskStreet(first?.addressLine1);
   }
@@ -704,50 +777,145 @@ export async function getPortalQrLanding(
 }
 
 function normalizeContact(value: string) {
-  return value.trim().toLowerCase().replace(/[\s()-]/g, '');
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s()-]/g, '');
+}
+
+function portalTimestampMillis(value: unknown): number | null {
+  if (value instanceof Date) return value.getTime();
+  if (value && typeof value === 'object' && 'toDate' in value) {
+    return (value as { toDate: () => Date }).toDate().getTime();
+  }
+  if (value && typeof value === 'object' && '_seconds' in value) {
+    return Number((value as { _seconds: number })._seconds) * 1000;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const millis = new Date(value).getTime();
+    return Number.isFinite(millis) ? millis : null;
+  }
+  return null;
 }
 
 function otpHash(code: string) {
-  return createHash('sha256').update(code, 'utf8').digest('hex');
+  return hashPortalSecret(code.trim(), 'portal-otp');
 }
 
 function safeEqualHex(a: string, b: string) {
-  try {
-    const ba = Buffer.from(a, 'hex');
-    const bb = Buffer.from(b, 'hex');
-    if (ba.length !== bb.length) return false;
-    return timingSafeEqual(ba, bb);
-  } catch {
-    return false;
-  }
+  return timingSafeEqualHex(a, b);
+}
+
+type PortalQrOtpRecord = {
+  id: string;
+  codeHash: string;
+  attempts: number;
+  createdAt: Date;
+  expiresAt: Date;
+  consumedAt?: Date | null;
+  purpose?: string | null;
+};
+
+async function listPortalQrOtps(orgId: string, qrCodeId: string): Promise<PortalQrOtpRecord[]> {
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(`organizations/${orgId}/portalQrVerifications`)
+    .where('qrCodeId', '==', qrCodeId)
+    .get();
+  return snap.docs.map(
+    (doc) => mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as PortalQrOtpRecord,
+  );
+}
+
+/** Invalidate every outstanding OTP for a QR before issuing a replacement. */
+export async function invalidateOpenQrOtps(orgId: string, qrCodeId: string): Promise<number> {
+  const open = (await listPortalQrOtps(orgId, qrCodeId)).filter((otp) => !otp.consumedAt);
+  if (!open.length) return 0;
+  const consumedAt = new Date();
+  await Promise.all(
+    open.map((otp) =>
+      colUpdate(orgId, 'portalQrVerifications', otp.id, {
+        consumedAt,
+      }),
+    ),
+  );
+  return open.length;
 }
 
 export async function sendPortalQrVerificationCode(
   rawToken: string,
   input: { channel: 'email' | 'sms'; contact: string; userAgent?: string | null },
-): Promise<{ sent: boolean; maskedDestination: string; diagnosticReference: string; reason?: string }> {
+): Promise<{
+  sent: boolean;
+  maskedDestination: string;
+  diagnosticReference: string;
+  reason?: string;
+}> {
   const diagnosticReference = diagnosticRef();
+  const config = getPortalSecurityConfig();
+  const provided = normalizeContact(input.contact);
+  const tokenHashPrefix = hashPortalQrToken(rawToken).slice(0, 16);
+  const tokenLimit = consumePortalRateLimit(
+    portalRateLimitKey(['otp-req', 'ip-or-token', tokenHashPrefix]),
+  );
+  if (!tokenLimit.allowed) {
+    return {
+      sent: false,
+      maskedDestination: '',
+      diagnosticReference,
+      reason: PORTAL_PUBLIC_MESSAGES.verificationSent,
+    };
+  }
+
   const found = await findQrByRawToken(rawToken);
   if (!found) {
-    return { sent: false, maskedDestination: '', diagnosticReference, reason: GENERIC_BLOCK_MESSAGE };
+    return {
+      sent: false,
+      maskedDestination: '',
+      diagnosticReference,
+      reason: PORTAL_PUBLIC_MESSAGES.verificationSent,
+    };
   }
   const { orgId, qr } = found;
+
+  const requestLimits = [
+    consumePortalRateLimit(portalRateLimitKey(['otp-req', 'qr', qr.id])),
+    consumePortalRateLimit(portalRateLimitKey(['otp-req', 'contact', provided])),
+  ];
+  if (requestLimits.some((limit) => !limit.allowed)) {
+    return {
+      sent: false,
+      maskedDestination: '',
+      diagnosticReference,
+      reason: PORTAL_PUBLIC_MESSAGES.verificationSent,
+    };
+  }
+
   if (isInactiveStatus(qr.status) || isExpired(qr)) {
-    return { sent: false, maskedDestination: '', diagnosticReference, reason: GENERIC_BLOCK_MESSAGE };
+    return {
+      sent: false,
+      maskedDestination: '',
+      diagnosticReference,
+      reason: PORTAL_PUBLIC_MESSAGES.verificationSent,
+    };
   }
 
   const customer = await colGet<CustomerRecord>(orgId, 'customers', qr.customerId);
   if (!customer) {
-    return { sent: false, maskedDestination: '', diagnosticReference, reason: GENERIC_BLOCK_MESSAGE };
+    return {
+      sent: false,
+      maskedDestination: '',
+      diagnosticReference,
+      reason: PORTAL_PUBLIC_MESSAGES.verificationSent,
+    };
   }
 
-  const provided = normalizeContact(input.contact);
-  const emailOk = input.channel === 'email'
-    && customer.email
-    && normalizeContact(customer.email) === provided;
-  const phoneOk = input.channel === 'sms'
-    && customer.phone
-    && normalizeContact(customer.phone).endsWith(provided.slice(-10));
+  const emailOk =
+    input.channel === 'email' && customer.email && normalizeContact(customer.email) === provided;
+  const phoneOk =
+    input.channel === 'sms' &&
+    customer.phone &&
+    normalizeContact(customer.phone).endsWith(provided.slice(-10));
 
   if (!emailOk && !phoneOk) {
     await colUpdate(orgId, 'portalQrCodes', qr.id, {
@@ -770,21 +938,51 @@ export async function sendPortalQrVerificationCode(
       failureReason: 'contact_mismatch',
     });
     // Same generic message — do not reveal whether the account exists / contact is wrong
-    return { sent: false, maskedDestination: '', diagnosticReference, reason: 'Could not send a code for that contact. Check the email or phone on your account.' };
+    return {
+      sent: false,
+      maskedDestination: '',
+      diagnosticReference,
+      reason: PORTAL_PUBLIC_MESSAGES.verificationSent,
+    };
   }
 
-  if ((qr.failedVerificationCount ?? 0) >= MAX_OTP_ATTEMPTS * 3) {
-    return { sent: false, maskedDestination: '', diagnosticReference, reason: 'Too many attempts. Contact support.' };
+  if ((qr.failedVerificationCount ?? 0) >= config.otpMaxAttempts * 3) {
+    return {
+      sent: false,
+      maskedDestination: '',
+      diagnosticReference,
+      reason: PORTAL_PUBLIC_MESSAGES.verificationSent,
+    };
   }
 
-  const code = String(100000 + (randomBytes(3).readUIntBE(0, 3) % 900000));
+  const previousOtps = await listPortalQrOtps(orgId, qr.id);
+  const latestCreatedAt = previousOtps
+    .map((otp) => portalTimestampMillis(otp.createdAt))
+    .filter((createdAt): createdAt is number => createdAt != null)
+    .sort((a, b) => b - a)[0];
+  if (
+    latestCreatedAt != null &&
+    Date.now() - latestCreatedAt < config.otpResendCooldownSeconds * 1000
+  ) {
+    return {
+      sent: false,
+      maskedDestination: '',
+      diagnosticReference,
+      reason: PORTAL_PUBLIC_MESSAGES.verificationSent,
+    };
+  }
+
+  await invalidateOpenQrOtps(orgId, qr.id);
+
+  const code = createPortalOtpCode(config.otpLength);
   await colCreate(orgId, 'portalQrVerifications', {
     qrCodeId: qr.id,
     customerId: qr.customerId,
+    purpose: 'portal_access',
     channel: input.channel,
     codeHash: otpHash(code),
     attempts: 0,
-    expiresAt: new Date(Date.now() + OTP_TTL_MS),
+    expiresAt: new Date(Date.now() + portalOtpTtlMs(config)),
     consumedAt: null,
   });
 
@@ -797,13 +995,27 @@ export async function sendPortalQrVerificationCode(
 
   const branding = await getBrandingForCustomerFacing(orgId);
   let sent = false;
-  let reason: string | undefined;
+  const deliveryProvider = getPortalDeliveryProvider();
 
-  if (input.channel === 'email') {
+  if (deliveryProvider.name === 'emulator') {
+    // Emulator adapter captures the OTP for tests without logging or contacting external services.
+    const delivery = await deliveryProvider.sendOtp({
+      purpose: 'portal_access',
+      channel: input.channel,
+      to: input.channel === 'email' ? customer.email! : customer.phone!,
+      otp: code,
+      organizationId: orgId,
+      diagnosticReference,
+    });
+    sent = delivery.delivered;
+  } else if (deliveryProvider.name === 'live-disabled-s3') {
+    // S3 is emulator-only. Fail closed without contacting Resend or Twilio.
+    sent = false;
+  } else if (input.channel === 'email') {
     const apiKey = process.env.RESEND_API_KEY;
     const from = process.env.RESEND_FROM_EMAIL;
     if (!apiKey || !from) {
-      reason = 'Email delivery is not configured';
+      sent = false;
     } else {
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -815,26 +1027,32 @@ export async function sendPortalQrVerificationCode(
           from,
           to: customer.email,
           subject: `${branding.companyName} — portal verification code`,
-          text: `Your verification code is ${code}. It expires in 10 minutes.\n\nIf you did not request this, ignore this email.`,
+          text: `Your verification code is ${code}. It expires in ${config.otpTtlMinutes} minutes.\n\nIf you did not request this, ignore this email.`,
         }),
       });
       sent = res.ok;
-      if (!sent) reason = 'Email send failed';
-      else await writeQrAudit(orgId, { customerId: qr.customerId, qrCodeId: qr.id, action: 'emailed', reason: 'otp' });
+      if (sent)
+        await writeQrAudit(orgId, {
+          customerId: qr.customerId,
+          qrCodeId: qr.id,
+          action: 'emailed',
+          reason: 'otp',
+        });
     }
   } else {
     // SMS via Twilio env if present
     const sid = process.env.TWILIO_ACCOUNT_SID;
     const auth = process.env.TWILIO_AUTH_TOKEN;
-    const fromPhone = process.env.TWILIO_FROM_NUMBER
-      || (await getOrganization(orgId) as { twilioPhoneNumber?: string } | null)?.twilioPhoneNumber;
+    const fromPhone =
+      process.env.TWILIO_FROM_NUMBER ||
+      ((await getOrganization(orgId)) as { twilioPhoneNumber?: string } | null)?.twilioPhoneNumber;
     if (!sid || !auth || !fromPhone || !customer.phone) {
-      reason = 'SMS delivery is not configured';
+      sent = false;
     } else {
       const body = new URLSearchParams({
         To: customer.phone,
         From: fromPhone,
-        Body: `${branding.companyName} portal code: ${code}. Expires in 10 minutes.`,
+        Body: `${branding.companyName} portal code: ${code}. Expires in ${config.otpTtlMinutes} minutes.`,
       });
       const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
         method: 'POST',
@@ -845,17 +1063,25 @@ export async function sendPortalQrVerificationCode(
         body,
       });
       sent = res.ok;
-      if (!sent) reason = 'SMS send failed';
-      else await writeQrAudit(orgId, { customerId: qr.customerId, qrCodeId: qr.id, action: 'sms_sent', reason: 'otp' });
+      if (sent)
+        await writeQrAudit(orgId, {
+          customerId: qr.customerId,
+          qrCodeId: qr.id,
+          action: 'sms_sent',
+          reason: 'otp',
+        });
     }
   }
 
-  // Dev fallback: when delivery is not configured, still create verification (staff can use logs). Never return raw code.
+  // Never return the raw OTP or delivery configuration details.
   return {
     sent,
-    maskedDestination: input.channel === 'email' ? (maskEmail(customer.email) ?? '') : (maskPhone(customer.phone) ?? ''),
+    maskedDestination:
+      input.channel === 'email'
+        ? (maskEmail(customer.email) ?? '')
+        : (maskPhone(customer.phone) ?? ''),
     diagnosticReference,
-    reason: sent ? undefined : reason,
+    reason: sent ? undefined : PORTAL_PUBLIC_MESSAGES.verificationSent,
   };
 }
 
@@ -864,40 +1090,48 @@ export async function verifyPortalQrCodeAndActivate(
   input: { code: string; acceptTerms: boolean; userAgent?: string | null },
 ): Promise<{ portalUrl: string; activated: boolean; deepLinkPath?: string | null }> {
   if (!input.acceptTerms) throw new Error('You must accept the portal terms to continue.');
+  const config = getPortalSecurityConfig();
   const diagnosticReference = diagnosticRef();
   const found = await findQrByRawToken(rawToken);
-  if (!found) throw new Error(GENERIC_BLOCK_MESSAGE);
+  if (!found) throw new Error(PORTAL_PUBLIC_MESSAGES.accessUnavailable);
   const { orgId, qr } = found;
 
-  if (isInactiveStatus(qr.status) || isExpired(qr)) throw new Error(GENERIC_BLOCK_MESSAGE);
+  if (isInactiveStatus(qr.status) || isExpired(qr)) {
+    throw new Error(PORTAL_PUBLIC_MESSAGES.accessUnavailable);
+  }
 
-  const db = getAdminFirestore();
-  const snap = await db
-    .collection(`organizations/${orgId}/portalQrVerifications`)
-    .where('qrCodeId', '==', qr.id)
-    .get();
-
-  const candidates = snap.docs
-    .map((d) => mapTimestampsFromData({ id: d.id, ...d.data()! }) as {
-      id: string;
-      codeHash: string;
-      attempts: number;
-      expiresAt: Date;
-      consumedAt?: Date | null;
-    })
-    .filter((v) => !v.consumedAt && v.expiresAt.getTime() > Date.now())
+  const candidates = (await listPortalQrOtps(orgId, qr.id))
+    .filter(
+      (verification) =>
+        !verification.consumedAt &&
+        verification.expiresAt.getTime() > Date.now() &&
+        (verification.purpose === undefined || verification.purpose === 'portal_access'),
+    )
     .sort((a, b) => b.expiresAt.getTime() - a.expiresAt.getTime());
 
   const latest = candidates[0];
-  if (!latest) throw new Error('Verification code expired. Request a new code.');
+  if (!latest) throw new Error(PORTAL_PUBLIC_MESSAGES.accessUnavailable);
 
-  if ((latest.attempts ?? 0) >= MAX_OTP_ATTEMPTS) {
-    throw new Error('Too many attempts. Request a new code.');
+  if ((latest.attempts ?? 0) >= config.otpMaxAttempts) {
+    await colUpdate(orgId, 'portalQrVerifications', latest.id, {
+      consumedAt: new Date(),
+    });
+    await writeQrAudit(orgId, {
+      customerId: qr.customerId,
+      qrCodeId: qr.id,
+      action: 'verification_failed',
+      reason: 'max_attempts',
+    });
+    throw new Error(PORTAL_PUBLIC_MESSAGES.accessUnavailable);
   }
 
   const ok = safeEqualHex(latest.codeHash, otpHash(input.code.trim()));
   if (!ok) {
-    await colUpdate(orgId, 'portalQrVerifications', latest.id, { attempts: (latest.attempts ?? 0) + 1 });
+    const attempts = (latest.attempts ?? 0) + 1;
+    await colUpdate(orgId, 'portalQrVerifications', latest.id, {
+      attempts,
+      consumedAt: attempts >= config.otpMaxAttempts ? new Date() : null,
+    });
     await colUpdate(orgId, 'portalQrCodes', qr.id, {
       failedVerificationCount: (qr.failedVerificationCount ?? 0) + 1,
     });
@@ -905,7 +1139,7 @@ export async function verifyPortalQrCodeAndActivate(
       customerId: qr.customerId,
       qrCodeId: qr.id,
       action: 'verification_failed',
-      reason: 'bad_code',
+      reason: attempts >= config.otpMaxAttempts ? 'max_attempts' : 'bad_code',
     });
     await recordScan(orgId, {
       qrCodeId: qr.id,
@@ -915,9 +1149,9 @@ export async function verifyPortalQrCodeAndActivate(
       authenticationResult: 'verification_failed',
       userAgent: input.userAgent,
       diagnosticReference,
-      failureReason: 'bad_code',
+      failureReason: attempts >= config.otpMaxAttempts ? 'max_attempts' : 'bad_code',
     });
-    throw new Error('Incorrect verification code.');
+    throw new Error(PORTAL_PUBLIC_MESSAGES.accessUnavailable);
   }
 
   await colUpdate(orgId, 'portalQrVerifications', latest.id, { consumedAt: new Date() });
@@ -940,11 +1174,16 @@ export async function verifyPortalQrCodeAndActivate(
 
   const now = new Date();
   const nextStatus: PortalQrCodeStatus = qr.reusable ? 'reusable' : 'used_for_activation';
-  await colUpdate(orgId, 'portalQrCodes', qr.id, stripUndefinedDeep({
-    activatedAt: qr.activatedAt ?? now,
-    status: nextStatus,
-    lastScannedAt: now,
-  }));
+  await colUpdate(
+    orgId,
+    'portalQrCodes',
+    qr.id,
+    stripUndefinedDeep({
+      activatedAt: qr.activatedAt ?? now,
+      status: nextStatus,
+      lastScannedAt: now,
+    }),
+  );
 
   await writeQrAudit(orgId, {
     customerId: qr.customerId,
@@ -1015,7 +1254,8 @@ export async function getStaffPortalQrView(orgId: string, customerId: string) {
     getPortalAccountByCustomer(orgId, customerId),
     colGet<CustomerRecord>(orgId, 'customers', customerId),
   ]);
-  const active = codes.find((c) => (c.status === 'active' || c.status === 'reusable') && !isExpired(c)) ?? null;
+  const active =
+    codes.find((c) => (c.status === 'active' || c.status === 'reusable') && !isExpired(c)) ?? null;
 
   return {
     account,
@@ -1073,7 +1313,10 @@ export const portalQrTestUtils = {
   parseDevice,
 };
 
-export async function listOrgPortalQrCodes(orgId: string, opts?: { status?: PortalQrCodeStatus | 'all'; limit?: number }) {
+export async function listOrgPortalQrCodes(
+  orgId: string,
+  opts?: { status?: PortalQrCodeStatus | 'all'; limit?: number },
+) {
   const rows = await colList<Record<string, unknown> & { id: string }>(orgId, 'portalQrCodes');
   let codes = rows.map((r) => mapQr({ ...r, organizationId: orgId }));
   if (opts?.status && opts.status !== 'all') {
@@ -1121,9 +1364,13 @@ export async function getPortalQrAnalytics(orgId: string) {
   const mapped = codes.map((r) => mapQr({ ...r, organizationId: orgId }));
   const scanRows = scans.map((r) => mapTimestampsFromData(r) as PortalQrScanEvent);
 
-  const active = mapped.filter((c) => (c.status === 'active' || c.status === 'reusable') && !isExpired(c)).length;
+  const active = mapped.filter(
+    (c) => (c.status === 'active' || c.status === 'reusable') && !isExpired(c),
+  ).length;
   const expired = mapped.filter((c) => c.status === 'expired' || isExpired(c)).length;
-  const revoked = mapped.filter((c) => c.status === 'revoked' || c.status === 'replaced' || c.status === 'suspended').length;
+  const revoked = mapped.filter(
+    (c) => c.status === 'revoked' || c.status === 'replaced' || c.status === 'suspended',
+  ).length;
   const activations = mapped.filter((c) => !!c.activatedAt).length;
   const failedVerifications = mapped.reduce((sum, c) => sum + (c.failedVerificationCount ?? 0), 0);
 

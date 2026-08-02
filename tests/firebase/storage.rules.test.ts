@@ -5,14 +5,7 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import { ref, uploadBytes, getBytes } from 'firebase/storage';
-import {
-  ORG_A,
-  ORG_B,
-  bytesOfSize,
-  createRulesTestEnv,
-  seedUsers,
-  tinyJpegBytes,
-} from './helpers';
+import { ORG_A, ORG_B, bytesOfSize, createRulesTestEnv, seedUsers, tinyJpegBytes } from './helpers';
 
 const FIFTEEN_MB = 15 * 1024 * 1024;
 
@@ -100,5 +93,32 @@ describe('storage.rules', () => {
       }),
     );
     await assertSucceeds(getBytes(ref(storage, `organizations/${ORG_A}/docs/existing.jpg`)));
+  });
+
+  it('denies portal customer auth without staff users doc (P2-S5)', async () => {
+    // Authenticated Firebase user with no staff users/{uid} document — portal customers.
+    const storage = testEnv.authenticatedContext('portalCustomerA1').storage();
+    await assertFails(getBytes(ref(storage, `organizations/${ORG_A}/docs/existing.jpg`)));
+    await assertFails(
+      uploadBytes(ref(storage, `organizations/${ORG_A}/portal-service/c1/x.jpg`), tinyJpegBytes(), {
+        contentType: 'image/jpeg',
+      }),
+    );
+  });
+
+  it('denies non-staff role even with matching organizationId (P2-S5)', async () => {
+    await seedUsers(testEnv, [
+      { uid: 'customerUserA', organizationId: ORG_A, role: 'customer', status: 'active' },
+    ]);
+    const storage = testEnv.authenticatedContext('portalUserA').storage();
+    await assertFails(getBytes(ref(storage, `organizations/${ORG_A}/docs/existing.jpg`)));
+  });
+
+  it('denies suspended staff status (P2-S5)', async () => {
+    await seedUsers(testEnv, [
+      { uid: 'suspendedStaff', organizationId: ORG_A, role: 'office', status: 'suspended' },
+    ]);
+    const storage = testEnv.authenticatedContext('suspendedStaff').storage();
+    await assertFails(getBytes(ref(storage, `organizations/${ORG_A}/docs/existing.jpg`)));
   });
 });

@@ -1,4 +1,5 @@
-import { colCreate, colDelete, colList } from './firestore';
+import { getAdminFirestore } from './admin';
+import { colCreate, colDelete } from './firestore';
 import { mapTimestampsFromData } from './firestore-utils';
 
 export type CustomerDocumentCategory =
@@ -19,12 +20,18 @@ export type CustomerDocument360 = {
   notes: string | null;
   relatedRecordType: string | null;
   relatedRecordId: string | null;
+  /** Portal visibility classification (P2-S5). Unknown/missing treated as customer_visible for legacy. */
+  visibility?: 'customer_visible' | 'staff_only' | 'internal' | 'system' | string | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
 };
 
-function normalizeDocument(raw: Record<string, unknown>, orgId: string, id: string): CustomerDocument360 {
+function normalizeDocument(
+  raw: Record<string, unknown>,
+  orgId: string,
+  id: string,
+): CustomerDocument360 {
   const mapped = mapTimestampsFromData({ id, ...raw }) as Record<string, unknown>;
   return {
     id,
@@ -36,6 +43,7 @@ function normalizeDocument(raw: Record<string, unknown>, orgId: string, id: stri
     notes: (mapped.notes as string) ?? null,
     relatedRecordType: (mapped.relatedRecordType as string) ?? null,
     relatedRecordId: (mapped.relatedRecordId as string) ?? null,
+    visibility: (mapped.visibility as string) ?? null,
     createdAt: mapped.createdAt instanceof Date ? mapped.createdAt : new Date(),
     updatedAt: mapped.updatedAt instanceof Date ? mapped.updatedAt : new Date(),
     createdBy: (mapped.createdBy as string) ?? null,
@@ -46,10 +54,14 @@ export async function listCustomerDocuments360(
   orgId: string,
   customerId: string,
 ): Promise<CustomerDocument360[]> {
-  const rows = await colList<Record<string, unknown>>(orgId, 'customerDocuments');
-  return rows
-    .filter((row) => row.customerId === customerId)
-    .map((row) => normalizeDocument(row, orgId, String(row.id)))
+  if (!orgId || !customerId) return [];
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(`organizations/${orgId}/customerDocuments`)
+    .where('customerId', '==', customerId)
+    .get();
+  return snap.docs
+    .map((d) => normalizeDocument({ id: d.id, ...d.data() }, orgId, d.id))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 

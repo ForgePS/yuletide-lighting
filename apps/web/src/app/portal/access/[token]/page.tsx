@@ -5,11 +5,14 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { LoadingState } from '@/components/ui/states';
+import { establishPortalSessionCookie } from '@/lib/portal-session-client';
 
 export default function PortalQrAccessPage() {
   const token = useParams().token as string;
   const router = useRouter();
-  const [ua] = useState(() => (typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 500) : undefined));
+  const [ua] = useState(() =>
+    typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 500) : undefined,
+  );
   const [channel, setChannel] = useState<'email' | 'sms'>('email');
   const [contact, setContact] = useState('');
   const [code, setCode] = useState('');
@@ -36,16 +39,32 @@ export default function PortalQrAccessPage() {
 
   const verify = trpc.portal360.public.qrVerify.useMutation({
     onSuccess: (res) => {
-      if (res.deepLinkPath) {
-        router.replace(res.deepLinkPath);
-        return;
-      }
-      try {
-        const u = new URL(res.portalUrl);
-        router.replace(`${u.pathname}${u.search}${u.hash}`);
-      } catch {
-        window.location.assign(res.portalUrl);
-      }
+      void (async () => {
+        try {
+          const u = new URL(res.portalUrl, window.location.origin);
+          const segments = u.pathname.split('/').filter(Boolean);
+          const portalIdx = segments.indexOf('portal');
+          const accessToken =
+            portalIdx >= 0 && segments[portalIdx + 1] && segments[portalIdx + 1] !== 'access'
+              ? segments[portalIdx + 1]
+              : null;
+          if (accessToken && accessToken.length >= 8) {
+            await establishPortalSessionCookie(accessToken);
+          }
+        } catch {
+          // Session cookie is best-effort; magic URL still works.
+        }
+        if (res.deepLinkPath) {
+          router.replace(res.deepLinkPath);
+          return;
+        }
+        try {
+          const u = new URL(res.portalUrl, window.location.origin);
+          router.replace(`${u.pathname}${u.search}${u.hash}`);
+        } catch {
+          window.location.assign(res.portalUrl);
+        }
+      })();
     },
     onError: (e) => setHint(e.message),
   });
@@ -93,20 +112,28 @@ export default function PortalQrAccessPage() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={data.logoUrl} alt="" className="mx-auto mb-4 h-12 w-auto object-contain" />
           ) : null}
-          <p className="text-center text-xs font-medium uppercase tracking-wide text-stone-500">Customer portal</p>
-          <h1 className="mt-2 text-center text-2xl font-bold" style={{ color }}>{data.companyName}</h1>
+          <p className="text-center text-xs font-medium uppercase tracking-wide text-stone-500">
+            Customer portal
+          </p>
+          <h1 className="mt-2 text-center text-2xl font-bold" style={{ color }}>
+            {data.companyName}
+          </h1>
 
           {data.flow === 'activation' && (
             <>
-              <p className="mt-6 text-center text-base text-stone-800">Welcome to your customer portal</p>
+              <p className="mt-6 text-center text-base text-stone-800">
+                Welcome to your customer portal
+              </p>
               {data.maskedAccountName && (
                 <p className="mt-3 text-center text-sm text-stone-600">
-                  Account: <span className="font-medium text-stone-900">{data.maskedAccountName}</span>
+                  Account:{' '}
+                  <span className="font-medium text-stone-900">{data.maskedAccountName}</span>
                 </p>
               )}
               {data.maskedProperty && (
                 <p className="mt-1 text-center text-sm text-stone-600">
-                  Property: <span className="font-medium text-stone-900">{data.maskedProperty}</span>
+                  Property:{' '}
+                  <span className="font-medium text-stone-900">{data.maskedProperty}</span>
                 </p>
               )}
               <p className="mt-4 text-center text-sm text-stone-500">{data.message}</p>
@@ -115,7 +142,8 @@ export default function PortalQrAccessPage() {
 
           {data.flow === 'sign_in' && (
             <p className="mt-6 text-center text-sm text-stone-600">
-              {data.message || 'Sign in with the email or phone on your account to continue. This QR code does not keep you signed in permanently.'}
+              {data.message ||
+                'Sign in with the email or phone on your account to continue. This QR code does not keep you signed in permanently.'}
             </p>
           )}
 
@@ -149,7 +177,9 @@ export default function PortalQrAccessPage() {
                 </button>
               </div>
               <label className="block text-sm">
-                <span className="font-medium">{channel === 'email' ? 'Email on file' : 'Phone on file'}</span>
+                <span className="font-medium">
+                  {channel === 'email' ? 'Email on file' : 'Phone on file'}
+                </span>
                 <input
                   className="input mt-1 w-full min-h-11 text-base"
                   value={contact}
@@ -160,7 +190,12 @@ export default function PortalQrAccessPage() {
                   placeholder={channel === 'email' ? 'name@example.com' : '(555) 555-5555'}
                 />
               </label>
-              <button type="submit" className="btn-primary w-full min-h-12 text-base" style={{ backgroundColor: color }} disabled={sendCode.isPending}>
+              <button
+                type="submit"
+                className="btn-primary w-full min-h-12 text-base"
+                style={{ backgroundColor: color }}
+                disabled={sendCode.isPending}
+              >
                 {sendCode.isPending ? 'Sending…' : 'Send verification code'}
               </button>
             </form>
@@ -193,12 +228,23 @@ export default function PortalQrAccessPage() {
                   onChange={(e) => setAcceptTerms(e.target.checked)}
                   required
                 />
-                <span>I accept the customer portal terms and confirm I am authorized for this account.</span>
+                <span>
+                  I accept the customer portal terms and confirm I am authorized for this account.
+                </span>
               </label>
-              <button type="submit" className="btn-primary w-full min-h-12 text-base" style={{ backgroundColor: color }} disabled={verify.isPending || !acceptTerms}>
+              <button
+                type="submit"
+                className="btn-primary w-full min-h-12 text-base"
+                style={{ backgroundColor: color }}
+                disabled={verify.isPending || !acceptTerms}
+              >
                 {verify.isPending ? 'Verifying…' : 'Verify & open portal'}
               </button>
-              <button type="button" className="w-full text-sm text-primary hover:underline" onClick={() => setStep('landing')}>
+              <button
+                type="button"
+                className="w-full text-sm text-primary hover:underline"
+                onClick={() => setStep('landing')}
+              >
                 Use a different email or phone
               </button>
             </form>
@@ -207,7 +253,8 @@ export default function PortalQrAccessPage() {
           {hint && <p className="mt-4 text-center text-sm text-stone-600">{hint}</p>}
 
           <p className="mt-6 text-center text-[11px] text-stone-400">
-            Ref {data.diagnosticReference}. QR codes identify your account and start access — they are not a permanent login.
+            Ref {data.diagnosticReference}. QR codes identify your account and start access — they
+            are not a permanent login.
           </p>
         </div>
       </div>
@@ -239,7 +286,9 @@ function BlockedCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={logoUrl} alt="" className="mx-auto mb-4 h-10 w-auto object-contain" />
         ) : null}
-        <h1 className="text-xl font-bold" style={{ color: brandColor }}>{companyName}</h1>
+        <h1 className="text-xl font-bold" style={{ color: brandColor }}>
+          {companyName}
+        </h1>
         <p className="mt-4 text-sm text-stone-700">{message}</p>
         {(supportPhone || supportEmail) && (
           <p className="mt-4 text-sm text-stone-600">
@@ -247,8 +296,15 @@ function BlockedCard({
             {supportEmail && <span className="block">{supportEmail}</span>}
           </p>
         )}
-        <Link href="/portal/login" className="mt-6 inline-block text-sm text-primary hover:underline">Return to sign-in</Link>
-        <p className="mt-4 text-[11px] text-stone-400">Diagnostic reference: {diagnosticReference}</p>
+        <Link
+          href="/portal/login"
+          className="mt-6 inline-block text-sm text-primary hover:underline"
+        >
+          Return to sign-in
+        </Link>
+        <p className="mt-4 text-[11px] text-stone-400">
+          Diagnostic reference: {diagnosticReference}
+        </p>
       </div>
     </div>
   );

@@ -23,7 +23,11 @@ function itemsPath(orgId: string, recordId: string) {
   return `${recordPath(orgId, recordId)}/items`;
 }
 
-function normalizeRecord(raw: Record<string, unknown>, orgId: string, recordId: string): StorageRecord {
+function normalizeRecord(
+  raw: Record<string, unknown>,
+  orgId: string,
+  recordId: string,
+): StorageRecord {
   return {
     id: recordId,
     organizationId: orgId,
@@ -36,8 +40,18 @@ function normalizeRecord(raw: Record<string, unknown>, orgId: string, recordId: 
     rack: (raw.rack as string) ?? null,
     shelf: (raw.shelf as string) ?? null,
     status: (raw.status as StorageRecord['status']) ?? 'stored',
-    storedAt: raw.storedAt instanceof Date ? raw.storedAt : raw.storedAt ? new Date(String(raw.storedAt)) : new Date(),
-    pulledAt: raw.pulledAt instanceof Date ? raw.pulledAt : raw.pulledAt ? new Date(String(raw.pulledAt)) : null,
+    storedAt:
+      raw.storedAt instanceof Date
+        ? raw.storedAt
+        : raw.storedAt
+          ? new Date(String(raw.storedAt))
+          : new Date(),
+    pulledAt:
+      raw.pulledAt instanceof Date
+        ? raw.pulledAt
+        : raw.pulledAt
+          ? new Date(String(raw.pulledAt))
+          : null,
     conditionNotes: (raw.conditionNotes as string) ?? null,
     photos: Array.isArray(raw.photos) ? (raw.photos as string[]) : [],
     storageFeeCents: raw.storageFeeCents != null ? Number(raw.storageFeeCents) : null,
@@ -75,28 +89,51 @@ async function listItems(orgId: string, recordId: string): Promise<StoredItem[]>
   return snap.docs.map((d) => normalizeItem({ ...d.data(), id: d.id }, recordId, d.id));
 }
 
-export async function listStorageRecords(orgId: string, customerId?: string): Promise<StorageRecordWithCustomer[]> {
-  const rows = await colList<Record<string, unknown>>(orgId, 'storageRecords');
-  const filtered = customerId ? rows.filter((r) => r.customerId === customerId) : rows;
-  const customers = await colList<{ id: string; firstName: string; lastName: string; businessName?: string | null }>(
-    orgId,
-    'customers',
-  );
-  const properties = await colList<{ id: string; addressLine1: string; city: string; state: string }>(orgId, 'properties');
+export async function listStorageRecords(
+  orgId: string,
+  customerId?: string,
+): Promise<StorageRecordWithCustomer[]> {
+  const db = getAdminFirestore();
+  // Portal / customer-scoped path: query by customerId (never scan org then filter).
+  // Staff list without customerId still uses limited org collection read.
+  let rows: Record<string, unknown>[];
+  if (customerId) {
+    const snap = await db
+      .collection(`organizations/${orgId}/storageRecords`)
+      .where('customerId', '==', customerId)
+      .get();
+    rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } else {
+    rows = await colList<Record<string, unknown>>(orgId, 'storageRecords');
+  }
 
   const enriched = await Promise.all(
-    filtered.map(async (raw) => {
+    rows.map(async (raw) => {
       const record = normalizeRecord(raw, orgId, String(raw.id));
-      const customer = customers.find((c) => c.id === record.customerId);
+      const customer = record.customerId
+        ? await colGet<{ firstName: string; lastName: string; businessName?: string | null }>(
+            orgId,
+            'customers',
+            record.customerId,
+          )
+        : null;
       const customerName = customer
         ? customer.businessName || `${customer.firstName} ${customer.lastName}`.trim()
         : 'Customer';
-      const property = record.propertyId ? properties.find((p) => p.id === record.propertyId) : null;
+      const property = record.propertyId
+        ? await colGet<{ addressLine1: string; city: string; state: string }>(
+            orgId,
+            'properties',
+            record.propertyId,
+          )
+        : null;
       const items = await listItems(orgId, record.id);
       return {
         ...record,
         customerName,
-        propertyAddress: property ? `${property.addressLine1}, ${property.city} ${property.state}` : null,
+        propertyAddress: property
+          ? `${property.addressLine1}, ${property.city} ${property.state}`
+          : null,
         itemCount: items.length,
       };
     }),
@@ -111,16 +148,28 @@ export async function getStorageRecord(orgId: string, recordId: string) {
   const record = normalizeRecord({ ...raw, id: recordId }, orgId, recordId);
   const items = await listItems(orgId, recordId);
   const customer = record.customerId
-    ? await colGet<{ firstName: string; lastName: string; businessName?: string | null }>(orgId, 'customers', record.customerId)
+    ? await colGet<{ firstName: string; lastName: string; businessName?: string | null }>(
+        orgId,
+        'customers',
+        record.customerId,
+      )
     : null;
   const property = record.propertyId
-    ? await colGet<{ addressLine1: string; city: string; state: string }>(orgId, 'properties', record.propertyId)
+    ? await colGet<{ addressLine1: string; city: string; state: string }>(
+        orgId,
+        'properties',
+        record.propertyId,
+      )
     : null;
   return {
     record,
     items,
-    customerName: customer ? customer.businessName || `${customer.firstName} ${customer.lastName}`.trim() : 'Customer',
-    propertyAddress: property ? `${property.addressLine1}, ${property.city} ${property.state}` : null,
+    customerName: customer
+      ? customer.businessName || `${customer.firstName} ${customer.lastName}`.trim()
+      : 'Customer',
+    propertyAddress: property
+      ? `${property.addressLine1}, ${property.city} ${property.state}`
+      : null,
   };
 }
 
@@ -197,7 +246,12 @@ export async function updateStorageRecord(
 export async function createStoredItem(
   orgId: string,
   recordId: string,
-  input: { name: string; quantity: number; condition: StoredItem['condition']; notes?: string | null },
+  input: {
+    name: string;
+    quantity: number;
+    condition: StoredItem['condition'];
+    notes?: string | null;
+  },
   userId?: string | null,
 ) {
   const db = getAdminFirestore();
@@ -292,7 +346,9 @@ export async function createStorageFromRemoval(
     throw new Error('Job not found or missing customer');
   }
 
-  const existing = (await listStorageRecords(orgId, detail.job.customerId)).find((r) => r.jobId === jobId);
+  const existing = (await listStorageRecords(orgId, detail.job.customerId)).find(
+    (r) => r.jobId === jobId,
+  );
   if (existing) return existing;
 
   const record = await createStorageRecord(
@@ -327,7 +383,12 @@ export async function createStorageFromRemoval(
     await createStoredItem(
       orgId,
       record.id,
-      { name: 'Season lighting display', quantity: 1, condition: 'good', notes: 'Created from takedown job' },
+      {
+        name: 'Season lighting display',
+        quantity: 1,
+        condition: 'good',
+        notes: 'Created from takedown job',
+      },
       userId,
     );
   }
@@ -345,10 +406,16 @@ export async function createStorageFromRemoval(
 
   try {
     const { fireAutomationTrigger } = await import('./automation360');
-    const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', detail.job.customerId);
+    const customer = await colGet<{ firstName?: string; lastName?: string }>(
+      orgId,
+      'customers',
+      detail.job.customerId,
+    );
     const ctx = {
       customerId: detail.job.customerId,
-      customerName: customer ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() : 'Customer',
+      customerName: customer
+        ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim()
+        : 'Customer',
       jobId,
     };
     await fireAutomationTrigger(orgId, 'removal_completed', ctx, userId);

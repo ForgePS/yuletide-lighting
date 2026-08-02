@@ -610,6 +610,49 @@ auditMocks();
 auditHardcoded();
 auditLegacyPostgres();
 auditModulePresets();
+auditPortalPhase2();
+tryRun(
+  'portal-permissions-audit',
+  'security',
+  'npm run audit:portal-permissions',
+  'Restore canonical portal permission resolver and requirePortalAuthorized wiring',
+);
+tryRun(
+  'portal-sessions-audit',
+  'security',
+  'npm run audit:portal-sessions',
+  'Restore dedicated __portal_session and staff/portal procedure isolation',
+);
+tryRun(
+  'portal-auth-security-audit',
+  'security',
+  'npm run audit:portal-auth-security',
+  'Remove insecure portal secret generation, persistence, logging, or public claim authority',
+);
+tryRun(
+  'portal-query-scope-audit',
+  'security',
+  'npm run audit:portal-query-scope',
+  'Remove organization-wide portal read fallbacks and restore canonical customer-scoped queries',
+);
+tryRun(
+  'portal-public-dto-audit',
+  'security',
+  'npm run audit:portal-public-dtos',
+  'Replace raw portal document returns with explicit public DTO allowlists',
+);
+tryRun(
+  'portal-routes-audit',
+  'security',
+  'npm run audit:portal-routes',
+  'Wire PortalAuthedFrame + authorizeRoute and PORTAL_ROUTE_DEFINITIONS for all protected routes',
+);
+tryRun(
+  'portal-files-audit',
+  'security',
+  'npm run audit:portal-files',
+  'Use createPortalFileAccess tickets; ban arbitrary client Storage paths and permanent public ACLs',
+);
 if (auditsOnly) {
   const files = ['tests/firebase/firestore.rules.test.ts', 'tests/firebase/storage.rules.test.ts'];
   const ok = files.every((f) => fs.existsSync(path.join(root, f)));
@@ -621,6 +664,245 @@ if (auditsOnly) {
     problem: ok ? 'test files present (skipped execution in --audits-only)' : 'missing rules tests',
     correction: ok ? 'Run full production:check to execute emulators' : 'Add rules tests',
   });
+}
+
+function auditPortalPhase2() {
+  const required = [
+    'packages/types/src/portal-permissions.ts',
+    'packages/firebase/src/portal-security.ts',
+    'packages/firebase/src/portal-security-config.ts',
+    'packages/firebase/src/portal-delivery.ts',
+    'packages/firebase/src/portal-rate-limit.ts',
+    'packages/firebase/src/portal-session.ts',
+    'packages/firebase/src/portal-invitation.ts',
+    'packages/firebase/src/portal-phase2-security.test.ts',
+    'packages/firebase/src/portal-phase2-s3-security.test.ts',
+    'scripts/audit-portal-query-scope.mjs',
+    'scripts/audit-portal-public-dtos.mjs',
+    'tests/integration/portal/portal-phase2.integration.test.ts',
+    'tests/integration/portal/portal-phase2-s4.integration.test.ts',
+    'apps/web/src/app/api/portal/session/route.ts',
+    'apps/web/src/app/portal/invite/[token]/page.tsx',
+    'docs/production-cleanup/portal-phase-2-baseline.md',
+    'docs/production-cleanup/portal-phase-2-completion.md',
+    'docs/production-cleanup/portal-phase-2-s3-baseline.md',
+    'docs/production-cleanup/portal-phase-2-s3-invitation-map.md',
+    'docs/production-cleanup/portal-phase-2-s3-otp-map.md',
+    'docs/production-cleanup/portal-phase-2-s3-invitation-design.md',
+    'docs/production-cleanup/portal-phase-2-s3-otp-design.md',
+    'docs/production-cleanup/portal-phase-2-s3-rate-limit-design.md',
+    'docs/production-cleanup/portal-phase-2-s3-test-plan.md',
+    'docs/production-cleanup/portal-phase-2-s3-security-evidence.md',
+    'docs/production-cleanup/portal-phase-2-s3-accessibility.md',
+    'docs/production-cleanup/portal-phase-2-s3-rollback.md',
+    'docs/production-cleanup/portal-phase-2-s3-completion.md',
+    'docs/production-cleanup/portal-phase-2-s4-baseline.md',
+    'docs/production-cleanup/portal-phase-2-s4-query-map.md',
+    'docs/production-cleanup/portal-phase-2-s4-fallback-register.md',
+    'docs/production-cleanup/portal-phase-2-s4-ownership-model.md',
+    'docs/production-cleanup/portal-phase-2-s4-dto-map.md',
+    'docs/production-cleanup/portal-phase-2-s4-query-evidence.md',
+    'docs/production-cleanup/portal-phase-2-s4-isolation-evidence.md',
+    'docs/production-cleanup/portal-phase-2-s4-dto-evidence.md',
+    'docs/production-cleanup/portal-phase-2-s4-test-plan.md',
+    'docs/production-cleanup/portal-phase-2-s4-rollback.md',
+    'docs/production-cleanup/portal-phase-2-s4-completion.md',
+    'docs/production-cleanup/portal-phase-2-s5-baseline.md',
+    'docs/production-cleanup/portal-phase-2-s5-route-map.md',
+    'docs/production-cleanup/portal-phase-2-s5-feature-route-matrix.md',
+    'docs/production-cleanup/portal-phase-2-s5-route-authorization.md',
+    'docs/production-cleanup/portal-phase-2-s5-file-map.md',
+    'docs/production-cleanup/portal-phase-2-s5-file-security.md',
+    'docs/production-cleanup/portal-phase-2-s5-storage-rules.md',
+    'docs/production-cleanup/portal-phase-2-s5-cache-review.md',
+    'docs/production-cleanup/portal-phase-2-s5-test-plan.md',
+    'docs/production-cleanup/portal-phase-2-s5-security-evidence.md',
+    'docs/production-cleanup/portal-phase-2-s5-accessibility.md',
+    'docs/production-cleanup/portal-phase-2-s5-rollback.md',
+    'docs/production-cleanup/portal-phase-2-s5-completion.md',
+    'packages/firebase/src/portal-route-access.ts',
+    'packages/firebase/src/portal-file-access.ts',
+    'packages/firebase/src/portal-phase2-s5-security.test.ts',
+    'scripts/audit-portal-routes.mjs',
+    'scripts/audit-portal-files.mjs',
+    'tests/integration/portal/portal-phase2-s5.integration.test.ts',
+    'apps/web/src/app/api/portal/files/route.ts',
+    'docs/production-cleanup/portal-token-hardening-plan.md',
+  ];
+  const missing = required.filter((f) => !fs.existsSync(path.join(root, f)));
+  if (missing.length) {
+    add({
+      name: 'portal-phase2-artifacts',
+      severity: 'security',
+      category: 'security',
+      status: 'FAIL',
+      problem: `missing Portal Phase 2 artifacts: ${missing.join(', ')}`,
+      correction: 'Restore portal permission resolver, session, invitation, tests, and docs',
+      docs: 'docs/production-cleanup/portal-phase-2-completion.md',
+    });
+  } else {
+    add({
+      name: 'portal-phase2-artifacts',
+      severity: 'info',
+      category: 'security',
+      status: 'PASS',
+      problem: 'Portal Phase 2 core artifacts present',
+      correction: 'n/a',
+    });
+  }
+
+  const perm = fs.readFileSync(path.join(root, 'packages/types/src/portal-permissions.ts'), 'utf8');
+  if (!perm.includes('resolvePortalPermission') || !perm.includes('fail')) {
+    // soft check — resolver must exist
+  }
+  if (!perm.includes('resolvePortalPermission')) {
+    add({
+      name: 'portal-permission-resolver',
+      severity: 'security',
+      category: 'security',
+      status: 'FAIL',
+      problem: 'resolvePortalPermission missing',
+      correction: 'Restore canonical portal permission resolver',
+    });
+  } else {
+    add({
+      name: 'portal-permission-resolver',
+      severity: 'info',
+      category: 'security',
+      status: 'PASS',
+      problem: 'canonical resolver present',
+      correction: 'n/a',
+    });
+  }
+
+  const unitTest = fs.readFileSync(
+    path.join(root, 'packages/firebase/src/portal-phase2-security.test.ts'),
+    'utf8',
+  );
+  const integrationTest = fs.readFileSync(
+    path.join(root, 'tests/integration/portal/portal-phase2.integration.test.ts'),
+    'utf8',
+  );
+  const checks = [
+    {
+      name: 'portal-permission-tests',
+      ok:
+        unitTest.includes('portal permission resolver') &&
+        unitTest.includes('resolvePortalPermission') &&
+        fs.existsSync(
+          path.join(root, 'packages/firebase/src/portal-phase2-s1-permissions.test.ts'),
+        ) &&
+        fs
+          .readFileSync(path.join(root, 'packages/firebase/src/portal360.ts'), 'utf8')
+          .includes('requirePortalAuthorized'),
+    },
+    {
+      name: 'portal-otp-security-tests',
+      ok: unitTest.includes('rate limit') && unitTest.includes('redact'),
+    },
+    {
+      name: 'portal-session-invalidation-tests',
+      ok:
+        integrationTest.includes('session version') ||
+        integrationTest.includes('invalidatePortalSessions') ||
+        integrationTest.includes('invalidates session'),
+    },
+    {
+      name: 'portal-customer-isolation-tests',
+      ok: integrationTest.includes('customer isolation'),
+    },
+    {
+      name: 'portal-tenant-isolation-tests',
+      ok: integrationTest.includes('tenant isolation'),
+    },
+    {
+      name: 'portal-dto-security-tests',
+      ok:
+        integrationTest.includes('toPublicCustomer') ||
+        unitTest.includes('redactPortalLogMetadata'),
+    },
+  ];
+  for (const c of checks) {
+    add({
+      name: c.name,
+      severity: c.ok ? 'info' : 'security',
+      category: 'security',
+      status: c.ok ? 'PASS' : 'FAIL',
+      problem: c.ok ? 'coverage present' : `missing ${c.name}`,
+      correction: c.ok ? 'n/a' : 'Add required Portal Phase 2 tests',
+      docs: 'docs/production-cleanup/portal-phase-2-test-plan.md',
+    });
+  }
+
+  // Anti-patterns in portal360 public path
+  const portal360 = fs.readFileSync(path.join(root, 'packages/firebase/src/portal360.ts'), 'utf8');
+  const sessionCookie = fs.readFileSync(
+    path.join(root, 'apps/web/src/app/api/portal/session/route.ts'),
+    'utf8',
+  );
+  if (sessionCookie.includes('AUTH_COOKIE_NAME') || sessionCookie.includes("'__session'")) {
+    add({
+      name: 'portal-session-cookie-separation',
+      severity: 'security',
+      category: 'security',
+      status: 'FAIL',
+      problem: 'Portal session route appears to reuse staff __session cookie',
+      correction: 'Use dedicated __portal_session cookie only',
+    });
+  } else {
+    add({
+      name: 'portal-session-cookie-separation',
+      severity: 'info',
+      category: 'security',
+      status: 'PASS',
+      problem: 'dedicated portal session cookie path present',
+      correction: 'n/a',
+    });
+  }
+
+  if (/console\.(log|info|debug|warn|error)\([^)]*otp/i.test(portal360)) {
+    add({
+      name: 'portal-otp-logging',
+      severity: 'security',
+      category: 'security',
+      status: 'FAIL',
+      problem: 'Possible OTP logging in portal360',
+      correction: 'Remove OTP values from logs',
+    });
+  } else {
+    add({
+      name: 'portal-otp-logging',
+      severity: 'info',
+      category: 'security',
+      status: 'PASS',
+      problem: 'no obvious OTP console logging in portal360',
+      correction: 'n/a',
+    });
+  }
+
+  const security = fs.readFileSync(
+    path.join(root, 'packages/firebase/src/portal-security.ts'),
+    'utf8',
+  );
+  if (!security.includes('redactPortalLogMetadata')) {
+    add({
+      name: 'portal-log-redaction',
+      severity: 'security',
+      category: 'security',
+      status: 'FAIL',
+      problem: 'redactPortalLogMetadata missing',
+      correction: 'Restore portal log redaction helper',
+    });
+  } else {
+    add({
+      name: 'portal-log-redaction',
+      severity: 'info',
+      category: 'security',
+      status: 'PASS',
+      problem: 'redaction helper present',
+      correction: 'n/a',
+    });
+  }
 }
 
 const blockers = findings.filter((f) => f.status === 'FAIL');

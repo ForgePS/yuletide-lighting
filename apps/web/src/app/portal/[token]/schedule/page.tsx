@@ -11,7 +11,7 @@ import { LoadingState } from '@/components/ui/states';
 export default function PortalSchedulePage() {
   const token = useParams().token as string;
   return (
-    <PortalAuthedFrame token={token} title="Schedule">
+    <PortalAuthedFrame token={token} title="Schedule" feature="scheduling">
       {({ token: accessToken, enabledFeatures }) => (
         <ScheduleBody token={accessToken} canRequest={enabledFeatures.includes('scheduling')} />
       )}
@@ -37,7 +37,10 @@ function ScheduleBody({ token, canRequest }: { token: string; canRequest: boolea
         </Link>
       )}
 
-      <PortalSection eyebrow="Upcoming" title={`${upcoming.length} appointment${upcoming.length === 1 ? '' : 's'}`}>
+      <PortalSection
+        eyebrow="Upcoming"
+        title={`${upcoming.length} appointment${upcoming.length === 1 ? '' : 's'}`}
+      >
         {!upcoming.length ? (
           <p className="text-base text-stone-600">No upcoming appointments on the calendar yet.</p>
         ) : (
@@ -45,7 +48,9 @@ function ScheduleBody({ token, canRequest }: { token: string; canRequest: boolea
             {upcoming.map((item) => (
               <li key={item.id} className="rounded-xl border border-stone-100 p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <PortalStatusPill tone="info">{item.appointmentType.replace(/_/g, ' ')}</PortalStatusPill>
+                  <PortalStatusPill tone="info">
+                    {item.appointmentType.replace(/_/g, ' ')}
+                  </PortalStatusPill>
                 </div>
                 <p className="mt-2 text-lg font-semibold text-stone-900">{item.title}</p>
                 <p className="mt-1 text-base text-stone-600">{formatDate(item.startAt)}</p>

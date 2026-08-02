@@ -38,27 +38,32 @@ export type PortalFeatureKey =
   | 'referrals'
   | 'rebooking';
 
-export const PORTAL_FEATURES: Array<{ key: PortalFeatureKey; label: string; description: string }> = [
-  { key: 'dashboard', label: 'Customer Dashboard', description: 'Portal home and overview' },
-  { key: 'properties', label: 'Properties', description: 'View customer properties' },
-  { key: 'consultations', label: 'Consultations', description: 'Consultation history' },
-  { key: 'mockups', label: 'Designs and Mockups', description: 'View and approve designs' },
-  { key: 'proposals', label: 'Proposals', description: 'View and approve proposals' },
-  { key: 'agreements', label: 'Agreements', description: 'View multi-year agreements' },
-  { key: 'e_sign', label: 'Electronic Signatures', description: 'Sign proposals and agreements' },
-  { key: 'billing', label: 'Billing', description: 'View invoices and balances' },
-  { key: 'online_payments', label: 'Online Payments', description: 'Pay invoices online' },
-  { key: 'scheduling', label: 'Scheduling', description: 'View upcoming appointments' },
-  { key: 'install_tracking', label: 'Installation Tracking', description: 'Track install job status' },
-  { key: 'service_requests', label: 'Service Requests', description: 'Submit service issues' },
-  { key: 'takedowns', label: 'Takedowns', description: 'View takedown schedule' },
-  { key: 'storage', label: 'Customer Storage', description: 'View seasonal storage' },
-  { key: 'messaging', label: 'Messaging', description: 'Message your lighting company' },
-  { key: 'documents', label: 'Documents', description: 'View shared documents' },
-  { key: 'reviews', label: 'Reviews', description: 'Leave reviews' },
-  { key: 'referrals', label: 'Referrals', description: 'Referral program' },
-  { key: 'rebooking', label: 'Rebooking', description: 'Rebook for next season' },
-];
+export const PORTAL_FEATURES: Array<{ key: PortalFeatureKey; label: string; description: string }> =
+  [
+    { key: 'dashboard', label: 'Customer Dashboard', description: 'Portal home and overview' },
+    { key: 'properties', label: 'Properties', description: 'View customer properties' },
+    { key: 'consultations', label: 'Consultations', description: 'Consultation history' },
+    { key: 'mockups', label: 'Designs and Mockups', description: 'View and approve designs' },
+    { key: 'proposals', label: 'Proposals', description: 'View and approve proposals' },
+    { key: 'agreements', label: 'Agreements', description: 'View multi-year agreements' },
+    { key: 'e_sign', label: 'Electronic Signatures', description: 'Sign proposals and agreements' },
+    { key: 'billing', label: 'Billing', description: 'View invoices and balances' },
+    { key: 'online_payments', label: 'Online Payments', description: 'Pay invoices online' },
+    { key: 'scheduling', label: 'Scheduling', description: 'View upcoming appointments' },
+    {
+      key: 'install_tracking',
+      label: 'Installation Tracking',
+      description: 'Track install job status',
+    },
+    { key: 'service_requests', label: 'Service Requests', description: 'Submit service issues' },
+    { key: 'takedowns', label: 'Takedowns', description: 'View takedown schedule' },
+    { key: 'storage', label: 'Customer Storage', description: 'View seasonal storage' },
+    { key: 'messaging', label: 'Messaging', description: 'Message your lighting company' },
+    { key: 'documents', label: 'Documents', description: 'View shared documents' },
+    { key: 'reviews', label: 'Reviews', description: 'Leave reviews' },
+    { key: 'referrals', label: 'Referrals', description: 'Referral program' },
+    { key: 'rebooking', label: 'Rebooking', description: 'Rebook for next season' },
+  ];
 
 export const DEFAULT_PORTAL_FEATURES: PortalFeatureKey[] = PORTAL_FEATURES.map((f) => f.key);
 
@@ -93,13 +98,22 @@ export type PortalAccount = {
   status: PortalAccountStatus;
   /** Magic access token (dual-written to customers.portalToken in Phase 1). */
   accessToken: string;
+  /** Optional hash of access token for verification without exposing plaintext after rotate. */
+  accessTokenHash?: string | null;
   primaryPortalUserId?: string | null;
   invitedAt?: Date | null;
   activatedAt?: Date | null;
   suspendedAt?: Date | null;
+  suspendedBy?: string | null;
+  revokedAt?: Date | null;
+  revokedBy?: string | null;
   lastLoginAt?: Date | null;
+  /** Bumped to invalidate all portal sessions for this account. */
+  sessionVersion?: number;
   createdAt: Date;
   updatedAt: Date;
+  createdBy?: string | null;
+  updatedBy?: string | null;
 };
 
 export type PortalUser = {
@@ -108,7 +122,7 @@ export type PortalUser = {
   customerId: string;
   portalAccountId: string;
   contactId?: string | null;
-  /** Reserved for Phase 2 Firebase Auth. */
+  /** Firebase Auth UID when claimed (Phase 2). Never client-assigned. */
   authUserId?: string | null;
   role: PortalUserRole;
   status: PortalUserStatus;
@@ -116,9 +130,36 @@ export type PortalUser = {
   permissions: string[];
   displayName?: string | null;
   email?: string | null;
+  normalizedEmail?: string | null;
+  invitationStatus?: 'none' | 'pending' | 'consumed' | 'revoked' | 'expired' | 'replaced' | null;
+  invitationSentAt?: Date | null;
+  invitationExpiresAt?: Date | null;
+  invitationConsumedAt?: Date | null;
+  invitationTokenHash?: string | null;
+  claimedAt?: Date | null;
   lastLoginAt?: Date | null;
+  failedVerificationCount?: number;
+  lockedUntil?: Date | null;
+  suspendedAt?: Date | null;
+  suspendedBy?: string | null;
+  revokedAt?: Date | null;
+  revokedBy?: string | null;
+  sessionVersion?: number;
   createdAt: Date;
   updatedAt: Date;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+};
+
+/** Dedicated portal session (separate from staff AuthContext). */
+export type PortalSessionContext = {
+  organizationId: string;
+  customerId: string;
+  portalAccountId: string;
+  portalUserId: string;
+  role: PortalUserRole;
+  enabledFeatures: PortalFeatureKey[];
+  sessionVersion: number;
 };
 
 export type PortalTimelineEvent = {

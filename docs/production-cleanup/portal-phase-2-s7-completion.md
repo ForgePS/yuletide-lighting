@@ -13,7 +13,7 @@
 | BASE SHA | `d98c3e90715e4a7e104285a68ea16cc56811c30b` |
 | S5 SHA | `d9d8242ad6df0f9e6f58af27baa96bcf16135a3d` |
 | S6 SHA | `b7f2cc1edadfd4351f70e5b3682ac561751369eb` |
-| S7 SHA | _(recorded after commit)_ |
+| S7 SHA | `630aa7f50a8fa3c8bc868505e6288ede9c6965b4` |
 
 ## Repository isolation
 

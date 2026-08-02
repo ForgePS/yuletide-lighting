@@ -31,15 +31,23 @@ export const portalAccountStatusSchema = z.enum([
   'archived',
 ]);
 
+/**
+ * Optional magic access token. Session-first portal routes (P2-S7) omit it or send
+ * an empty string; authorization then comes from the `__portal_session` cookie only.
+ */
+export const portalOptionalTokenSchema = z
+  .union([z.string().min(8).max(128), z.literal('')])
+  .optional();
+
 export const portalTokenInputSchema = z.object({
-  token: z.string().min(8).max(128).optional(),
+  token: portalOptionalTokenSchema,
 });
 
 /** Optional client retry token — never used for authorization (P2-S6). */
 export const portalIdempotencyKeySchema = z.string().min(8).max(200).optional();
 
 export const portalServiceRequestSchema = z.object({
-  token: z.string().min(8).max(128).optional(),
+  token: portalOptionalTokenSchema,
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
   category: z.string().optional(),
@@ -52,14 +60,14 @@ export const portalServiceRequestSchema = z.object({
 });
 
 export const portalUploadPhotoSchema = z.object({
-  token: z.string().min(8).max(128).optional(),
+  token: portalOptionalTokenSchema,
   dataBase64: z.string().min(1).max(7_000_000),
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']),
   filename: z.string().max(120).optional(),
 });
 
 export const portalRebookSchema = z.object({
-  token: z.string().min(8).max(128).optional(),
+  token: portalOptionalTokenSchema,
   notes: z.string().max(2000).optional(),
   preferredMonth: z.string().max(40).optional(),
   sameDesign: z.boolean().optional(),
@@ -76,12 +84,12 @@ export const portalAccountActionSchema = z.object({
 });
 
 export const portalMarkNotificationReadSchema = z.object({
-  token: z.string().min(8).max(128).optional(),
+  token: portalOptionalTokenSchema,
   notificationId: z.string().min(1),
 });
 
 export const portalScheduleRequestSchema = z.object({
-  token: z.string().min(8).max(128).optional(),
+  token: portalOptionalTokenSchema,
   appointmentType: z.enum([
     'estimate_visit',
     'design_consultation',
@@ -98,7 +106,7 @@ export const portalScheduleRequestSchema = z.object({
 });
 
 export const portalJobDetailSchema = z.object({
-  token: z.string().min(8).max(128).optional(),
+  token: portalOptionalTokenSchema,
   jobId: z.string().min(1),
 });
 
@@ -207,7 +215,7 @@ export const portalEstablishSessionSchema = z.object({
 });
 
 export const portalAuthorizeRouteSchema = z.object({
-  token: z.string().min(8).max(128).optional(),
+  token: portalOptionalTokenSchema,
   feature: portalFeatureKeySchema.optional(),
   action: z
     .enum([

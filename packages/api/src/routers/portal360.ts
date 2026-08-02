@@ -114,7 +114,9 @@ function mapPortalErr(err: unknown, fallback: string): never {
 const PORTAL_ENUMERATION_SAFE = PORTAL_PUBLIC_MESSAGES.verificationSent;
 
 function portalAuth(ctx: { portalSessionToken?: string | null }, input: { token?: string }) {
-  return { token: input.token ?? null, sessionToken: ctx.portalSessionToken ?? null };
+  // Session-first routes (P2-S7) send '' — never treat that as a magic token.
+  const token = input.token && input.token.length >= 8 ? input.token : null;
+  return { token, sessionToken: ctx.portalSessionToken ?? null };
 }
 
 export const portal360Router = router({

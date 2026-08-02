@@ -96,10 +96,15 @@ export type PortalAccount = {
   customerId: string;
   portalEnabled: boolean;
   status: PortalAccountStatus;
-  /** Magic access token (dual-written to customers.portalToken in Phase 1). */
-  accessToken: string;
-  /** Optional hash of access token for verification without exposing plaintext after rotate. */
+  /**
+   * Legacy plaintext magic token (P2-S7: new writes must be null; prefer accessTokenHash).
+   * May still exist on pre-migration accounts during COMPATIBILITY mode.
+   */
+  accessToken?: string | null;
+  /** Canonical hash `v1:<hex>` of magic access token (P2-S7). */
   accessTokenHash?: string | null;
+  /** Hash algorithm version for fail-closed unknown versions. */
+  accessTokenHashVersion?: number | null;
   primaryPortalUserId?: string | null;
   invitedAt?: Date | null;
   activatedAt?: Date | null;

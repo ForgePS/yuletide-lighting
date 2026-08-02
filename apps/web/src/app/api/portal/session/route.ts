@@ -5,8 +5,11 @@ import {
   portalSessionCookieOptions,
   verifyPortalSessionTokenServer,
 } from '@yuletide/firebase';
+import { cookies } from 'next/headers';
 
 export const runtime = 'nodejs';
+
+const NO_STORE = 'no-store';
 
 function setPortalCookie(res: NextResponse, token: string | null, expiresAt?: Date) {
   if (!token || !expiresAt) {
@@ -58,18 +61,37 @@ export async function POST(req: Request) {
           sessionVersion: context.sessionVersion,
         },
       });
-      res.headers.set('Cache-Control', 'private');
+      res.headers.set('Cache-Control', NO_STORE);
       setPortalCookie(res, sessionToken, expiresAt);
       return res;
     }
 
     const accessToken = body.accessToken?.trim();
     if (!accessToken || accessToken.length < 8) {
-      return NextResponse.json({ error: 'Invalid access' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Invalid access' },
+        { status: 400, headers: { 'Cache-Control': NO_STORE } },
+      );
     }
+
     const session = await establishPortalSessionFromAccessToken(accessToken);
     if (!session) {
-      return NextResponse.json({ error: 'Invalid access' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Invalid access' },
+        { status: 401, headers: { 'Cache-Control': NO_STORE } },
+      );
+    }
+
+    const cookieStore = await cookies();
+    const existingCookie = cookieStore.get(PORTAL_SESSION_COOKIE)?.value ?? null;
+    if (existingCookie) {
+      const existingContext = await verifyPortalSessionTokenServer(existingCookie);
+      if (existingContext && existingContext.customerId !== session.context.customerId) {
+        return NextResponse.json(
+          { error: 'Session conflict — link is for a different customer account.' },
+          { status: 409, headers: { 'Cache-Control': NO_STORE } },
+        );
+      }
     }
     const res = NextResponse.json({
       ok: true,
@@ -83,13 +105,16 @@ export async function POST(req: Request) {
         sessionVersion: session.context.sessionVersion,
       },
     });
-    res.headers.set('Cache-Control', 'private');
+    res.headers.set('Cache-Control', NO_STORE);
     setPortalCookie(res, session.token, session.expiresAt);
     return res;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Portal session failed';
     console.error('[api/portal/session]', message);
-    return NextResponse.json({ error: 'Invalid access' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Invalid access' },
+      { status: 401, headers: { 'Cache-Control': NO_STORE } },
+    );
   }
 }
 
@@ -114,7 +139,7 @@ export async function GET(req: Request) {
 
 export async function DELETE() {
   const res = NextResponse.json({ ok: true });
-  res.headers.set('Cache-Control', 'private');
+  res.headers.set('Cache-Control', NO_STORE);
   setPortalCookie(res, null);
   return res;
 }

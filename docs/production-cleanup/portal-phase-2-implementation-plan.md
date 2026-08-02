@@ -1,9 +1,9 @@
 # Customer Portal Phase 2 — Implementation Plan
 
-**Checkpoint origin:** P2-S0  
-**Branch:** `production/yuletide-cleanup-launch-readiness`  
-**ENVIRONMENT:** EMULATOR until separately authorized  
-**Deployment:** PROHIBITED until program gate opens  
+**Checkpoint origin:** P2-S0
+**Branch:** `production/yuletide-cleanup-launch-readiness`
+**ENVIRONMENT:** EMULATOR until separately authorized
+**Deployment:** PROHIBITED until program gate opens
 **Base HEAD at S0:** `c0cae35a23f96cf3dc08c6f98842c04777775853`
 
 Do not redesign UI. Do not add unrelated portal features. Preserve token/OTP/QR/magic-link compatibility until an authorized cutover checkpoint.
@@ -22,8 +22,9 @@ Reuse existing Phase 2 primitives where present; **finish wiring and enforcement
 | **P2-S3**  | Invitation claim + OTP hardening                           | **IN_PROGRESS** — claim UI, hashed invite, atomic claim, OTP controls, emulator-only delivery, docs/static gates                                   |
 | **P2-S4**  | Query + DTO audit closeout                                 | **COMPLETE** — static gates, allowlist serializers, maps/docs, and 142-case emulator suite (`portal-phase-2-s4-completion.md`)                     |
 | **P2-S5**  | Route authorization + file access tickets                  | **COMPLETE** — route/file tickets, audits wired, 54-case S5 integration + gate evidence (portal-phase-2-s5-completion.md)                          |
-| **P2-S6**  | Emulator integration (≥60) + rules + Storage               | Isolation/lifecycle/OTP/session/roles/features green; rules coverage for portal security metadata                                                  |
-| **P2-S7**  | Playwright + a11y + responsive                             | Authenticated emulator E2E; WCAG AA critical paths; viewport matrix                                                                                |
+| **P2-S6**  | Emulator integration (≥60) + rules + Storage               | **COMPLETE** — mutation/idempotency, payment safe mode, integration + E2E evidence                                                                 |
+| **P2-S7**  | Magic-token hardening + session-first URLs                 | **IN_PROGRESS** — hash-only writes, `/portal/app/**`, compatibility modes; gate pending                                                            |
+| **P2-S8**  | Playwright + a11y + responsive                             | Authenticated emulator E2E; WCAG AA critical paths; viewport matrix                                                                                |
 | **P2-S8**  | production:check gates + deployment package (prepare-only) | Gates block missing isolation/DTO/OTP/session tests; deployment plan ready; **still no deploy**                                                    |
 | **P2-S9**  | Completion report                                          | `portal-phase-2-completion.md` with evidence; recommendation READY or RETURN                                                                       |
 
@@ -82,7 +83,7 @@ Dedicated portal session becomes a first-class access path alongside magic token
 
 ## P2-S3 — Invitation + OTP
 
-**Status:** IN_PROGRESS  
+**Status:** IN_PROGRESS
 **Environment:** EMULATOR
 
 ### Goal
@@ -129,7 +130,7 @@ Every portal data path customer-scoped; public DTOs allowlisted.
 
 ## P2-S5 — Route authorization and file tickets
 
-**Status:** IN_PROGRESS  
+**Status:** IN_PROGRESS
 **Environment:** EMULATOR
 
 ### Goal

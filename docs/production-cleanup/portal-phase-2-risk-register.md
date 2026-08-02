@@ -1,6 +1,6 @@
 # Customer Portal Phase 2 — Risk Register
 
-**ENVIRONMENT:** EMULATOR  
+**ENVIRONMENT:** EMULATOR
 **Status:** OPEN; no deployment authorization
 
 | ID     | Risk                                                 | Severity                    | S3 treatment / owner                                      |
@@ -31,3 +31,9 @@ S5 adds route authorization (`requirePortalRouteAccess`) and short-lived file ti
 - Mutation/idempotency guard landed in @yuletide/firebase (portal-mutation.ts); residual BLOCKERs from mutation map closed for portal creates and public-token replay paths.
 - Payment: server payable cents + checkout safe mode; live Stripe blocked under EMULATOR.
 - Evidence: portal-phase-2-s6-security-evidence.md, integration portal-phase2-s6.integration.test.ts.
+
+## P2-S7 update (2026-08-02)
+
+- P2-R01: Hash-only new writes + dual-read resolver in emulator; production plaintext inventory still open.
+- New docs: `portal-phase-2-s7-*`, `portal-token-production-migration-plan.md` (docs only).
+- Gate results: **pending** — do not close R01 until production migration evidence.

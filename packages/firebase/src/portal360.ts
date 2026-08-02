@@ -1,4 +1,9 @@
-import { nanoid } from 'nanoid';
+import {
+  emitPortalMagicTelemetry,
+  generatePortalAccessToken,
+  portalMagicCredentialWriteFields,
+  resolvePortalMagicAccess,
+} from './portal-magic-access';
 import type {
   CustomerPortalSettings,
   PortalAccount,
@@ -307,9 +312,15 @@ async function resolvePortalAuthorizedContext(args: {
     return null;
   }
 
-  const viaToken = await requirePortalAccess(account.accessToken);
-  if (!viaToken) return null;
-  return { ...viaToken, primaryUser: acting };
+  // P2-S7: session path must not require stored plaintext magic token.
+  const viaSession = await buildPortalAccessContext({
+    orgId: session.organizationId,
+    account,
+    accessToken: '',
+    primaryUserOverride: acting,
+  });
+  if (!viaSession) return null;
+  return { ...viaSession, primaryUser: acting };
 }
 
 export async function requirePortalAuthorized(args: {
@@ -348,88 +359,25 @@ export async function requirePortalAuthorized(args: {
   return { ...ctx, actingUser };
 }
 
-async function findAccountByAccessToken(
-  token: string,
-): Promise<{ orgId: string; account: PortalAccount } | null> {
-  const db = getAdminFirestore();
-  try {
-    const snap = await db
-      .collectionGroup('portalAccounts')
-      .where('accessToken', '==', token)
-      .limit(1)
-      .get();
-    if (!snap.empty) {
-      const doc = snap.docs[0]!;
-      const account = mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as PortalAccount;
-      const orgId = String(account.organizationId ?? doc.ref.parent.parent?.id ?? '');
-      if (orgId) return { orgId, account };
-    }
-  } catch {
-    // Index may still be building — fall through to customer token
-  }
-  return null;
-}
-
-async function findCustomerByPortalToken(
-  token: string,
-): Promise<{ orgId: string; customer: CustomerRecord } | null> {
-  const db = getAdminFirestore();
-  try {
-    const snap = await db
-      .collectionGroup('customers')
-      .where('portalToken', '==', token)
-      .limit(1)
-      .get();
-    if (snap.empty) return null;
-    const doc = snap.docs[0]!;
-    const customer = mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as CustomerRecord;
-    const orgId = String(customer.organizationId ?? doc.ref.parent.parent?.id ?? '');
-    if (!orgId || !customer.portalEnabled) return null;
-    return { orgId, customer };
-  } catch {
+async function buildPortalAccessContext(args: {
+  orgId: string;
+  account: PortalAccount;
+  /** Presented raw magic token for session exchange only; empty for session-only auth. */
+  accessToken?: string;
+  primaryUserOverride?: PortalUser | null;
+}): Promise<PortalAccessContext | null> {
+  const { orgId, account } = args;
+  if (
+    !account.portalEnabled ||
+    account.status === 'locked' ||
+    account.status === 'suspended' ||
+    account.status === 'archived' ||
+    account.revokedAt
+  ) {
     return null;
   }
-}
-
-export async function requirePortalAccess(token: string): Promise<PortalAccessContext | null> {
-  let orgId = '';
-  let customer: CustomerRecord | null = null;
-  let account: PortalAccount | null = null;
-  let accessToken = token;
-
-  const [byAccount, byCustomer] = await Promise.all([
-    findAccountByAccessToken(token),
-    findCustomerByPortalToken(token),
-  ]);
-
-  if (byAccount) {
-    orgId = byAccount.orgId;
-    account = byAccount.account;
-    if (
-      !account.portalEnabled ||
-      account.status === 'locked' ||
-      account.status === 'suspended' ||
-      account.status === 'archived'
-    ) {
-      return null;
-    }
-    customer = await colGet<CustomerRecord>(orgId, 'customers', account.customerId);
-    accessToken = account.accessToken;
-  } else if (byCustomer) {
-    orgId = byCustomer.orgId;
-    customer = byCustomer.customer;
-    account = await getPortalAccountByCustomer(orgId, customer.id);
-    if (
-      account &&
-      (account.status === 'locked' ||
-        account.status === 'suspended' ||
-        account.status === 'archived')
-    ) {
-      return null;
-    }
-  }
-
-  if (!customer || !orgId) return null;
+  const customer = await colGet<CustomerRecord>(orgId, 'customers', account.customerId);
+  if (!customer) return null;
 
   const features = await resolvePortalFeatures(orgId);
   if (!features.moduleEnabled || !portalHasFeature(features.enabled, 'dashboard')) {
@@ -439,9 +387,11 @@ export async function requirePortalAccess(token: string): Promise<PortalAccessCo
   const [organization, branding, primaryUser] = await Promise.all([
     getOrganization(orgId),
     getBrandingForCustomerFacing(orgId),
-    account?.primaryPortalUserId
-      ? colGet<PortalUser>(orgId, 'portalUsers', account.primaryPortalUserId)
-      : getPrimaryPortalUser(orgId, customer.id),
+    args.primaryUserOverride
+      ? Promise.resolve(args.primaryUserOverride)
+      : account.primaryPortalUserId
+        ? colGet<PortalUser>(orgId, 'portalUsers', account.primaryPortalUserId)
+        : getPrimaryPortalUser(orgId, customer.id),
   ]);
 
   return {
@@ -460,8 +410,20 @@ export async function requirePortalAccess(token: string): Promise<PortalAccessCo
     enabledFeatures: features.enabled,
     account,
     primaryUser,
-    accessToken,
+    // Never rehydrate plaintext from Firestore — only echo presented token when provided.
+    accessToken: args.accessToken ?? '',
   };
+}
+
+export async function requirePortalAccess(token: string): Promise<PortalAccessContext | null> {
+  // P2-S7: canonical hash-first resolver (+ centralized legacy plaintext compatibility).
+  const resolved = await resolvePortalMagicAccess(token);
+  if (!resolved) return null;
+  return buildPortalAccessContext({
+    orgId: resolved.orgId,
+    account: resolved.account,
+    accessToken: resolved.rawTokenPresented,
+  });
 }
 
 /** @deprecated Prefer requirePortalAccess — kept for gradual migration. */
@@ -570,49 +532,60 @@ export async function ensurePortalAccount(
   opts?: { token?: string; status?: PortalAccount['status']; portalEnabled?: boolean },
 ): Promise<{ account: PortalAccount; user: PortalUser; token: string }> {
   let customer: CustomerRecord | null = null;
-  for (let attempt = 0; attempt < (process.env.FIRESTORE_EMULATOR_HOST ? 8 : 1); attempt++) {
+  const customerLookupAttempts = process.env.FIRESTORE_EMULATOR_HOST ? 20 : 1;
+  for (let attempt = 0; attempt < customerLookupAttempts; attempt++) {
     customer = await colGet<CustomerRecord>(orgId, 'customers', customerId);
     if (customer) break;
-    if (process.env.FIRESTORE_EMULATOR_HOST && attempt < 7) {
-      await new Promise((r) => setTimeout(r, 150));
+    if (process.env.FIRESTORE_EMULATOR_HOST && attempt < customerLookupAttempts - 1) {
+      await new Promise((r) => setTimeout(r, 200));
     }
   }
   if (!customer) throw new Error('Customer not found');
 
   let existing = await getPortalAccountByCustomer(orgId, customerId);
-  const token = opts?.token ?? customer.portalToken ?? nanoid(32);
   const now = new Date();
+  /** Raw token returned once for enable/rotate delivery — never persisted after S7. */
+  let issuedRaw: string | null = opts?.token?.trim() || null;
 
   if (!existing) {
+    issuedRaw = issuedRaw || generatePortalAccessToken();
+    const fields = portalMagicCredentialWriteFields(issuedRaw);
     const created = await colCreate(orgId, 'portalAccounts', {
       customerId,
+      organizationId: orgId,
       portalEnabled: opts?.portalEnabled ?? customer.portalEnabled ?? false,
       status: opts?.status ?? (customer.portalEnabled ? 'active' : 'not_invited'),
-      accessToken: token,
+      accessToken: null,
+      accessTokenHash: fields.accessTokenHash,
+      accessTokenHashVersion: fields.accessTokenHashVersion,
       primaryPortalUserId: null,
       invitedAt: customer.portalInviteSentAt ?? null,
       activatedAt: customer.portalEnabled ? now : null,
       suspendedAt: null,
       lastLoginAt: customer.portalLastLoginAt ?? null,
     });
-    existing = created as PortalAccount;
+    existing = (await colGet<PortalAccount>(orgId, 'portalAccounts', created.id))!;
+    await colUpdate(orgId, 'customers', customerId, { portalToken: null });
+    emitPortalMagicTelemetry('portal.magic_token.created', {
+      organizationId: orgId,
+      customerId,
+      portalAccountId: existing.id,
+    });
   } else if (opts?.token || opts?.status != null || opts?.portalEnabled != null) {
-    await colUpdate(
-      orgId,
-      'portalAccounts',
-      existing.id,
-      stripUndefinedDeep({
-        accessToken: opts?.token ?? existing.accessToken,
-        status: opts?.status ?? existing.status,
-        portalEnabled: opts?.portalEnabled ?? existing.portalEnabled,
-      }),
-    );
+    const patch: Record<string, unknown> = stripUndefinedDeep({
+      status: opts?.status ?? existing.status,
+      portalEnabled: opts?.portalEnabled ?? existing.portalEnabled,
+    });
+    if (opts?.token) {
+      issuedRaw = opts.token.trim();
+      const fields = portalMagicCredentialWriteFields(issuedRaw);
+      patch.accessToken = null;
+      patch.accessTokenHash = fields.accessTokenHash;
+      patch.accessTokenHashVersion = fields.accessTokenHashVersion;
+      await colUpdate(orgId, 'customers', customerId, { portalToken: null });
+    }
+    await colUpdate(orgId, 'portalAccounts', existing.id, patch);
     existing = (await colGet<PortalAccount>(orgId, 'portalAccounts', existing.id))!;
-  }
-
-  // Dual-write token onto customer for legacy links
-  if (customer.portalToken !== token) {
-    await colUpdate(orgId, 'customers', customerId, { portalToken: token });
   }
 
   let user = await getPrimaryPortalUser(orgId, customerId);
@@ -681,6 +654,8 @@ export async function ensurePortalAccount(
     }
   }
 
+  // Existing accounts without a new issue: do not invent a retrievable raw token from storage.
+  const token = issuedRaw ?? '';
   return { account: existing, user, token };
 }
 
@@ -707,7 +682,10 @@ export async function enableCustomerPortal(
   }
 
   const now = new Date();
+  // Mint a fresh hash-only credential on enable (raw returned once).
+  const rawToken = generatePortalAccessToken();
   const { account, token } = await ensurePortalAccount(orgId, customerId, {
+    token: rawToken,
     portalEnabled: true,
     status: 'active',
   });
@@ -715,7 +693,7 @@ export async function enableCustomerPortal(
   await colUpdate(orgId, 'customers', customerId, {
     portalEnabled: true,
     portalInviteSentAt: now,
-    portalToken: token,
+    portalToken: null,
   });
   await colUpdate(orgId, 'portalAccounts', account.id, {
     portalEnabled: true,
@@ -723,7 +701,8 @@ export async function enableCustomerPortal(
     invitedAt: now,
     activatedAt: now,
     suspendedAt: null,
-    accessToken: token,
+    revokedAt: null,
+    revokedBy: null,
   });
 
   await createPortalTimelineEvent(orgId, {
@@ -753,15 +732,23 @@ export async function revokeCustomerPortal(
   userId?: string | null,
 ): Promise<PortalAccount | null> {
   const account = await getPortalAccountByCustomer(orgId, customerId);
-  await colUpdate(orgId, 'customers', customerId, { portalEnabled: false });
+  // Clear legacy plaintext so fallback cannot restore access after revoke.
+  await colUpdate(orgId, 'customers', customerId, { portalEnabled: false, portalToken: null });
   if (account) {
     await colUpdate(orgId, 'portalAccounts', account.id, {
       portalEnabled: false,
       status: 'archived',
       revokedAt: new Date(),
       revokedBy: userId ?? null,
+      accessToken: null,
+      // Keep accessTokenHash so we can detect rotated/revoked hash mismatch vs stale plaintext.
     });
     await invalidatePortalSessions(orgId, { portalAccountId: account.id, actorId: userId });
+    emitPortalMagicTelemetry('portal.magic_token.revoked', {
+      organizationId: orgId,
+      customerId,
+      portalAccountId: account.id,
+    });
   }
   await logCustomerActivity(
     orgId,
@@ -808,20 +795,29 @@ export async function rotatePortalAccessToken(
   customerId: string,
   userId?: string | null,
 ): Promise<{ token: string; accessUrl: string; account: PortalAccount }> {
-  const token = nanoid(32);
+  const token = generatePortalAccessToken();
+  const fields = portalMagicCredentialWriteFields(token);
   const { account } = await ensurePortalAccount(orgId, customerId, {
     token,
     portalEnabled: true,
     status: 'active',
   });
-  await colUpdate(orgId, 'customers', customerId, { portalToken: token, portalEnabled: true });
+  await colUpdate(orgId, 'customers', customerId, { portalToken: null, portalEnabled: true });
   await colUpdate(orgId, 'portalAccounts', account.id, {
-    accessToken: token,
-    accessTokenHash: null,
+    accessToken: null,
+    accessTokenHash: fields.accessTokenHash,
+    accessTokenHashVersion: fields.accessTokenHashVersion,
     portalEnabled: true,
     status: 'active',
+    revokedAt: null,
+    revokedBy: null,
   });
   await invalidatePortalSessions(orgId, { portalAccountId: account.id, actorId: userId });
+  emitPortalMagicTelemetry('portal.magic_token.rotated', {
+    organizationId: orgId,
+    customerId,
+    portalAccountId: account.id,
+  });
   await logCustomerActivity(
     orgId,
     customerId,
@@ -888,6 +884,7 @@ export async function changePortalUserRole(
 }
 
 export async function getStaffPortalAccountView(orgId: string, customerId: string) {
+  const { magicAccessFingerprint } = await import('./portal-magic-access');
   const customer = await colGet<CustomerRecord>(orgId, 'customers', customerId);
   if (!customer) return null;
   let account = await getPortalAccountByCustomer(orgId, customerId);
@@ -895,17 +892,32 @@ export async function getStaffPortalAccountView(orgId: string, customerId: strin
     const ensured = await ensurePortalAccount(orgId, customerId);
     account = ensured.account;
   }
-  const token = account?.accessToken ?? customer.portalToken ?? null;
+  const credentialExists = Boolean(
+    account?.accessTokenHash || account?.accessToken || customer.portalToken,
+  );
+  // P2-S7: never return raw token / magic URL from normal staff reads.
   return {
-    account,
+    account: account
+      ? {
+          id: account.id,
+          customerId: account.customerId,
+          portalEnabled: account.portalEnabled,
+          status: account.status,
+          invitedAt: account.invitedAt ?? null,
+          lastLoginAt: account.lastLoginAt ?? null,
+          updatedAt: account.updatedAt,
+          credentialExists,
+          credentialFingerprint: magicAccessFingerprint(account.accessTokenHash),
+        }
+      : null,
     enabled: account?.portalEnabled ?? customer.portalEnabled ?? false,
     status: account?.status ?? (customer.portalEnabled ? 'active' : 'not_invited'),
     inviteSentAt: account?.invitedAt ?? customer.portalInviteSentAt ?? null,
     lastLoginAt: account?.lastLoginAt ?? customer.portalLastLoginAt ?? null,
-    accessUrl: token ? portalAccessUrl(token) : null,
-    accessLinkPlaceholder: token
-      ? portalAccessUrl(token)
-      : portalAccessUrl('').replace(/\/$/, '') + '/login',
+    credentialExists,
+    credentialFingerprint: magicAccessFingerprint(account?.accessTokenHash),
+    accessUrl: null,
+    accessLinkPlaceholder: `${(process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')}/portal/login`,
   };
 }
 
@@ -1338,7 +1350,8 @@ export async function getPortalDashboard(
       permissions: settings.permissions,
     },
     enabledFeatures,
-    accessToken: ctx.accessToken,
+    // P2-S7: do not expose magic token on normal dashboard DTOs (session is enough).
+    accessToken: '',
     proposals: canProposals ? proposals : [],
     invoices: canInvoices ? invoices : [],
     schedule: portalHasFeature(enabledFeatures, 'scheduling') ? schedule : [],

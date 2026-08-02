@@ -30,13 +30,22 @@ export async function POST(req: NextRequest) {
 
     const cookieStore = await cookies();
     const sessionToken = cookieStore.get('__portal_session')?.value ?? null;
-    const auth = { token: parsed.data.token ?? null, sessionToken };
+    // Session-first routes (P2-S7) send '' — only a real magic token counts.
+    const requestToken =
+      parsed.data.token && parsed.data.token.length >= 8 ? parsed.data.token : null;
+    const auth = { token: requestToken, sessionToken };
 
     if (parsed.data.pathname) {
+      // ['portal', 'app' | token, 'jobs', jobId] — index is identical for both shapes.
       const parts = parsed.data.pathname.split('/').filter(Boolean);
       const resourceId =
         parsed.data.resourceId ||
-        (parts[0] === 'portal' && parts[2] === 'jobs' && parts[3] ? parts[3] : undefined);
+        (parts[0] === 'portal' &&
+        (parts[1] === 'app' || parts.length >= 3) &&
+        parts[2] === 'jobs' &&
+        parts[3]
+          ? parts[3]
+          : undefined);
       const result = await authorizePortalPath({
         pathname: parsed.data.pathname,
         auth,

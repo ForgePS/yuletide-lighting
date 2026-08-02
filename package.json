@@ -34,6 +34,8 @@
     "audit:portal-files": "node scripts/audit-portal-files.mjs",
     "audit:portal-mutations": "node scripts/audit-portal-mutations.mjs",
     "audit:portal-idempotency": "node scripts/audit-portal-idempotency.mjs",
+    "audit:portal-token-security": "node scripts/audit-portal-token-security.mjs",
+    "portal:token-migration": "node scripts/portal-token-migration.mjs",
     "migrate:org-modules": "npx tsx scripts/migrate-organization-modules.ts",
     "migrate:org-modules:dry-run:emulator": "firebase emulators:exec --only firestore --project yuletide-rules-test \"node scripts/run-module-migration-emulator-dry-run.mjs\"",
     "production:check": "node scripts/production-check.mjs",

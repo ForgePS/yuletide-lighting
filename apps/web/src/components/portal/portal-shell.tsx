@@ -6,10 +6,10 @@ import { useEffect, useState } from 'react';
 import type { PortalFeatureKey, PortalNotification } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
 import { LoadingState } from '@/components/ui/states';
+import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
 import {
   authorizePortalRouteClient,
   clearPortalSessionCookie,
-  establishPortalSessionCookie,
   type PortalRouteAuthClientResult,
 } from '@/lib/portal-session-client';
 
@@ -17,27 +17,27 @@ type NavItem = {
   feature?: PortalFeatureKey;
   key: string;
   label: string;
-  href: (token: string) => string;
+  href: string;
   primary?: boolean;
   badge?: 'notifications' | 'messages';
 };
 
-/** Spec primary: Home, Schedule, Service, Messages + More */
+/** Spec primary: Home, Schedule, Service, Messages + More — session-first paths (P2-S7). */
 const NAV: NavItem[] = [
-  { key: 'home', label: 'Home', primary: true, href: (t) => `/portal/${t}` },
+  { key: 'home', label: 'Home', primary: true, href: portalAppPath() },
   {
     feature: 'scheduling',
     key: 'schedule',
     label: 'Schedule',
     primary: true,
-    href: (t) => `/portal/${t}/schedule`,
+    href: portalAppPath('schedule'),
   },
   {
     feature: 'service_requests',
     key: 'service',
     label: 'Service',
     primary: true,
-    href: (t) => `/portal/${t}/service-request`,
+    href: portalAppPath('service-request'),
   },
   {
     feature: 'messaging',
@@ -45,63 +45,63 @@ const NAV: NavItem[] = [
     label: 'Messages',
     primary: true,
     badge: 'messages',
-    href: (t) => `/portal/${t}/messages`,
+    href: portalAppPath('messages'),
   },
   {
     key: 'notifications',
     label: 'Alerts',
     badge: 'notifications',
-    href: (t) => `/portal/${t}/notifications`,
+    href: portalAppPath('notifications'),
   },
-  { key: 'contacts', label: 'Account', href: (t) => `/portal/${t}/contacts` },
-  { feature: 'e_sign', key: 'sign', label: 'Sign', href: (t) => `/portal/${t}/sign` },
-  { feature: 'billing', key: 'billing', label: 'Billing', href: (t) => `/portal/${t}/billing` },
+  { key: 'contacts', label: 'Account', href: portalAppPath('contacts') },
+  { feature: 'e_sign', key: 'sign', label: 'Sign', href: portalAppPath('sign') },
+  { feature: 'billing', key: 'billing', label: 'Billing', href: portalAppPath('billing') },
   {
     feature: 'proposals',
     key: 'proposals',
     label: 'Proposals',
-    href: (t) => `/portal/${t}/proposals`,
+    href: portalAppPath('proposals'),
   },
   {
     feature: 'agreements',
     key: 'agreements',
     label: 'Agreements',
-    href: (t) => `/portal/${t}/agreements`,
+    href: portalAppPath('agreements'),
   },
   {
     feature: 'properties',
     key: 'properties',
     label: 'Properties',
-    href: (t) => `/portal/${t}/properties`,
+    href: portalAppPath('properties'),
   },
-  { feature: 'mockups', key: 'mockups', label: 'Designs', href: (t) => `/portal/${t}/mockups` },
+  { feature: 'mockups', key: 'mockups', label: 'Designs', href: portalAppPath('mockups') },
   {
     feature: 'documents',
     key: 'documents',
     label: 'Documents',
-    href: (t) => `/portal/${t}/documents`,
+    href: portalAppPath('documents'),
   },
   {
     feature: 'install_tracking',
     key: 'jobs',
     label: 'Installation',
-    href: (t) => `/portal/${t}/jobs`,
+    href: portalAppPath('jobs'),
   },
   {
     feature: 'takedowns',
     key: 'takedowns',
     label: 'Takedown',
-    href: (t) => `/portal/${t}/takedowns`,
+    href: portalAppPath('takedowns'),
   },
-  { feature: 'storage', key: 'storage', label: 'Storage', href: (t) => `/portal/${t}/storage` },
+  { feature: 'storage', key: 'storage', label: 'Storage', href: portalAppPath('storage') },
   {
     feature: 'consultations',
     key: 'consultations',
     label: 'Consultations',
-    href: (t) => `/portal/${t}/consultations`,
+    href: portalAppPath('consultations'),
   },
-  { feature: 'reviews', key: 'reviews', label: 'Reviews', href: (t) => `/portal/${t}/reviews` },
-  { feature: 'rebooking', key: 'rebook', label: 'Rebook', href: (t) => `/portal/${t}/rebook` },
+  { feature: 'reviews', key: 'reviews', label: 'Reviews', href: portalAppPath('reviews') },
+  { feature: 'rebooking', key: 'rebook', label: 'Rebook', href: portalAppPath('rebook') },
 ];
 
 function isActive(pathname: string, href: string, key: string) {
@@ -110,14 +110,12 @@ function isActive(pathname: string, href: string, key: string) {
 }
 
 export function PortalShell({
-  token,
   companyName,
   brandColor,
   enabledFeatures,
   notifications = [],
   children,
 }: {
-  token: string;
   companyName: string;
   brandColor?: string | null;
   enabledFeatures: PortalFeatureKey[];
@@ -147,7 +145,6 @@ export function PortalShell({
   const primary = primaryKeys
     .map((k) => items.find((i) => i.key === k))
     .filter(Boolean) as NavItem[];
-  // Fill slots if a feature is missing so we still have 4 primaries when possible
   for (const item of items) {
     if (primary.length >= 4) break;
     if (!primary.some((p) => p.key === item.key) && item.key !== 'notifications') {
@@ -162,7 +159,7 @@ export function PortalShell({
   }
 
   const NavLink = ({ item, compact }: { item: NavItem; compact?: boolean }) => {
-    const href = item.href(token);
+    const href = item.href;
     const active = isActive(pathname, href, item.key);
     const badge = badgeFor(item);
     return (
@@ -193,7 +190,6 @@ export function PortalShell({
   return (
     <div className="min-h-screen bg-gradient-to-b from-stone-100 via-stone-50 to-red-50/40 text-base text-stone-800 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6">
       <div className="md:mx-auto md:flex md:max-w-6xl md:gap-5 md:px-4 md:py-5 xl:max-w-7xl xl:gap-6">
-        {/* Tablet + desktop side nav (portrait & landscape) */}
         <aside className="sticky top-4 hidden w-52 shrink-0 self-start md:block lg:w-56">
           <div className="max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-stone-200 bg-white p-3 shadow-sm lg:p-4">
             <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">
@@ -234,7 +230,7 @@ export function PortalShell({
               <div className="flex shrink-0 items-center gap-2 text-sm">
                 {unread > 0 && (
                   <Link
-                    href={`/portal/${token}/notifications`}
+                    href={portalAppPath('notifications')}
                     className="inline-flex min-h-11 items-center rounded-full bg-red-100 px-3 text-xs font-semibold text-red-800"
                   >
                     {unread} new
@@ -257,7 +253,6 @@ export function PortalShell({
         </div>
       </div>
 
-      {/* Mobile bottom nav */}
       <nav
         className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
         aria-label="Primary"
@@ -297,7 +292,7 @@ export function PortalShell({
               {moreItems.map((item) => (
                 <li key={item.key}>
                   <Link
-                    href={item.href(token)}
+                    href={item.href}
                     className="relative flex min-h-12 items-center rounded-xl border border-stone-200 px-3 text-base font-medium text-stone-800"
                     onClick={() => setMoreOpen(false)}
                   >
@@ -361,7 +356,6 @@ function PortalAccessUnavailableScreen({ title, message }: { title: string; mess
 }
 
 export function PortalAuthedFrame({
-  token,
   title,
   feature,
   children,
@@ -369,13 +363,12 @@ export function PortalAuthedFrame({
   resourceType,
   resourceId,
 }: {
-  token: string;
   title: string;
   feature?: PortalFeatureKey;
   stickyPad?: boolean;
   resourceType?: string;
   resourceId?: string;
-  children: (ctx: { token: string; enabledFeatures: PortalFeatureKey[] }) => React.ReactNode;
+  children: (ctx: { enabledFeatures: PortalFeatureKey[] }) => React.ReactNode;
 }) {
   const pathname = usePathname();
   const [routeAuth, setRouteAuth] = useState<PortalRouteAuthClientResult | null>(null);
@@ -385,22 +378,15 @@ export function PortalAuthedFrame({
   const routeDenied = routeAuthReady && routeAuth?.allowed === false;
 
   const { data, isLoading, isError, isFetched } = trpc.portal360.public.dashboard.useQuery(
-    { token },
+    portalSessionInput,
     { enabled: routeAuthReady && !routeDenied },
   );
-
-  useEffect(() => {
-    const accessToken = data?.accessToken || token;
-    if (!accessToken || accessToken.length < 8) return;
-    void establishPortalSessionCookie(accessToken);
-  }, [data?.accessToken, token]);
 
   useEffect(() => {
     let cancelled = false;
     setRouteAuthReady(false);
     setRouteAuth(null);
     void authorizePortalRouteClient({
-      token,
       feature,
       action: 'view',
       resourceType,
@@ -425,7 +411,7 @@ export function PortalAuthedFrame({
     return () => {
       cancelled = true;
     };
-  }, [token, feature, resourceType, resourceId, pathname]);
+  }, [feature, resourceType, resourceId, pathname]);
 
   if (routeAuthLoading) return <LoadingState message="Loading..." />;
 
@@ -448,21 +434,19 @@ export function PortalAuthedFrame({
     );
   }
 
-  const accessToken = data.accessToken || token;
   const features = data.enabledFeatures ?? [];
   const featureHidden = Boolean(feature && !features.includes(feature));
 
   if (featureHidden) {
     return (
       <PortalShell
-        token={accessToken}
         companyName={data.organization?.companyName ?? 'Customer Portal'}
         brandColor={data.settings.portalPrimaryColor ?? data.organization?.brandColor}
         enabledFeatures={features}
         notifications={data.notifications ?? []}
       >
         <Link
-          href={`/portal/${accessToken}`}
+          href={portalAppPath()}
           className="inline-flex min-h-11 items-center text-base text-primary hover:underline"
         >
           ← Back to home
@@ -491,7 +475,6 @@ export function PortalAuthedFrame({
 
   return (
     <PortalShell
-      token={accessToken}
       companyName={data.organization?.companyName ?? 'Customer Portal'}
       brandColor={data.settings.portalPrimaryColor ?? data.organization?.brandColor}
       enabledFeatures={features}
@@ -500,7 +483,7 @@ export function PortalAuthedFrame({
       <div className={stickyPad ? 'pb-28 md:pb-0' : undefined}>
         <div>
           <Link
-            href={`/portal/${accessToken}`}
+            href={portalAppPath()}
             className="inline-flex min-h-11 items-center text-base text-primary hover:underline"
           >
             ← Back to home
@@ -508,7 +491,7 @@ export function PortalAuthedFrame({
           <h2 className="mt-1 text-xl font-bold text-stone-900 sm:text-2xl">{title}</h2>
         </div>
         <div className="mt-4 space-y-4 sm:mt-5 sm:space-y-5">
-          {children({ token: accessToken, enabledFeatures: features })}
+          {children({ enabledFeatures: features })}
         </div>
       </div>
     </PortalShell>

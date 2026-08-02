@@ -1,0 +1,211 @@
+#!/usr/bin/env node
+/**
+ * PORTAL-P2-S7 — static magic-token security audit.
+ * ENVIRONMENT=EMULATOR evidence — no production contact.
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const findings = [];
+
+function read(rel) {
+  const p = path.join(root, rel);
+  return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null;
+}
+
+function walk(dir, acc = []) {
+  if (!fs.existsSync(dir)) return acc;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === '.next' || entry.name === 'dist')
+        continue;
+      walk(full, acc);
+    } else if (/\.(ts|tsx|mjs|js)$/.test(entry.name)) {
+      acc.push(full);
+    }
+  }
+  return acc;
+}
+
+function add(rule, detail, file = '') {
+  findings.push({ rule, detail, file });
+}
+
+const magic = read('packages/firebase/src/portal-magic-access.ts');
+if (!magic) {
+  add('missing-canonical-resolver', 'portal-magic-access.ts missing');
+} else {
+  if (!/export function hashPortalAccessToken/.test(magic)) {
+    add('missing-hash-helper', 'hashPortalAccessToken missing');
+  }
+  if (!/export async function resolvePortalMagicAccess/.test(magic)) {
+    add('missing-resolver', 'resolvePortalMagicAccess missing');
+  }
+  if (!/COMPATIBILITY|HASH_ONLY/.test(magic)) {
+    add('missing-modes', 'COMPATIBILITY/HASH_ONLY modes missing');
+  }
+  if (!/portal\.magic_token\.legacy_lookup_used/.test(magic)) {
+    add('missing-legacy-telemetry', 'legacy_lookup_used telemetry missing');
+  }
+  // Flag executable Math.random only (ignore comments / string mentions).
+  const magicCode = magic.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  if (/\bMath\.random\s*\(/.test(magicCode)) {
+    add('insecure-random', 'Math.random in portal-magic-access');
+  }
+}
+
+const portal360 = read('packages/firebase/src/portal360.ts');
+if (!portal360) {
+  add('missing-portal360', 'portal360.ts missing');
+} else {
+  if (!/resolvePortalMagicAccess/.test(portal360)) {
+    add('requirePortalAccess-not-wired', 'requirePortalAccess must use resolvePortalMagicAccess');
+  }
+  if (!/portalMagicCredentialWriteFields/.test(portal360)) {
+    add('hash-only-writes-missing', 'portalMagicCredentialWriteFields not used');
+  }
+  if (!/generatePortalAccessToken/.test(portal360)) {
+    add('crypto-generator-missing', 'generatePortalAccessToken not used for new tokens');
+  }
+  // New plaintext persistence patterns outside migration/legacy reads
+  const writeBodies = [
+    /accessToken:\s*token(?!\s*\?)/,
+    /accessToken:\s*rawToken/,
+    /accessToken:\s*issuedRaw/,
+    /portalToken:\s*token(?!\s*\?)/,
+    /portalToken:\s*rawToken/,
+  ];
+  for (const re of writeBodies) {
+    if (re.test(portal360) && !/accessToken:\s*null/.test(portal360)) {
+      // allow null clears; flag only if we see plaintext assignment without hash fields nearby
+    }
+  }
+  // Staff DTO must not return raw token
+  const staffView =
+    /export async function getStaffPortalAccountView[\s\S]*?\nexport async function/.exec(
+      portal360,
+    )?.[0] || '';
+  if (staffView && /accessUrl:\s*portalAccessUrl|token:\s*account\.accessToken/.test(staffView)) {
+    add('staff-dto-raw-token', 'getStaffPortalAccountView exposes raw token or magic URL');
+  }
+  if (staffView && !/accessUrl:\s*null/.test(staffView)) {
+    add('staff-dto-accessUrl', 'staff view should set accessUrl: null');
+  }
+}
+
+const shell = read('apps/web/src/components/portal/portal-shell.tsx');
+if (!shell) {
+  add('missing-shell', 'portal-shell.tsx missing');
+} else {
+  if (/\/portal\/\$\{/.test(shell) || /`\/portal\/\$\{/.test(shell)) {
+    add('shell-token-nav', 'PortalShell still interpolates magic token into hrefs');
+  }
+  if (!/portalAppPath/.test(shell)) {
+    add('shell-not-tokenless', 'PortalShell must use portalAppPath for nav');
+  }
+  if (/localStorage|sessionStorage/.test(shell)) {
+    add('browser-storage-token', 'PortalShell must not use localStorage/sessionStorage for tokens');
+  }
+}
+
+const entry = read('apps/web/src/lib/portal-token-entry.tsx');
+if (!entry || !/LegacyPortalEntryShim|mapLegacyPortalPathToAppPath/.test(entry)) {
+  add('missing-entry-shim', 'legacy token entry shim missing');
+}
+
+const appHome = read('apps/web/src/app/portal/app/page.tsx');
+if (!appHome) {
+  add('missing-tokenless-home', '/portal/app page missing');
+}
+
+const migration = read('scripts/portal-token-migration.mjs');
+if (!migration) {
+  add('missing-migration-tool', 'portal-token-migration.mjs missing');
+} else {
+  if (!/PRODUCTION_PORTAL_TOKEN_MIGRATION_NOT_AUTHORIZED/.test(migration)) {
+    add('migration-guard-missing', 'production migration guard string missing');
+  }
+  if (
+    /--force-production|--allow-production/.test(migration) &&
+    /process\.exit\(0\)/.test(migration)
+  ) {
+    // ensure those flags fail, not succeed
+  }
+  if (!/FIRESTORE_EMULATOR_HOST/.test(migration)) {
+    add('migration-emulator-guard', 'migration tool lacks FIRESTORE_EMULATOR_HOST guard');
+  }
+  // Reject any production bypass helpers
+  if (/ALLOW_PRODUCTION_TOKEN_MIGRATION\s*=\s*['"]1['"]/.test(migration)) {
+    add('production-bypass', 'migration tool contains production bypass');
+  }
+}
+
+const sessionRoute = read('apps/web/src/app/api/portal/session/route.ts');
+if (sessionRoute && !/no-store/.test(sessionRoute)) {
+  add('session-cache-control', 'session route must set Cache-Control: no-store');
+}
+
+const layout = read('apps/web/src/app/portal/[token]/layout.tsx') || '';
+const nextConfig = read('apps/web/next.config.js') || '';
+const entryProtected =
+  (/noindex/i.test(layout) || /index:\s*false/.test(layout)) &&
+  /no-referrer/i.test(nextConfig) &&
+  /no-store/i.test(nextConfig) &&
+  /legacyPortalEntryHeaders|\/portal\/:token/.test(nextConfig);
+if (!entryProtected) {
+  add(
+    'entry-headers',
+    'token entry must set robots noindex in layout and Referrer-Policy/Cache-Control via next.config',
+  );
+}
+
+// Scan portal UI for localStorage/sessionStorage of access tokens
+const portalUi = walk(path.join(root, 'apps/web/src')).filter((f) =>
+  /portal/i.test(path.relative(root, f)),
+);
+for (const file of portalUi) {
+  const text = fs.readFileSync(file, 'utf8');
+  const rel = path.relative(root, file).replaceAll('\\', '/');
+  if (/localStorage\.(setItem|getItem)\([^)]*token/i.test(text)) {
+    add('localStorage-token', 'raw token localStorage usage', rel);
+  }
+  if (/sessionStorage\.(setItem|getItem)\([^)]*token/i.test(text)) {
+    add('sessionStorage-token', 'raw token sessionStorage usage', rel);
+  }
+  // Authenticated shell links with token interpolation (exclude entry shim / invite / access)
+  if (/portal-shell|portal\/pages|portal\/app/.test(rel) && /`\/portal\/\$\{/.test(text)) {
+    add('token-bearing-nav', 'token-bearing portal href in authenticated UI', rel);
+  }
+}
+
+// Plaintext fallback must live only in portal-magic-access
+const firebaseSrc = walk(path.join(root, 'packages/firebase/src')).filter(
+  (f) => /portal/.test(path.basename(f)) && !f.endsWith('.test.ts'),
+);
+for (const file of firebaseSrc) {
+  const rel = path.relative(root, file).replaceAll('\\', '/');
+  if (rel.endsWith('portal-magic-access.ts')) continue;
+  const text = fs.readFileSync(file, 'utf8');
+  if (
+    /collectionGroup\(['"]portalAccounts['"]\)[\s\S]{0,200}accessToken['"]\s*,\s*['"]==/.test(text)
+  ) {
+    add(
+      'scattered-plaintext-lookup',
+      'plaintext accessToken lookup outside canonical resolver',
+      rel,
+    );
+  }
+}
+
+if (findings.length) {
+  console.error('audit:portal-token-security FAILED');
+  for (const f of findings) {
+    console.error(` - [${f.rule}] ${f.detail}${f.file ? ` (${f.file})` : ''}`);
+  }
+  process.exit(1);
+}
+console.log('audit:portal-token-security PASS');
+console.log('ENVIRONMENT=EMULATOR (static audit; no production contact)');

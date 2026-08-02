@@ -1,6 +1,6 @@
 # Launch Risk Register (Phase 0)
 
-**Date:** 2026-07-30  
+**Date:** 2026-07-30
 **Severity:** Blocker = must be zero before “production ready” per directive §25–26.
 
 | ID  | Risk                                                     | Severity                   | Evidence                                      | Phase to address              |
@@ -91,3 +91,11 @@ See `portal-phase-2-defect-register.md`. **NO DEPLOYMENT or production write is 
 | ------------------------------------- | ----------------------------------------------- | ----------------------------- |
 | Duplicate portal creates / double pay | withPortalIdempotency, payable cents, safe mode | Mitigated (emulator evidence) |
 | Invalid customer state transitions    | canPortalTransition + public-token guards       | Mitigated                     |
+
+### Portal P2-S7 (2026-08-02)
+
+| Risk                                        | Mitigation                                                           | Status                                                               |
+| ------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Legacy plaintext magic tokens at rest (R25) | Hash-only new writes; `resolvePortalMagicAccess`; session-first URLs | **In progress** — emulator only; production migration NOT authorized |
+| Token in URL / referrer leakage             | `no-referrer`, `no-store`, `noindex` on legacy entry paths           | Implemented in S7 worktree; gate pending                             |
+| Stale plaintext after revoke/rotate         | Lifecycle checks before legacy lookup                                | Integration evidence pending gate run                                |

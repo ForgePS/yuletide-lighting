@@ -11,7 +11,13 @@ loadEnvConfig(repoRoot);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: repoRoot,
-  transpilePackages: ['@clcrm/api', '@clcrm/types', '@clcrm/ui', '@clcrm/validators', '@yuletide/firebase'],
+  transpilePackages: [
+    '@clcrm/api',
+    '@clcrm/types',
+    '@clcrm/ui',
+    '@clcrm/validators',
+    '@yuletide/firebase',
+  ],
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -20,8 +26,7 @@ const nextConfig = {
   },
   env: {
     NEXT_PUBLIC_FIREBASE_API_KEY:
-      process.env.NEXT_PUBLIC_FIREBASE_API_KEY ??
-      'AIzaSyD9jk7wARDfxpaYxigLKTJ13gK7eCBhCEY',
+      process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? 'AIzaSyD9jk7wARDfxpaYxigLKTJ13gK7eCBhCEY',
     NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:
       process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ?? 'yuletide-lighting.firebaseapp.com',
     NEXT_PUBLIC_FIREBASE_PROJECT_ID:
@@ -31,10 +36,8 @@ const nextConfig = {
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:
       process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? '928287362183',
     NEXT_PUBLIC_FIREBASE_APP_ID:
-      process.env.NEXT_PUBLIC_FIREBASE_APP_ID ??
-      '1:928287362183:web:e0cca4d6e2f6d89cc3bc22',
-    NEXT_PUBLIC_APP_URL:
-      process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app',
+      process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? '1:928287362183:web:e0cca4d6e2f6d89cc3bc22',
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app',
     NEXT_PUBLIC_MAPBOX_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '',
   },
   images: {
@@ -46,6 +49,17 @@ const nextConfig = {
       canvas: false,
     };
     return config;
+  },
+  async headers() {
+    const legacyPortalEntryHeaders = [
+      { key: 'Referrer-Policy', value: 'no-referrer' },
+      { key: 'Cache-Control', value: 'no-store' },
+      { key: 'X-Robots-Tag', value: 'noindex' },
+    ];
+    return [
+      { source: '/portal/:token', headers: legacyPortalEntryHeaders },
+      { source: '/portal/:token/:path*', headers: legacyPortalEntryHeaders },
+    ];
   },
 };
 

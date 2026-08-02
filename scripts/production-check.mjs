@@ -699,6 +699,12 @@ tryRun(
   'npm run audit:portal-idempotency',
   'Ensure high-impact portal mutations have deterministic replay/idempotency behavior',
 );
+tryRun(
+  'portal-token-security-audit',
+  'security',
+  'npm run audit:portal-token-security',
+  'Enforce hash-only magic tokens, session-first routes, and no raw-token leakage',
+);
 if (auditsOnly) {
   const files = ['tests/firebase/firestore.rules.test.ts', 'tests/firebase/storage.rules.test.ts'];
   const ok = files.every((f) => fs.existsSync(path.join(root, f)));
@@ -774,6 +780,20 @@ function auditPortalPhase2() {
     'tests/integration/portal/portal-phase2-s5.integration.test.ts',
     'apps/web/src/app/api/portal/files/route.ts',
     'docs/production-cleanup/portal-token-hardening-plan.md',
+    'packages/firebase/src/portal-magic-access.ts',
+    'packages/firebase/src/portal-phase2-s7-magic-access.test.ts',
+    'scripts/audit-portal-token-security.mjs',
+    'scripts/portal-token-migration.mjs',
+    'apps/web/src/app/portal/app/page.tsx',
+    'apps/web/src/lib/portal-token-entry.tsx',
+    'tests/integration/portal/portal-phase2-s7.integration.test.ts',
+    'e2e/portal-phase2-s7-token-hardening.spec.ts',
+    'docs/production-cleanup/portal-phase-2-s7-baseline.md',
+    'docs/production-cleanup/portal-phase-2-s7-token-inventory.md',
+    'docs/production-cleanup/portal-phase-2-s7-route-cutover-map.md',
+    'docs/production-cleanup/portal-phase-2-s7-token-model.md',
+    'docs/production-cleanup/portal-phase-2-s7-compatibility-model.md',
+    'docs/production-cleanup/portal-token-production-migration-plan.md',
   ];
   const missing = required.filter((f) => !fs.existsSync(path.join(root, f)));
   if (missing.length) {

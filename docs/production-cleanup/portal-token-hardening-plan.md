@@ -1,7 +1,7 @@
 # Portal Legacy Magic-Token Hardening Plan
 
-**STATUS:** DEFERRED — NOT APPLIED IN S3  
-**ENVIRONMENT:** EMULATOR  
+**STATUS:** IN PROGRESS (P2-S7 emulator implementation) — production migration NOT AUTHORIZED
+**ENVIRONMENT:** EMULATOR
 **Production writes / deploys:** PROHIBITED
 
 Legacy magic access tokens, including `customers.portalToken`, remain plaintext for compatibility. Invitation and QR/OTP hashing in S3 does not remove this risk.
@@ -31,3 +31,7 @@ No migration step in this plan is authorized by PORTAL-P2-S3.
 ## S6 interaction (2026-08-02)
 
 Public-token flows (proposal/agreement/mockup/pay) remain on token URLs; S6 adds replay-safe transitions and server payment authority without changing token persistence model. Legacy plaintext magic-token migration remains deferred.
+
+## S7 update (2026-08-02)
+
+P2-S7 implements hash-only **new writes**, `resolvePortalMagicAccess`, session-first `/portal/app/**` routes, and COMPATIBILITY/HASH_ONLY modes in emulator worktree `work/portal-p2-s7-token-hardening`. Production backfill and HASH_ONLY cutover remain **NOT AUTHORIZED** — see `portal-token-production-migration-plan.md`. Gate PASS not recorded.

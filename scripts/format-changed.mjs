@@ -8,6 +8,7 @@
  *   node scripts/format-changed.mjs --check   # validate only
  */
 import { execSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,7 +43,7 @@ const ignored = supported.filter(
     f.endsWith('package-lock.json') ||
     f.includes('tsconfig.tsbuildinfo'),
 );
-const targets = supported.filter((f) => !ignored.includes(f));
+const targets = supported.filter((f) => !ignored.includes(f) && fs.existsSync(path.join(root, f)));
 
 if (targets.length === 0) {
   console.log(`No changed Prettier-supported files since ${baseline}.`);
@@ -52,13 +53,19 @@ if (targets.length === 0) {
 console.log(
   `${checkOnly ? 'Checking' : 'Formatting'} ${targets.length} changed file(s) since ${baseline}…`,
 );
-const list = targets.map((f) => `"${f.replace(/"/g, '\\"')}"`).join(' ');
+
+// Batch to avoid Windows "The command line is too long."
+const BATCH = 40;
 try {
-  execSync(`npx prettier ${checkOnly ? '--check' : '--write'} ${list}`, {
-    cwd: root,
-    stdio: 'inherit',
-    shell: true,
-  });
+  for (let i = 0; i < targets.length; i += BATCH) {
+    const chunk = targets.slice(i, i + BATCH);
+    const list = chunk.map((f) => `"${f.replace(/"/g, '\\"')}"`).join(' ');
+    execSync(`npx prettier ${checkOnly ? '--check' : '--write'} ${list}`, {
+      cwd: root,
+      stdio: 'inherit',
+      shell: true,
+    });
+  }
   console.log(checkOnly ? 'Changed-file format check passed.' : 'Changed files formatted.');
 } catch {
   console.error('Changed-file format check failed.');

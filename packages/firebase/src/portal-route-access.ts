@@ -40,8 +40,14 @@ export type PortalRouteAccess =
   | { allowed: true; authorized: PortalAuthorizedContext }
   | { allowed: false; reason: PortalRouteDenialReason; publicMessage: string };
 
+/**
+ * Session-first portal base (P2-S7). Routes under this prefix carry no token in the
+ * URL and authorize purely from the `__portal_session` cookie.
+ */
+export const PORTAL_SESSION_ROUTE_BASE = '/portal/app';
+
 export type PortalRouteDefinition = {
-  /** Path suffix after /portal/[token]/ — '' for home. */
+  /** Path suffix after /portal/app/ or /portal/[token]/ — '' for home. */
   segment: string;
   class: PortalRouteClass;
   feature?: PortalFeatureKey;
@@ -127,6 +133,21 @@ export const PORTAL_PUBLIC_ENTRY_ROUTES = [
   '/portal/invite',
 ] as const;
 
+/** True for tokenless session-first portal paths (`/portal/app`, `/portal/app/...`). */
+export function isPortalSessionRoutePath(pathname: string): boolean {
+  return (
+    pathname === PORTAL_SESSION_ROUTE_BASE || pathname.startsWith(`${PORTAL_SESSION_ROUTE_BASE}/`)
+  );
+}
+
+/** Legacy magic-token URLs — entry shims only (P2-S7). */
+export function isLegacyPortalMagicTokenPath(pathname: string): boolean {
+  const parts = pathname.split('/').filter(Boolean);
+  if (parts[0] !== 'portal' || parts.length < 2) return false;
+  const ns = parts[1];
+  return Boolean(ns && ns !== 'app' && ns !== 'login' && ns !== 'access' && ns !== 'invite');
+}
+
 export function resolvePortalRouteDefinition(pathname: string): PortalRouteDefinition | null {
   // /portal/login, /portal/access/x, /portal/invite/x — public
   if (
@@ -138,9 +159,8 @@ export function resolvePortalRouteDefinition(pathname: string): PortalRouteDefin
     return null; // public entry — caller should not require auth
   }
 
-  // /portal/{token}/...
+  // ['portal', 'app' | token, ...rest] — both shapes carry the segment at index 2.
   const parts = pathname.split('/').filter(Boolean);
-  // ['portal', token, ...rest]
   if (parts[0] !== 'portal' || parts.length < 2) return null;
   const rest = parts.slice(2);
   if (rest.length === 0) {
@@ -279,6 +299,10 @@ export async function authorizePortalPath(args: {
   ) {
     return { allowed: true, public: true };
   }
+
+  // Legacy magic-token URLs remain authorizeable (deep-link / shim pre-checks) using the same
+  // feature matrix as /portal/app. Unknown segments fail closed. UI entry shims do not render
+  // the app under token URLs after successful session exchange.
 
   const def = resolvePortalRouteDefinition(args.pathname);
   if (!def) {

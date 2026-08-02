@@ -124,6 +124,14 @@
       ]
     },
     {
+      "collectionGroup": "portalAccounts",
+      "fieldPath": "accessTokenHash",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    },
+    {
       "collectionGroup": "portalUsers",
       "fieldPath": "invitationTokenHash",
       "indexes": [

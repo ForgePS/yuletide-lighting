@@ -28,6 +28,7 @@ const BATCHES = [
   ['tests/integration/portal/portal-phase2-s4.integration.test.ts'],
   ['tests/integration/portal/portal-phase2-s5.integration.test.ts'],
   ['tests/integration/portal/portal-phase2-s6.integration.test.ts'],
+  ['tests/integration/portal/portal-phase2-s7.integration.test.ts'],
 ];
 
 function portFree(port) {

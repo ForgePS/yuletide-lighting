@@ -569,7 +569,14 @@ export async function ensurePortalAccount(
   customerId: string,
   opts?: { token?: string; status?: PortalAccount['status']; portalEnabled?: boolean },
 ): Promise<{ account: PortalAccount; user: PortalUser; token: string }> {
-  const customer = await colGet<CustomerRecord>(orgId, 'customers', customerId);
+  let customer: CustomerRecord | null = null;
+  for (let attempt = 0; attempt < (process.env.FIRESTORE_EMULATOR_HOST ? 8 : 1); attempt++) {
+    customer = await colGet<CustomerRecord>(orgId, 'customers', customerId);
+    if (customer) break;
+    if (process.env.FIRESTORE_EMULATOR_HOST && attempt < 7) {
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
   if (!customer) throw new Error('Customer not found');
 
   let existing = await getPortalAccountByCustomer(orgId, customerId);
@@ -1363,6 +1370,7 @@ export async function submitPortalServiceRequest(
     accessInstructions?: string;
     locationNote?: string;
     photoUrls?: string[];
+    idempotencyKey?: string;
   },
 ) {
   const creds = asPortalAuth(auth);
@@ -1373,82 +1381,99 @@ export async function submitPortalServiceRequest(
     settingsAllows: (settings) =>
       settings.allowServiceRequests && settings.permissions.requestService,
   });
-  const customerName =
-    ctx.customer.businessName ||
-    `${ctx.customer.firstName ?? ''} ${ctx.customer.lastName ?? ''}`.trim() ||
-    'Customer';
+  const { getPortalResourceScope } = await import('./portal-ownership');
+  const { withPortalIdempotency } = await import('./portal-mutation');
+  const scope = getPortalResourceScope(ctx);
 
-  let propertyLabel: string | undefined;
-  if (input.propertyId) {
-    const prop = await colGet<{ label?: string; addressLine1?: string; customerId?: string }>(
-      ctx.organizationId,
-      'properties',
-      input.propertyId,
-    );
-    if (!prop || prop.customerId !== ctx.customer.id) {
-      throw new Error('Invalid property for this account');
-    }
-    propertyLabel = prop.label ?? prop.addressLine1 ?? undefined;
-  }
+  const { result } = await withPortalIdempotency({
+    scope,
+    action: 'service_request.create',
+    resourceId: 'new',
+    clientKey: input.idempotencyKey,
+    execute: async () => {
+      const customerName =
+        ctx.customer.businessName ||
+        `${ctx.customer.firstName ?? ''} ${ctx.customer.lastName ?? ''}`.trim() ||
+        'Customer';
 
-  const details = [
-    input.description ?? '',
-    input.locationNote ? `Location: ${input.locationNote}` : '',
-    input.accessInstructions ? `Access: ${input.accessInstructions}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+      let propertyLabel: string | undefined;
+      if (input.propertyId) {
+        const prop = await colGet<{ label?: string; addressLine1?: string; customerId?: string }>(
+          ctx.organizationId,
+          'properties',
+          input.propertyId,
+        );
+        if (!prop || prop.customerId !== ctx.customer.id) {
+          throw new Error('Invalid property for this account');
+        }
+        propertyLabel = prop.label ?? prop.addressLine1 ?? undefined;
+      }
 
-  const photoUrls = (
-    await Promise.all(
-      (input.photoUrls ?? [])
-        .slice(0, 6)
-        .map((url) => resolvePortalPhotoUrlForPersist(ctx.organizationId, ctx.customer.id, url)),
-    )
-  ).filter((u): u is string => !!u);
+      const details = [
+        input.description ?? '',
+        input.locationNote ? `Location: ${input.locationNote}` : '',
+        input.accessInstructions ? `Access: ${input.accessInstructions}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
 
-  const issue = await createServiceIssue360(ctx.organizationId, {
-    customerId: ctx.customer.id,
-    customerName,
-    propertyId: input.propertyId ?? '',
-    propertyLabel: propertyLabel ?? '',
-    title: input.title,
-    description: details,
-    category: (input.category as import('@clcrm/types').ServiceIssueCategory) ?? 'customer_request',
-    priority: input.priority ?? 'normal',
-    status: 'reported',
-    warranty: false,
-    photoUrls,
-    source: 'portal',
+      const photoUrls = (
+        await Promise.all(
+          (input.photoUrls ?? [])
+            .slice(0, 6)
+            .map((url) =>
+              resolvePortalPhotoUrlForPersist(ctx.organizationId, ctx.customer.id, url),
+            ),
+        )
+      ).filter((u): u is string => !!u);
+
+      const issue = await createServiceIssue360(ctx.organizationId, {
+        customerId: ctx.customer.id,
+        customerName,
+        propertyId: input.propertyId ?? '',
+        propertyLabel: propertyLabel ?? '',
+        title: input.title,
+        description: details,
+        category:
+          (input.category as import('@clcrm/types').ServiceIssueCategory) ?? 'customer_request',
+        priority: input.priority ?? 'normal',
+        status: 'reported',
+        warranty: false,
+        photoUrls,
+        source: 'portal',
+      });
+
+      await createCommunication(ctx.organizationId, ctx.customer.id, {
+        type: 'portal_message',
+        direction: 'inbound',
+        subject: input.title,
+        body: details || input.title,
+        employeeId: null,
+        employeeName: null,
+        occurredAt: new Date(),
+        followUpRequired: true,
+        followUpDate: null,
+        relatedPropertyId: input.propertyId ?? null,
+        relatedJobId: null,
+        relatedQuoteId: null,
+      });
+
+      await createPortalTimelineEvent(ctx.organizationId, {
+        customerId: ctx.customer.id,
+        propertyId: input.propertyId ?? null,
+        eventType: 'service_request',
+        title: 'Service request submitted',
+        description: input.title,
+        relatedRecordType: 'serviceIssue',
+        relatedRecordId: issue.id,
+        customerVisible: true,
+      });
+
+      return { id: issue.id, status: issue.status ?? 'reported' };
+    },
   });
 
-  await createCommunication(ctx.organizationId, ctx.customer.id, {
-    type: 'portal_message',
-    direction: 'inbound',
-    subject: input.title,
-    body: details || input.title,
-    employeeId: null,
-    employeeName: null,
-    occurredAt: new Date(),
-    followUpRequired: true,
-    followUpDate: null,
-    relatedPropertyId: input.propertyId ?? null,
-    relatedJobId: null,
-    relatedQuoteId: null,
-  });
-
-  await createPortalTimelineEvent(ctx.organizationId, {
-    customerId: ctx.customer.id,
-    propertyId: input.propertyId ?? null,
-    eventType: 'service_request',
-    title: 'Service request submitted',
-    description: input.title,
-    relatedRecordType: 'serviceIssue',
-    relatedRecordId: issue.id,
-    customerVisible: true,
-  });
-
-  return issue;
+  return result;
 }
 
 async function resolvePortalPhotoUrlForPersist(
@@ -1545,6 +1570,7 @@ export async function submitPortalRebookRequest(
     preferredMonth?: string;
     sameDesign?: boolean;
     upgradeRequested?: boolean;
+    idempotencyKey?: string;
   },
 ) {
   const creds = asPortalAuth(auth);
@@ -1553,12 +1579,34 @@ export async function submitPortalRebookRequest(
     feature: 'rebooking',
     action: 'request',
   });
-  const result = await processPortalRebook(ctx.organizationId, ctx.customer.id, {
-    sameDesign: input.sameDesign ?? true,
-    upgradeRequested: input.upgradeRequested ?? false,
-    preferredMonth: input.preferredMonth,
-    notes: input.notes,
+  const { getPortalResourceScope } = await import('./portal-ownership');
+  const { withPortalIdempotency } = await import('./portal-mutation');
+  const scope = getPortalResourceScope(ctx);
+
+  const { result, replayed } = await withPortalIdempotency({
+    scope,
+    action: 'rebooking.request',
+    resourceId: ctx.customer.id,
+    clientKey: input.idempotencyKey,
+    execute: async () => {
+      const outcome = await processPortalRebook(ctx.organizationId, ctx.customer.id, {
+        sameDesign: input.sameDesign ?? true,
+        upgradeRequested: input.upgradeRequested ?? false,
+        preferredMonth: input.preferredMonth,
+        notes: input.notes,
+      });
+      return {
+        newProposalId: outcome.newProposalId,
+        status: outcome.status,
+        bookedValueCents: outcome.bookedValueCents,
+        replayed: Boolean((outcome as { replayed?: boolean }).replayed),
+      };
+    },
   });
+
+  if (replayed || result.replayed) {
+    return result;
+  }
 
   const body = [
     input.upgradeRequested
@@ -2089,7 +2137,11 @@ export async function getPortalMessages(auth: string | PortalAuthInput) {
   };
 }
 
-export async function sendPortalMessage(auth: string | PortalAuthInput, body: string) {
+export async function sendPortalMessage(
+  auth: string | PortalAuthInput,
+  body: string,
+  opts?: { idempotencyKey?: string },
+) {
   const creds = asPortalAuth(auth);
   const ctx = await requirePortalAuthorized({
     ...creds,
@@ -2098,28 +2150,55 @@ export async function sendPortalMessage(auth: string | PortalAuthInput, body: st
   });
   const trimmed = body.trim();
   if (!trimmed) throw new Error('Message cannot be empty');
-  const { receivePortalMessage } = await import('./messages360');
-  const result = await receivePortalMessage(ctx.organizationId, {
-    customerId: ctx.customer.id,
-    body: trimmed,
+
+  const { getPortalResourceScope } = await import('./portal-ownership');
+  const { withPortalIdempotency } = await import('./portal-mutation');
+  const { consumePortalRateLimit, portalRateLimitKey } = await import('./portal-rate-limit');
+  const scope = getPortalResourceScope(ctx);
+  // Rate limit applies only to new sends (inside execute). Idempotent retries do not consume quota.
+  const { result } = await withPortalIdempotency({
+    scope,
+    action: 'messaging.send',
+    resourceId: 'thread',
+    clientKey: opts?.idempotencyKey,
+    execute: async () => {
+      const rate = consumePortalRateLimit(
+        portalRateLimitKey([
+          'portal-message',
+          scope.organizationId,
+          scope.customerId,
+          scope.portalUserId,
+        ]),
+        { max: 30, windowMs: 15 * 60 * 1000 },
+      );
+      if (!rate.allowed) {
+        throw new Error('Too many messages. Please wait and try again.');
+      }
+      const { receivePortalMessage } = await import('./messages360');
+      const sent = await receivePortalMessage(ctx.organizationId, {
+        customerId: ctx.customer.id,
+        body: trimmed,
+      });
+      await createPortalTimelineEvent(ctx.organizationId, {
+        customerId: ctx.customer.id,
+        eventType: 'portal_message',
+        title: 'Message sent',
+        description: trimmed.slice(0, 120),
+        customerVisible: true,
+      });
+      return {
+        id: sent.message.id,
+        direction: sent.message.direction,
+        channel: sent.message.channel,
+        body: sent.message.body,
+        createdAt: sent.message.createdAt,
+        attachmentUrls: sent.message.attachmentUrls ?? [],
+        status: sent.message.status ?? null,
+        readAt: sent.message.readAt ?? null,
+      };
+    },
   });
-  await createPortalTimelineEvent(ctx.organizationId, {
-    customerId: ctx.customer.id,
-    eventType: 'portal_message',
-    title: 'Message sent',
-    description: trimmed.slice(0, 120),
-    customerVisible: true,
-  });
-  return {
-    id: result.message.id,
-    direction: result.message.direction,
-    channel: result.message.channel,
-    body: result.message.body,
-    createdAt: result.message.createdAt,
-    attachmentUrls: result.message.attachmentUrls ?? [],
-    status: result.message.status ?? null,
-    readAt: result.message.readAt ?? null,
-  };
+  return result;
 }
 
 export async function listPortalProperties(auth: string | PortalAuthInput) {
@@ -2284,6 +2363,7 @@ export async function submitPortalScheduleRequest(
     preferredEndAt?: Date | null;
     preferredWindows?: string;
     notes?: string;
+    idempotencyKey?: string;
   },
 ) {
   const creds = asPortalAuth(auth);
@@ -2293,71 +2373,87 @@ export async function submitPortalScheduleRequest(
     action: 'request',
     settingsAllows: (settings) => settings.allowSelfScheduling,
   });
-  if (input.propertyId) {
-    const prop = await colGet<{ customerId?: string }>(
-      ctx.organizationId,
-      'properties',
-      input.propertyId,
-    );
-    if (!prop || prop.customerId !== ctx.customer.id) {
-      throw new Error('Invalid property for this account');
-    }
-  }
+  const { getPortalResourceScope } = await import('./portal-ownership');
+  const { withPortalIdempotency } = await import('./portal-mutation');
+  const scope = getPortalResourceScope(ctx);
 
-  const label = input.appointmentType.replace(/_/g, ' ');
-  const body = [
-    `Schedule request: ${label}`,
-    input.preferredWindows ? `Preferred windows: ${input.preferredWindows}` : null,
-    input.preferredStartAt
-      ? `Preferred start: ${new Date(input.preferredStartAt).toISOString()}`
-      : null,
-    input.preferredEndAt ? `Preferred end: ${new Date(input.preferredEndAt).toISOString()}` : null,
-    input.notes ? `Notes: ${input.notes}` : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const { result } = await withPortalIdempotency({
+    scope,
+    action: 'scheduling.request',
+    resourceId: 'new',
+    clientKey: input.idempotencyKey,
+    execute: async () => {
+      if (input.propertyId) {
+        const prop = await colGet<{ customerId?: string }>(
+          ctx.organizationId,
+          'properties',
+          input.propertyId,
+        );
+        if (!prop || prop.customerId !== ctx.customer.id) {
+          throw new Error('Invalid property for this account');
+        }
+      }
 
-  await createCommunication(ctx.organizationId, ctx.customer.id, {
-    type: 'portal_message',
-    direction: 'inbound',
-    subject: `Schedule request — ${label}`,
-    body,
-    employeeId: null,
-    employeeName: null,
-    occurredAt: new Date(),
-    followUpRequired: true,
-    followUpDate: null,
-    relatedPropertyId: input.propertyId ?? null,
-    relatedJobId: null,
-    relatedQuoteId: null,
+      const label = input.appointmentType.replace(/_/g, ' ');
+      const body = [
+        `Schedule request: ${label}`,
+        input.preferredWindows ? `Preferred windows: ${input.preferredWindows}` : null,
+        input.preferredStartAt
+          ? `Preferred start: ${new Date(input.preferredStartAt).toISOString()}`
+          : null,
+        input.preferredEndAt
+          ? `Preferred end: ${new Date(input.preferredEndAt).toISOString()}`
+          : null,
+        input.notes ? `Notes: ${input.notes}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      await createCommunication(ctx.organizationId, ctx.customer.id, {
+        type: 'portal_message',
+        direction: 'inbound',
+        subject: `Schedule request — ${label}`,
+        body,
+        employeeId: null,
+        employeeName: null,
+        occurredAt: new Date(),
+        followUpRequired: true,
+        followUpDate: null,
+        relatedPropertyId: input.propertyId ?? null,
+        relatedJobId: null,
+        relatedQuoteId: null,
+      });
+
+      const event = await createPortalTimelineEvent(ctx.organizationId, {
+        customerId: ctx.customer.id,
+        propertyId: input.propertyId ?? null,
+        eventType: 'schedule_request',
+        title: `Schedule request: ${label}`,
+        description:
+          input.preferredWindows || input.notes || 'Customer requested an appointment window',
+        customerVisible: true,
+      });
+
+      if (ctx.primaryUser) {
+        await createPortalNotification(ctx.organizationId, {
+          portalUserId: ctx.primaryUser.id,
+          customerId: ctx.customer.id,
+          category: 'scheduling',
+          title: 'Schedule request received',
+          body: 'Your lighting company will confirm your appointment shortly.',
+          actionUrl: '#schedule',
+        });
+      }
+
+      return {
+        id: event.id,
+        status: 'requested' as const,
+        message: 'Your schedule request was submitted. We will confirm the appointment with you.',
+      };
+    },
   });
 
-  const event = await createPortalTimelineEvent(ctx.organizationId, {
-    customerId: ctx.customer.id,
-    propertyId: input.propertyId ?? null,
-    eventType: 'schedule_request',
-    title: `Schedule request: ${label}`,
-    description:
-      input.preferredWindows || input.notes || 'Customer requested an appointment window',
-    customerVisible: true,
-  });
-
-  if (ctx.primaryUser) {
-    await createPortalNotification(ctx.organizationId, {
-      portalUserId: ctx.primaryUser.id,
-      customerId: ctx.customer.id,
-      category: 'scheduling',
-      title: 'Schedule request received',
-      body: 'Your lighting company will confirm your appointment shortly.',
-      actionUrl: '#schedule',
-    });
-  }
-
-  return {
-    id: event.id,
-    status: 'requested' as const,
-    message: 'Your schedule request was submitted. We will confirm the appointment with you.',
-  };
+  return result;
 }
 
 function mapPortalInvoice(i: Record<string, unknown> & { id: string }) {

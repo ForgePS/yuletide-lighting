@@ -18,9 +18,22 @@ import type {
 import { normalizeProposalStatus, PROPOSAL_PIPELINE_STATUSES } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData, stripUndefinedDeep } from './firestore-utils';
-import { colCreate, colDelete, colGet, colList, colUpdate, getByPublicToken, getOrganization, updateCustomer } from './firestore';
+import {
+  colCreate,
+  colDelete,
+  colGet,
+  colList,
+  colUpdate,
+  getByPublicToken,
+  getOrganization,
+  updateCustomer,
+} from './firestore';
 import { updateCustomerPipelineStage } from './customer360';
-import { getBrandingForCustomerFacing, getProposalSettings, getSeasonSettings } from './settings360';
+import {
+  getBrandingForCustomerFacing,
+  getProposalSettings,
+  getSeasonSettings,
+} from './settings360';
 import { createOrgJob } from './record-paths';
 
 function ts() {
@@ -47,10 +60,18 @@ async function syncCustomerPipelineFromProposal(
   const normalized = normalizeProposalStatus(status);
   const stage = PROPOSAL_STATUS_TO_PIPELINE[normalized];
   if (stage) {
-    await updateCustomerPipelineStage(orgId, customerId, stage, opts?.userId, opts?.userName ?? 'System');
+    await updateCustomerPipelineStage(
+      orgId,
+      customerId,
+      stage,
+      opts?.userId,
+      opts?.userName ?? 'System',
+    );
   }
   if (opts?.estimatedValueCents != null) {
-    await updateCustomer(orgId, customerId, { pipelineEstimatedValueCents: opts.estimatedValueCents });
+    await updateCustomer(orgId, customerId, {
+      pipelineEstimatedValueCents: opts.estimatedValueCents,
+    });
   }
 }
 
@@ -78,24 +99,44 @@ const DEFAULT_PRICING: PricingComponents = {
 export function calculatePricingFromComponents(pricing: PricingComponents) {
   const materialCostCents =
     pricing.materialCostCents ||
-    Math.round(pricing.linearFootage * 350 + pricing.treeWrapCount * 8500 + pricing.garlandLengthFt * 450 + pricing.wreathCount * 12000 + pricing.specialtyDecorCount * 5000);
+    Math.round(
+      pricing.linearFootage * 350 +
+        pricing.treeWrapCount * 8500 +
+        pricing.garlandLengthFt * 450 +
+        pricing.wreathCount * 12000 +
+        pricing.specialtyDecorCount * 5000,
+    );
   const laborCostCents = pricing.laborCostCents || Math.round(pricing.laborHours * 7500);
-  const totalCost = materialCostCents + laborCostCents + pricing.equipmentChargeCents + pricing.travelChargeCents;
+  const totalCost =
+    materialCostCents + laborCostCents + pricing.equipmentChargeCents + pricing.travelChargeCents;
   const salesPriceCents = Math.round(totalCost * 1.45);
   const grossProfitCents = salesPriceCents - totalCost;
-  const grossMarginPercent = salesPriceCents > 0 ? Math.round((grossProfitCents / salesPriceCents) * 100) : 0;
-  return { materialCostCents, laborCostCents, salesPriceCents, grossProfitCents, grossMarginPercent, totalCostCents: totalCost };
+  const grossMarginPercent =
+    salesPriceCents > 0 ? Math.round((grossProfitCents / salesPriceCents) * 100) : 0;
+  return {
+    materialCostCents,
+    laborCostCents,
+    salesPriceCents,
+    grossProfitCents,
+    grossMarginPercent,
+    totalCostCents: totalCost,
+  };
 }
 
-export function calculateUpsells(proposal: Partial<ProposalRecord>, installType?: InstallType | null): { suggestions: UpsellSuggestion[]; totalPotentialCents: number } {
+export function calculateUpsells(
+  proposal: Partial<ProposalRecord>,
+  installType?: InstallType | null,
+): { suggestions: UpsellSuggestion[]; totalPotentialCents: number } {
   const suggestions: UpsellSuggestion[] = [];
   const p = proposal.pricing ?? DEFAULT_PRICING;
   if ((p.treeWrapCount ?? 0) < 2) suggestions.push({ label: 'Tree wraps', potentialCents: 85000 });
-  if ((p.linearFootage ?? 0) < 100) suggestions.push({ label: 'Additional rooflines', potentialCents: 65000 });
+  if ((p.linearFootage ?? 0) < 100)
+    suggestions.push({ label: 'Additional rooflines', potentialCents: 65000 });
   if ((p.garlandLengthFt ?? 0) === 0) suggestions.push({ label: 'Garland', potentialCents: 45000 });
   if ((p.wreathCount ?? 0) === 0) suggestions.push({ label: 'Wreaths', potentialCents: 35000 });
   suggestions.push({ label: 'Pathway lighting', potentialCents: 55000 });
-  if (installType !== 'permanent_lighting') suggestions.push({ label: 'Permanent lighting', potentialCents: 250000 });
+  if (installType !== 'permanent_lighting')
+    suggestions.push({ label: 'Permanent lighting', potentialCents: 250000 });
   suggestions.push({ label: 'Storage service', potentialCents: 25000 });
   const totalPotentialCents = suggestions.slice(0, 4).reduce((s, u) => s + u.potentialCents, 0);
   return { suggestions, totalPotentialCents };
@@ -122,7 +163,23 @@ export function generateAiAssist(input: {
   };
 }
 
-function packageFromInput(proposalId: string, pkg: Omit<ProposalPackage, 'id' | 'proposalId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy' | 'subtotalCents' | 'materialCostCents' | 'laborCostCents' | 'grossProfitCents' | 'grossMarginPercent'>): Omit<ProposalPackage, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
+function packageFromInput(
+  proposalId: string,
+  pkg: Omit<
+    ProposalPackage,
+    | 'id'
+    | 'proposalId'
+    | 'createdAt'
+    | 'updatedAt'
+    | 'createdBy'
+    | 'updatedBy'
+    | 'subtotalCents'
+    | 'materialCostCents'
+    | 'laborCostCents'
+    | 'grossProfitCents'
+    | 'grossMarginPercent'
+  >,
+): Omit<ProposalPackage, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   const lineItems = (pkg.lineItems ?? []).map((li) => ({ ...li, id: li.id ?? nanoid() }));
   const subtotalFromItems = lineItems.reduce((s, i) => s + i.quantity * i.unitPriceCents, 0);
   const calc = calculatePricingFromComponents(pkg.pricing ?? DEFAULT_PRICING);
@@ -143,7 +200,10 @@ function packageFromInput(proposalId: string, pkg: Omit<ProposalPackage, 'id' | 
     materialCostCents: calc.materialCostCents,
     laborCostCents: calc.laborCostCents,
     grossProfitCents: subtotalCents - calc.totalCostCents,
-    grossMarginPercent: subtotalCents > 0 ? Math.round(((subtotalCents - calc.totalCostCents) / subtotalCents) * 100) : 0,
+    grossMarginPercent:
+      subtotalCents > 0
+        ? Math.round(((subtotalCents - calc.totalCostCents) / subtotalCents) * 100)
+        : 0,
     isRecommended: pkg.isRecommended ?? false,
     pricing: pkg.pricing ?? DEFAULT_PRICING,
   };
@@ -151,31 +211,61 @@ function packageFromInput(proposalId: string, pkg: Omit<ProposalPackage, 'id' | 
 
 async function subList<T>(orgId: string, proposalId: string, sub: string): Promise<T[]> {
   const db = getAdminFirestore();
-  const snap = await db.collection(subPath(orgId, proposalId, sub)).orderBy('createdAt', 'desc').get();
+  const snap = await db
+    .collection(subPath(orgId, proposalId, sub))
+    .orderBy('createdAt', 'desc')
+    .get();
   return snap.docs.map((d) => mapTimestampsFromData({ id: d.id, ...d.data()! }) as T);
 }
 
-async function subCreate<T extends Record<string, unknown>>(orgId: string, proposalId: string, sub: string, data: T, userId?: string | null) {
+async function subCreate<T extends Record<string, unknown>>(
+  orgId: string,
+  proposalId: string,
+  sub: string,
+  data: T,
+  userId?: string | null,
+) {
   const db = getAdminFirestore();
   const ref = db.collection(subPath(orgId, proposalId, sub)).doc();
   const now = ts();
-  await ref.set({ proposalId, ...data, createdAt: now, updatedAt: now, createdBy: userId ?? null, updatedBy: userId ?? null });
+  await ref.set({
+    proposalId,
+    ...data,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: userId ?? null,
+    updatedBy: userId ?? null,
+  });
   const snap = await ref.get();
   return mapTimestampsFromData({ id: snap.id, ...snap.data()! }) as T & { id: string };
 }
 
 export async function listProposals360(orgId: string): Promise<ProposalListItem[]> {
   const proposals = await colList<ProposalRecord>(orgId, 'proposals');
-  const customers = await colList<{ id: string; firstName: string; lastName: string; businessName?: string | null }>(orgId, 'customers');
-  const properties = await colList<{ id: string; addressLine1: string; city: string; state: string }>(orgId, 'properties');
+  const customers = await colList<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    businessName?: string | null;
+  }>(orgId, 'customers');
+  const properties = await colList<{
+    id: string;
+    addressLine1: string;
+    city: string;
+    state: string;
+  }>(orgId, 'properties');
 
   return proposals.map((p) => {
     const customer = customers.find((c) => c.id === p.customerId);
     const property = properties.find((pr) => pr.id === p.propertyId);
     return {
       ...normalizeProposalRecord(p),
-      customerName: customer?.businessName || (customer ? `${customer.firstName} ${customer.lastName}` : undefined),
-      propertyAddress: property ? `${property.addressLine1}, ${property.city}, ${property.state}` : undefined,
+      customerName:
+        customer?.businessName ||
+        (customer ? `${customer.firstName} ${customer.lastName}` : undefined),
+      propertyAddress: property
+        ? `${property.addressLine1}, ${property.city}, ${property.state}`
+        : undefined,
     };
   });
 }
@@ -233,7 +323,22 @@ export async function createProposal360(
     installDate?: Date | null;
     removalDate?: Date | null;
     termsAndConditions?: string | null;
-    packages?: Array<Omit<ProposalPackage, 'id' | 'proposalId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy' | 'subtotalCents' | 'materialCostCents' | 'laborCostCents' | 'grossProfitCents' | 'grossMarginPercent'>>;
+    packages?: Array<
+      Omit<
+        ProposalPackage,
+        | 'id'
+        | 'proposalId'
+        | 'createdAt'
+        | 'updatedAt'
+        | 'createdBy'
+        | 'updatedBy'
+        | 'subtotalCents'
+        | 'materialCostCents'
+        | 'laborCostCents'
+        | 'grossProfitCents'
+        | 'grossMarginPercent'
+      >
+    >;
     /** Manual total. Used when no line items; line items always win. */
     subtotalCents?: number;
   },
@@ -244,11 +349,13 @@ export async function createProposal360(
     getSeasonSettings(orgId, userId),
   ]);
   const depositPercent = input.depositPercent ?? proposalSettings.defaultDepositPercent;
-  const validUntil = input.validUntil ?? (() => {
-    const date = new Date();
-    date.setDate(date.getDate() + proposalSettings.defaultExpirationDays);
-    return date;
-  })();
+  const validUntil =
+    input.validUntil ??
+    (() => {
+      const date = new Date();
+      date.setDate(date.getDate() + proposalSettings.defaultExpirationDays);
+      return date;
+    })();
   const termsAndConditions = input.termsAndConditions ?? proposalSettings.defaultTerms ?? null;
   const season = input.season ?? String(seasonSettings.seasonYear);
 
@@ -302,9 +409,43 @@ export async function createProposal360(
   const packages = input.packages?.length
     ? input.packages
     : [
-        { tier: 'basic' as PackageTier, name: 'Basic', label: 'Package A — Basic', isRecommended: false, lineItems: [], products: [], decorations: [], addOns: [], pricing },
-        { tier: 'recommended' as PackageTier, name: 'Recommended', label: 'Package B — Recommended', isRecommended: true, lineItems: [], products: [], decorations: [], addOns: [], pricing: { ...pricing, linearFootage: pricing.linearFootage * 1.2 } },
-        { tier: 'premium' as PackageTier, name: 'Premium', label: 'Package C — Premium', isRecommended: false, lineItems: [], products: [], decorations: [], addOns: [], pricing: { ...pricing, linearFootage: pricing.linearFootage * 1.5, treeWrapCount: pricing.treeWrapCount + 2 } },
+        {
+          tier: 'basic' as PackageTier,
+          name: 'Basic',
+          label: 'Package A — Basic',
+          isRecommended: false,
+          lineItems: [],
+          products: [],
+          decorations: [],
+          addOns: [],
+          pricing,
+        },
+        {
+          tier: 'recommended' as PackageTier,
+          name: 'Recommended',
+          label: 'Package B — Recommended',
+          isRecommended: true,
+          lineItems: [],
+          products: [],
+          decorations: [],
+          addOns: [],
+          pricing: { ...pricing, linearFootage: pricing.linearFootage * 1.2 },
+        },
+        {
+          tier: 'premium' as PackageTier,
+          name: 'Premium',
+          label: 'Package C — Premium',
+          isRecommended: false,
+          lineItems: [],
+          products: [],
+          decorations: [],
+          addOns: [],
+          pricing: {
+            ...pricing,
+            linearFootage: pricing.linearFootage * 1.5,
+            treeWrapCount: pricing.treeWrapCount + 2,
+          },
+        },
       ];
 
   const createdPackages: ProposalPackage[] = [];
@@ -345,7 +486,12 @@ const LOCKED_PROPOSAL_STATUSES = new Set([
   'superseded',
 ]);
 
-export async function updateProposal360(orgId: string, proposalId: string, data: Record<string, unknown>, userId?: string | null) {
+export async function updateProposal360(
+  orgId: string,
+  proposalId: string,
+  data: Record<string, unknown>,
+  userId?: string | null,
+) {
   const existing = await colGet<ProposalRecord>(orgId, 'proposals', proposalId);
   if (!existing) throw new Error('Proposal not found');
   if (LOCKED_PROPOSAL_STATUSES.has(normalizeProposalStatus(existing.status))) {
@@ -365,20 +511,37 @@ export async function updateProposal360(orgId: string, proposalId: string, data:
     // Pricing-only update with no explicit total — recalculate from components.
     const calc = calculatePricingFromComponents(data.pricing as PricingComponents);
     patch.subtotalCents = calc.salesPriceCents;
-  } else if (data.pricing && lineItems && lineItems.length === 0 && typeof data.subtotalCents !== 'number') {
+  } else if (
+    data.pricing &&
+    lineItems &&
+    lineItems.length === 0 &&
+    typeof data.subtotalCents !== 'number'
+  ) {
     const calc = calculatePricingFromComponents(data.pricing as PricingComponents);
     patch.subtotalCents = calc.salesPriceCents;
   }
   if (typeof patch.subtotalCents === 'number' && data.depositPercent != null) {
-    patch.depositAmountCents = Math.round((patch.subtotalCents as number) * (Number(data.depositPercent) / 100));
-  } else if (typeof patch.subtotalCents === 'number' && existing.depositPercent != null && data.depositPercent === undefined) {
-    patch.depositAmountCents = Math.round((patch.subtotalCents as number) * (existing.depositPercent / 100));
+    patch.depositAmountCents = Math.round(
+      (patch.subtotalCents as number) * (Number(data.depositPercent) / 100),
+    );
+  } else if (
+    typeof patch.subtotalCents === 'number' &&
+    existing.depositPercent != null &&
+    data.depositPercent === undefined
+  ) {
+    patch.depositAmountCents = Math.round(
+      (patch.subtotalCents as number) * (existing.depositPercent / 100),
+    );
   }
   await colUpdate(orgId, 'proposals', proposalId, patch);
   return getProposal360(orgId, proposalId);
 }
 
-export async function createProposalRevision360(orgId: string, proposalId: string, userId?: string | null) {
+export async function createProposalRevision360(
+  orgId: string,
+  proposalId: string,
+  userId?: string | null,
+) {
   const full = await getProposal360(orgId, proposalId);
   if (!full) throw new Error('Proposal not found');
   const { packages, views: _views, approvals: _approvals, ...proposal } = full;
@@ -431,12 +594,19 @@ export async function deleteProposal360(orgId: string, proposalId: string) {
   await colDelete(orgId, 'proposals', proposalId);
 }
 
-export async function updateProposalStatus(orgId: string, proposalId: string, status: ProposalStatus, userId?: string | null) {
+export async function updateProposalStatus(
+  orgId: string,
+  proposalId: string,
+  status: ProposalStatus,
+  userId?: string | null,
+) {
   const proposal = await colGet<ProposalRecord>(orgId, 'proposals', proposalId);
   if (!proposal) return null;
 
   const normalized = normalizeProposalStatus(status);
-  const patch: Record<string, unknown> = { status: normalized === 'approved' ? 'approved' : normalized };
+  const patch: Record<string, unknown> = {
+    status: normalized === 'approved' ? 'approved' : normalized,
+  };
   if (normalized === 'sent') patch.sentAt = new Date();
   if (normalized === 'viewed') patch.openDate = new Date();
   await colUpdate(orgId, 'proposals', proposalId, patch);
@@ -451,7 +621,8 @@ export async function updateProposalStatus(orgId: string, proposalId: string, st
       deposit_paid: 'deposit_paid',
       scheduled: 'scheduled',
     };
-    if (stageMap[normalized]) await colUpdate(orgId, 'jobs', job.id, { stage: stageMap[normalized] });
+    if (stageMap[normalized])
+      await colUpdate(orgId, 'jobs', job.id, { stage: stageMap[normalized] });
   }
 
   await syncCustomerPipelineFromProposal(orgId, proposal.customerId, normalized, {
@@ -461,8 +632,14 @@ export async function updateProposalStatus(orgId: string, proposalId: string, st
 
   try {
     const { fireAutomationTrigger } = await import('./automation360');
-    const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', proposal.customerId);
-    const customerName = customer ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() : 'Customer';
+    const customer = await colGet<{ firstName?: string; lastName?: string }>(
+      orgId,
+      'customers',
+      proposal.customerId,
+    );
+    const customerName = customer
+      ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim()
+      : 'Customer';
     const ctx = {
       customerId: proposal.customerId,
       customerName,
@@ -471,7 +648,8 @@ export async function updateProposalStatus(orgId: string, proposalId: string, st
     };
     if (normalized === 'sent') await fireAutomationTrigger(orgId, 'proposal_sent', ctx, userId);
     if (normalized === 'viewed') await fireAutomationTrigger(orgId, 'proposal_viewed', ctx, userId);
-    if (normalized === 'approved') await fireAutomationTrigger(orgId, 'proposal_accepted', ctx, userId);
+    if (normalized === 'approved')
+      await fireAutomationTrigger(orgId, 'proposal_accepted', ctx, userId);
   } catch {
     // Best-effort automations
   }
@@ -506,12 +684,20 @@ export async function sendProposal360(orgId: string, proposalId: string, userId?
   return updateProposalStatus(orgId, proposalId, 'sent', userId);
 }
 
-export async function getProposalByToken(token: string, meta?: { userAgent?: string; device?: string; ip?: string }) {
-  const proposal = await getByPublicToken<ProposalRecord & { organizationId: string }>('proposals', token);
+export async function getProposalByToken(
+  token: string,
+  meta?: { userAgent?: string; device?: string; ip?: string },
+) {
+  const proposal = await getByPublicToken<ProposalRecord & { organizationId: string }>(
+    'proposals',
+    token,
+  );
   if (!proposal) return null;
   const orgId = proposal.organizationId;
   const normalized = normalizeProposalRecord(proposal);
-  const newStatus = ['sent', 'ready_to_send'].includes(normalized.status) ? 'viewed' : normalized.status;
+  const newStatus = ['sent', 'ready_to_send'].includes(normalized.status)
+    ? 'viewed'
+    : normalized.status;
   await colUpdate(orgId, 'proposals', proposal.id, {
     viewCount: (proposal.viewCount ?? 0) + 1,
     lastViewedAt: new Date(),
@@ -522,10 +708,16 @@ export async function getProposalByToken(token: string, meta?: { userAgent?: str
     await syncCustomerPipelineFromProposal(orgId, proposal.customerId, 'viewed');
     try {
       const { fireAutomationTrigger } = await import('./automation360');
-      const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', proposal.customerId);
+      const customer = await colGet<{ firstName?: string; lastName?: string }>(
+        orgId,
+        'customers',
+        proposal.customerId,
+      );
       await fireAutomationTrigger(orgId, 'proposal_viewed', {
         customerId: proposal.customerId,
-        customerName: customer ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() : 'Customer',
+        customerName: customer
+          ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim()
+          : 'Customer',
         proposalId: proposal.id,
       });
     } catch {
@@ -541,16 +733,39 @@ export async function getProposalByToken(token: string, meta?: { userAgent?: str
 
   const [full, customer, property, organization, packages, branding] = await Promise.all([
     getProposal360(orgId, proposal.id),
-    colGet<{ firstName: string; lastName: string; businessName?: string | null }>(orgId, 'customers', proposal.customerId),
-    colGet<{ addressLine1: string; city: string; state: string; postalCode: string }>(orgId, 'properties', proposal.propertyId),
+    colGet<{ firstName: string; lastName: string; businessName?: string | null }>(
+      orgId,
+      'customers',
+      proposal.customerId,
+    ),
+    colGet<{ addressLine1: string; city: string; state: string; postalCode: string }>(
+      orgId,
+      'properties',
+      proposal.propertyId,
+    ),
     getOrganization(orgId),
     subList<ProposalPackage>(orgId, proposal.id, 'packages'),
     getBrandingForCustomerFacing(orgId),
   ]);
 
-  let mockups: Array<{ id: string; name: string; imageUrl: string; renderedImageUrl?: string | null }> = [];
+  let mockups: Array<{
+    id: string;
+    name: string;
+    imageUrl: string;
+    renderedImageUrl?: string | null;
+  }> = [];
   if (proposal.mockupIds?.length) {
-    mockups = (await Promise.all(proposal.mockupIds.map((id) => colGet<{ id: string; name: string; imageUrl: string; renderedImageUrl?: string | null }>(orgId, 'mockups', id)))).filter(Boolean) as typeof mockups;
+    mockups = (
+      await Promise.all(
+        proposal.mockupIds.map((id) =>
+          colGet<{ id: string; name: string; imageUrl: string; renderedImageUrl?: string | null }>(
+            orgId,
+            'mockups',
+            id,
+          ),
+        ),
+      )
+    ).filter(Boolean) as typeof mockups;
   }
 
   return {
@@ -558,7 +773,12 @@ export async function getProposalByToken(token: string, meta?: { userAgent?: str
     customer,
     property,
     organization: organization
-      ? { ...organization, companyName: branding.companyName, brandColor: branding.brandColor, logoUrl: branding.logoUrl }
+      ? {
+          ...organization,
+          companyName: branding.companyName,
+          brandColor: branding.brandColor,
+          logoUrl: branding.logoUrl,
+        }
       : null,
     packages,
     mockups,
@@ -578,15 +798,47 @@ export async function recordPublicApproval(
     userAgent?: string | null;
   },
 ) {
-  const proposal = await getByPublicToken<ProposalRecord & { organizationId: string }>('proposals', token);
+  const proposal = await getByPublicToken<ProposalRecord & { organizationId: string }>(
+    'proposals',
+    token,
+  );
   if (!proposal) return null;
   const orgId = proposal.organizationId;
-  const statusMap = { approved: 'approved', rejected: 'rejected', changes_requested: 'customer_questions' } as const;
+  const current = normalizeProposalStatus(String(proposal.status ?? ''));
+
+  // Replay-safe: already finalized approvals return current proposal (no duplicate side effects).
+  if (
+    input.action === 'approved' &&
+    (current === 'approved' || current === 'deposit_paid' || current === 'scheduled')
+  ) {
+    return getProposalByToken(token);
+  }
+  if (input.action === 'rejected' && current === 'rejected') {
+    return getProposalByToken(token);
+  }
+
+  const { canPortalTransition } = await import('./portal-mutation');
+  const statusMap = {
+    approved: 'approved',
+    rejected: 'rejected',
+    changes_requested: 'customer_questions',
+  } as const;
+  const target = statusMap[input.action];
+  if (
+    !canPortalTransition({
+      resourceType: 'proposal',
+      currentState: current,
+      targetState: target,
+    })
+  ) {
+    throw new Error('This action is no longer available.');
+  }
+
   const termsVersion = proposal.termsAndConditions
     ? `terms-v${Buffer.from(proposal.termsAndConditions).toString('base64url').slice(0, 12)}`
     : `terms-${new Date().getFullYear()}`;
   const patch: Record<string, unknown> = {
-    status: statusMap[input.action],
+    status: target,
     acceptedByName: input.customerName,
   };
   if (input.action === 'approved') {
@@ -610,10 +862,14 @@ export async function recordPublicApproval(
     patch.termsVersion = termsVersion;
     patch.signedSnapshotJson = JSON.stringify(snapshot);
     if (input.packageId) {
-      const pkg = await getAdminFirestore().doc(`${subPath(orgId, proposal.id, 'packages')}/${input.packageId}`).get();
+      const pkg = await getAdminFirestore()
+        .doc(`${subPath(orgId, proposal.id, 'packages')}/${input.packageId}`)
+        .get();
       if (pkg.exists) patch.subtotalCents = (pkg.data() as ProposalPackage).subtotalCents;
     }
-    patch.depositAmountCents = Math.round((patch.subtotalCents as number ?? proposal.subtotalCents) * (proposal.depositPercent / 100));
+    patch.depositAmountCents = Math.round(
+      ((patch.subtotalCents as number) ?? proposal.subtotalCents) * (proposal.depositPercent / 100),
+    );
     patch.contractGeneratedAt = new Date();
     patch.contractUrl = `/p/${token}/receipt?signed=1`;
     patch.signedDocumentUrl = `/p/${token}/receipt?signed=1`;
@@ -669,7 +925,10 @@ export async function recordPublicApproval(
 export async function collectDeposit(orgId: string, proposalId: string, amountCents?: number) {
   const proposal = await colGet<ProposalRecord>(orgId, 'proposals', proposalId);
   if (!proposal) return null;
-  const amount = amountCents ?? proposal.depositAmountCents ?? Math.round(proposal.subtotalCents * (proposal.depositPercent / 100));
+  const amount =
+    amountCents ??
+    proposal.depositAmountCents ??
+    Math.round(proposal.subtotalCents * (proposal.depositPercent / 100));
   await colUpdate(orgId, 'proposals', proposalId, {
     depositStatus: 'paid',
     depositAmountCents: amount,
@@ -682,10 +941,15 @@ export async function collectDeposit(orgId: string, proposalId: string, amountCe
 }
 
 export async function getProposalAnalytics(orgId: string): Promise<ProposalAnalytics> {
-  const proposals = (await colList<ProposalRecord>(orgId, 'proposals')).map(normalizeProposalRecord);
-  const countBy = (statuses: ProposalStatus[]) => proposals.filter((p) => statuses.includes(p.status)).length;
+  const proposals = (await colList<ProposalRecord>(orgId, 'proposals')).map(
+    normalizeProposalRecord,
+  );
+  const countBy = (statuses: ProposalStatus[]) =>
+    proposals.filter((p) => statuses.includes(p.status)).length;
 
-  const approved = proposals.filter((p) => ['approved', 'deposit_paid', 'scheduled'].includes(p.status));
+  const approved = proposals.filter((p) =>
+    ['approved', 'deposit_paid', 'scheduled'].includes(p.status),
+  );
   const rejected = proposals.filter((p) => p.status === 'rejected');
   const sent = proposals.filter((p) => !['draft', 'internal_review'].includes(p.status));
 
@@ -696,7 +960,9 @@ export async function getProposalAnalytics(orgId: string): Promise<ProposalAnaly
   const closeTimes = approved
     .filter((p) => p.sentAt && p.acceptedAt)
     .map((p) => (new Date(p.acceptedAt!).getTime() - new Date(p.sentAt!).getTime()) / 86400000);
-  const averageCloseTimeDays = closeTimes.length ? Math.round(closeTimes.reduce((a, b) => a + b, 0) / closeTimes.length) : 0;
+  const averageCloseTimeDays = closeTimes.length
+    ? Math.round(closeTimes.reduce((a, b) => a + b, 0) / closeTimes.length)
+    : 0;
 
   const salesMap = new Map<string, { won: number; revenueCents: number }>();
   for (const p of approved) {
@@ -704,7 +970,9 @@ export async function getProposalAnalytics(orgId: string): Promise<ProposalAnaly
     const cur = salesMap.get(name) ?? { won: 0, revenueCents: 0 };
     salesMap.set(name, { won: cur.won + 1, revenueCents: cur.revenueCents + p.subtotalCents });
   }
-  const salespersonPerformance = [...salesMap.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.revenueCents - a.revenueCents);
+  const salespersonPerformance = [...salesMap.entries()]
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a, b) => b.revenueCents - a.revenueCents);
 
   const monthlyMap = new Map<string, { revenueCents: number; count: number }>();
   for (const p of approved) {
@@ -731,7 +999,9 @@ export async function getProposalAnalytics(orgId: string): Promise<ProposalAnaly
     totalProposalRevenueCents,
     revenueWonCents,
     revenueLostCents,
-    averageProposalValueCents: proposals.length ? Math.round(totalProposalRevenueCents / proposals.length) : 0,
+    averageProposalValueCents: proposals.length
+      ? Math.round(totalProposalRevenueCents / proposals.length)
+      : 0,
     averageCloseTimeDays,
     topSalesperson: salespersonPerformance[0]?.name ?? null,
     topUpsells: ['Tree wraps', 'Garland', 'Storage service'],
@@ -744,48 +1014,129 @@ export async function getProposalAnalytics(orgId: string): Promise<ProposalAnaly
 
 export async function listProposalTemplates(orgId: string) {
   const db = getAdminFirestore();
-  const snap = await db.collection(`organizations/${orgId}/proposalTemplates`).orderBy('name').get();
-  return snap.docs.map((d) => mapTimestampsFromData({ id: d.id, ...d.data()! }) as ProposalTemplate);
+  const snap = await db
+    .collection(`organizations/${orgId}/proposalTemplates`)
+    .orderBy('name')
+    .get();
+  return snap.docs.map(
+    (d) => mapTimestampsFromData({ id: d.id, ...d.data()! }) as ProposalTemplate,
+  );
 }
 
 export async function ensureProposalTemplates(orgId: string) {
   const existing = await listProposalTemplates(orgId);
   if (existing.length > 0) return existing;
 
-  const defaults: Array<Omit<ProposalTemplate, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>> = [
-    { organizationId: orgId, name: 'Residential Roofline', category: 'residential_roofline', description: 'Standard roofline package', scopeOfWork: 'Roofline C9 installation, timer setup, takedown included.', installType: 'roofline', defaultPackages: [], isActive: true },
-    { organizationId: orgId, name: 'Residential Premium', category: 'residential_premium', description: 'Roofline + trees + wreaths', scopeOfWork: 'Full property premium display.', installType: 'custom', defaultPackages: [], isActive: true },
-    { organizationId: orgId, name: 'Commercial Property', category: 'commercial', description: 'Commercial facade lighting', scopeOfWork: 'Commercial-grade installation with maintenance plan.', installType: 'commercial_display', defaultPackages: [], isActive: true },
-    { organizationId: orgId, name: 'HOA Community', category: 'hoa', description: 'Community entrance displays', installType: 'garland', defaultPackages: [], isActive: true },
-    { organizationId: orgId, name: 'Municipal Display', category: 'municipal', description: 'City/downtown installations', installType: 'commercial_display', defaultPackages: [], isActive: true },
-    { organizationId: orgId, name: 'Permanent Lighting', category: 'permanent_lighting', description: 'Year-round permanent LED', installType: 'permanent_lighting', defaultPackages: [], isActive: true },
+  const defaults: Array<
+    Omit<ProposalTemplate, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>
+  > = [
+    {
+      organizationId: orgId,
+      name: 'Residential Roofline',
+      category: 'residential_roofline',
+      description: 'Standard roofline package',
+      scopeOfWork: 'Roofline C9 installation, timer setup, takedown included.',
+      installType: 'roofline',
+      defaultPackages: [],
+      isActive: true,
+    },
+    {
+      organizationId: orgId,
+      name: 'Residential Premium',
+      category: 'residential_premium',
+      description: 'Roofline + trees + wreaths',
+      scopeOfWork: 'Full property premium display.',
+      installType: 'custom',
+      defaultPackages: [],
+      isActive: true,
+    },
+    {
+      organizationId: orgId,
+      name: 'Commercial Property',
+      category: 'commercial',
+      description: 'Commercial facade lighting',
+      scopeOfWork: 'Commercial-grade installation with maintenance plan.',
+      installType: 'commercial_display',
+      defaultPackages: [],
+      isActive: true,
+    },
+    {
+      organizationId: orgId,
+      name: 'HOA Community',
+      category: 'hoa',
+      description: 'Community entrance displays',
+      installType: 'garland',
+      defaultPackages: [],
+      isActive: true,
+    },
+    {
+      organizationId: orgId,
+      name: 'Municipal Display',
+      category: 'municipal',
+      description: 'City/downtown installations',
+      installType: 'commercial_display',
+      defaultPackages: [],
+      isActive: true,
+    },
+    {
+      organizationId: orgId,
+      name: 'Permanent Lighting',
+      category: 'permanent_lighting',
+      description: 'Year-round permanent LED',
+      installType: 'permanent_lighting',
+      defaultPackages: [],
+      isActive: true,
+    },
   ];
 
   const db = getAdminFirestore();
   const now = ts();
   for (const t of defaults) {
-    await db.collection(`organizations/${orgId}/proposalTemplates`).add({ ...t, createdAt: now, updatedAt: now, createdBy: null, updatedBy: null });
+    await db
+      .collection(`organizations/${orgId}/proposalTemplates`)
+      .add({ ...t, createdAt: now, updatedAt: now, createdBy: null, updatedBy: null });
   }
   return listProposalTemplates(orgId);
 }
 
-export async function createProposalTemplate(orgId: string, data: Omit<ProposalTemplate, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>, userId?: string | null) {
+export async function createProposalTemplate(
+  orgId: string,
+  data: Omit<ProposalTemplate, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>,
+  userId?: string | null,
+) {
   const db = getAdminFirestore();
   const ref = db.collection(`organizations/${orgId}/proposalTemplates`).doc();
   const now = ts();
-  await ref.set({ ...data, organizationId: orgId, createdAt: now, updatedAt: now, createdBy: userId ?? null, updatedBy: userId ?? null });
+  await ref.set({
+    ...data,
+    organizationId: orgId,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: userId ?? null,
+    updatedBy: userId ?? null,
+  });
   const snap = await ref.get();
   return mapTimestampsFromData({ id: snap.id, ...snap.data()! }) as ProposalTemplate;
 }
 
-export async function updateProposalPackage(orgId: string, proposalId: string, packageId: string, data: Partial<ProposalPackage>, userId?: string | null) {
+export async function updateProposalPackage(
+  orgId: string,
+  proposalId: string,
+  packageId: string,
+  data: Partial<ProposalPackage>,
+  userId?: string | null,
+) {
   const existing = await colGet<ProposalRecord>(orgId, 'proposals', proposalId);
   if (!existing) throw new Error('Proposal not found');
   if (LOCKED_PROPOSAL_STATUSES.has(normalizeProposalStatus(existing.status))) {
-    throw new Error('Accepted proposals cannot be edited. Create a revision or change order instead.');
+    throw new Error(
+      'Accepted proposals cannot be edited. Create a revision or change order instead.',
+    );
   }
   const db = getAdminFirestore();
-  await db.doc(`${subPath(orgId, proposalId, 'packages')}/${packageId}`).update({ ...data, updatedAt: ts(), updatedBy: userId ?? null });
+  await db
+    .doc(`${subPath(orgId, proposalId, 'packages')}/${packageId}`)
+    .update({ ...data, updatedAt: ts(), updatedBy: userId ?? null });
   return getProposal360(orgId, proposalId);
 }
 

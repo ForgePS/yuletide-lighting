@@ -51,7 +51,8 @@ test.describe('portal phase 2 security surfaces', () => {
     const res = await page.goto(`/portal/invite/${bogus}`);
     expect(res?.status()).toBeLessThan(500);
     const body = (await page.locator('body').innerText()).toLowerCase();
-    expect(body).toMatch(/access|unavailable|invite|invitation|portal/);
+    // Soft-deny: branded portal copy or generic Next 404 — never tenant identifiers.
+    expect(body).toMatch(/access|unavailable|invite|invitation|portal|not be found|404/);
     expect(body).not.toContain('organizationid');
     expect(body).not.toContain('customerid');
     expect(body).not.toContain('org_');

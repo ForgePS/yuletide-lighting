@@ -24,4 +24,10 @@ S4 controls R07/R08 through fail-closed customer queries, explicit ownership che
 
 ## P2-S5 update
 
-S5 adds route authorization (`requirePortalRouteAccess`) and short-lived file tickets (15 min TTL) so disabled features and cross-customer file paths fail closed without exposing Storage URLs. Nav hiding remains UX-only; deep links and API must deny. Static route/file audits PASS (2026-08-01 EMULATOR gate); production:check 3× PASS. Playwright E2E deferred (no local server). Magic-token migration unchanged.
+S5 adds route authorization (`requirePortalRouteAccess`) and short-lived file tickets (15 min TTL) so disabled features and cross-customer file paths fail closed without exposing Storage URLs. Nav hiding remains UX-only; deep links and API must deny. Static route/file audits PASS (2026-08-01 EMULATOR gate); production:check 3ï¿½ PASS. Playwright E2E deferred (no local server). Magic-token migration unchanged.
+
+## P2-S6 update (2026-08-02)
+
+- Mutation/idempotency guard landed in @yuletide/firebase (portal-mutation.ts); residual BLOCKERs from mutation map closed for portal creates and public-token replay paths.
+- Payment: server payable cents + checkout safe mode; live Stripe blocked under EMULATOR.
+- Evidence: portal-phase-2-s6-security-evidence.md, integration portal-phase2-s6.integration.test.ts.

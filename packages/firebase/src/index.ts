@@ -31,6 +31,7 @@ export * from './portal-session';
 export * from './portal-ownership';
 export * from './portal-route-access';
 export * from './portal-file-access';
+export * from './portal-mutation';
 export * from './portal-invitation';
 export * from './rebooking360';
 export * from './storage360';

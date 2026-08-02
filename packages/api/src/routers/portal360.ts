@@ -352,10 +352,17 @@ export const portal360Router = router({
     }),
 
     sendMessage: portalPublicProcedure
-      .input(portalTokenInputSchema.extend({ body: z.string().min(1).max(5000) }))
+      .input(
+        portalTokenInputSchema.extend({
+          body: z.string().min(1).max(5000),
+          idempotencyKey: z.string().min(8).max(200).optional(),
+        }),
+      )
       .mutation(async ({ ctx, input }) => {
         try {
-          return await sendPortalMessage(portalAuth(ctx, input), input.body);
+          return await sendPortalMessage(portalAuth(ctx, input), input.body, {
+            idempotencyKey: input.idempotencyKey,
+          });
         } catch (err) {
           mapPortalErr(err, 'Could not send message');
         }
@@ -400,6 +407,7 @@ export const portal360Router = router({
             preferredEndAt: input.preferredEndAt ?? null,
             preferredWindows: input.preferredWindows,
             notes: input.notes,
+            idempotencyKey: input.idempotencyKey,
           });
         } catch (err) {
           mapPortalErr(err, 'Could not submit schedule request');
@@ -469,6 +477,7 @@ export const portal360Router = router({
             accessInstructions: input.accessInstructions,
             locationNote: input.locationNote,
             photoUrls: input.photoUrls,
+            idempotencyKey: input.idempotencyKey,
           });
         } catch (err) {
           mapPortalErr(err, 'Could not submit service request');
@@ -498,6 +507,7 @@ export const portal360Router = router({
             preferredMonth: input.preferredMonth,
             sameDesign: input.sameDesign,
             upgradeRequested: input.upgradeRequested,
+            idempotencyKey: input.idempotencyKey,
           });
         } catch (err) {
           mapPortalErr(err, 'Could not submit rebook request');

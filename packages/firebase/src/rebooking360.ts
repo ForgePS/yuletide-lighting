@@ -349,6 +349,17 @@ export async function processRebookRecord(
   const campaign = await getRebookingCampaign(orgId, record.campaignId);
   if (!campaign) throw new Error('Campaign not found');
 
+  // Terminal states: deterministic replay, no duplicate proposals (P2-S6).
+  if (['rebooked', 'upgrade_requested', 'declined'].includes(record.status)) {
+    return {
+      recordId,
+      newProposalId: record.newProposalId ?? null,
+      status: record.status,
+      bookedValueCents: record.bookedValueCents,
+      replayed: true as const,
+    };
+  }
+
   let newProposalId: string | null = null;
   let bookedValueCents = record.projectedValueCents;
 
@@ -428,29 +439,34 @@ export async function processPortalRebook(
   },
 ) {
   const campaigns = await listRebookingCampaigns(orgId);
-  const active = campaigns.find((c) => c.status === 'active') ?? campaigns[0];
-  if (!active) {
+  const activeCampaigns = campaigns.filter((c) => c.status === 'active');
+  const candidates = activeCampaigns.length > 0 ? activeCampaigns : campaigns.slice(0, 1);
+  if (candidates.length === 0) {
     const year = new Date().getFullYear();
     const campaign = await createRebookingCampaign(orgId, { seasonYear: year });
     await populateCampaignFromPriorSeason(orgId, campaign.id);
     return processPortalRebook(orgId, customerId, input);
   }
 
-  let records = await listRebookingRecords(orgId, active.id);
-  let record = records.find((r) => r.customerId === customerId);
-  if (!record) {
-    await populateCampaignFromPriorSeason(orgId, active.id);
-    records = await listRebookingRecords(orgId, active.id);
-    record = records.find((r) => r.customerId === customerId);
+  for (const active of candidates) {
+    let records = await listRebookingRecords(orgId, active.id);
+    let record = records.find((r) => r.customerId === customerId);
+    if (!record) {
+      await populateCampaignFromPriorSeason(orgId, active.id);
+      records = await listRebookingRecords(orgId, active.id);
+      record = records.find((r) => r.customerId === customerId);
+    }
+    if (record) {
+      return processRebookRecord(orgId, record.id, {
+        sameDesign: input.sameDesign,
+        upgradeRequested: input.upgradeRequested,
+        preferredMonth: input.preferredMonth,
+        notes: input.notes,
+      });
+    }
   }
-  if (!record) throw new Error('No prior season record found for rebooking');
 
-  return processRebookRecord(orgId, record.id, {
-    sameDesign: input.sameDesign,
-    upgradeRequested: input.upgradeRequested,
-    preferredMonth: input.preferredMonth,
-    notes: input.notes,
-  });
+  throw new Error('No prior season record found for rebooking');
 }
 
 export async function getRebookingDashboard(orgId: string): Promise<RebookingDashboard> {

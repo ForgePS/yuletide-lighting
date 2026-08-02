@@ -89,13 +89,40 @@ function waitForPortsFree(ports, timeoutMs = 30000) {
   return false;
 }
 
+/** Best-effort clear of orphan emulator listeners before rules/integration suites (Windows-safe). */
+function clearOrphanEmulatorPorts(ports = [8080, 9199, 4400, 4500]) {
+  if (process.platform === 'win32') {
+    for (const port of ports) {
+      try {
+        execSync(
+          `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`,
+          { stdio: 'ignore', cwd: root },
+        );
+      } catch {
+        // ignore
+      }
+    }
+  } else {
+    for (const port of ports) {
+      try {
+        execSync(`fuser -k ${port}/tcp 2>/dev/null || true`, { stdio: 'ignore', cwd: root });
+      } catch {
+        // ignore
+      }
+    }
+  }
+  sleep(1500);
+  waitForPortsFree(ports, 20000);
+}
+
 /**
  * Run an emulator-backed suite with port readiness + one infrastructure retry.
  * Assertion failures must not be retried as infrastructure failures.
  */
 function tryRunEmulatorSuite(name, category, cmd, correction) {
-  const ports = [8080, 9199, 4400];
-  waitForPortsFree(ports, 20000);
+  const ports = [8080, 9199, 4400, 4500];
+  clearOrphanEmulatorPorts(ports);
+  waitForPortsFree(ports, 45000);
 
   const runOnce = () => {
     try {
@@ -516,6 +543,13 @@ if (!auditsOnly) {
     'node scripts/audit-legacy-writes.mjs',
     'Redirect legacy property/job/message writes to canonical org paths',
   );
+  // Web package resolves @yuletide/firebase via apps/web/local_deps — sync before typecheck.
+  tryRun(
+    'sync-web-local-deps',
+    'quality',
+    'node apps/web/scripts/prepare-firebase-deps.mjs',
+    'Sync workspace packages into apps/web/local_deps for Next/web typecheck',
+  );
   tryRun('typecheck', 'quality', 'npm run typecheck', 'Fix TypeScript errors');
   if (!skipLint) tryRun('lint', 'quality', 'npm run lint', 'Fix lint errors');
   else
@@ -652,6 +686,18 @@ tryRun(
   'security',
   'npm run audit:portal-files',
   'Use createPortalFileAccess tickets; ban arbitrary client Storage paths and permanent public ACLs',
+);
+tryRun(
+  'portal-mutations-audit',
+  'security',
+  'npm run audit:portal-mutations',
+  'Enforce portal mutation guards, state transitions, and server-authoritative payment amounts',
+);
+tryRun(
+  'portal-idempotency-audit',
+  'security',
+  'npm run audit:portal-idempotency',
+  'Ensure high-impact portal mutations have deterministic replay/idempotency behavior',
 );
 if (auditsOnly) {
   const files = ['tests/firebase/firestore.rules.test.ts', 'tests/firebase/storage.rules.test.ts'];

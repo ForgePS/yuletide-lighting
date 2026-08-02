@@ -35,6 +35,9 @@ export const portalTokenInputSchema = z.object({
   token: z.string().min(8).max(128).optional(),
 });
 
+/** Optional client retry token — never used for authorization (P2-S6). */
+export const portalIdempotencyKeySchema = z.string().min(8).max(200).optional();
+
 export const portalServiceRequestSchema = z.object({
   token: z.string().min(8).max(128).optional(),
   title: z.string().min(1).max(200),
@@ -45,6 +48,7 @@ export const portalServiceRequestSchema = z.object({
   accessInstructions: z.string().max(1000).optional(),
   locationNote: z.string().max(500).optional(),
   photoUrls: z.array(z.string().min(1).max(500)).max(6).optional(),
+  idempotencyKey: portalIdempotencyKeySchema,
 });
 
 export const portalUploadPhotoSchema = z.object({
@@ -60,6 +64,7 @@ export const portalRebookSchema = z.object({
   preferredMonth: z.string().max(40).optional(),
   sameDesign: z.boolean().optional(),
   upgradeRequested: z.boolean().optional(),
+  idempotencyKey: portalIdempotencyKeySchema,
 });
 
 export const portalEnableSchema = z.object({
@@ -89,6 +94,7 @@ export const portalScheduleRequestSchema = z.object({
   preferredEndAt: z.coerce.date().nullable().optional(),
   preferredWindows: z.string().max(500).optional(),
   notes: z.string().max(2000).optional(),
+  idempotencyKey: portalIdempotencyKeySchema,
 });
 
 export const portalJobDetailSchema = z.object({

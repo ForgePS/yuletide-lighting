@@ -143,7 +143,16 @@ function isExpired(qr: PortalQrCode): boolean {
 }
 
 function isInactiveStatus(status: PortalQrCodeStatus) {
-  return ['revoked', 'replaced', 'suspended', 'invalid', 'expired', 'draft'].includes(status);
+  // used_for_activation is terminal for single-use QR (P2-S6).
+  return [
+    'revoked',
+    'replaced',
+    'suspended',
+    'invalid',
+    'expired',
+    'draft',
+    'used_for_activation',
+  ].includes(status);
 }
 
 async function findQrByRawToken(

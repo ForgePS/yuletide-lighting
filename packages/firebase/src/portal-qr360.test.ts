@@ -93,12 +93,20 @@ describe('portal QR status validation', () => {
   });
 
   it('treats revoked, replaced, suspended, invalid, draft as inactive', () => {
-    for (const status of ['revoked', 'replaced', 'suspended', 'invalid', 'expired', 'draft'] as const) {
+    for (const status of [
+      'revoked',
+      'replaced',
+      'suspended',
+      'invalid',
+      'expired',
+      'draft',
+    ] as const) {
       expect(isInactiveStatus(status)).toBe(true);
     }
     expect(isInactiveStatus('active')).toBe(false);
     expect(isInactiveStatus('reusable')).toBe(false);
-    expect(isInactiveStatus('used_for_activation')).toBe(false);
+    // P2-S6: single-use activation is terminal — further OTP/verify cycles denied.
+    expect(isInactiveStatus('used_for_activation')).toBe(true);
   });
 });
 
@@ -106,9 +114,13 @@ describe('portal QR device classification', () => {
   const { parseDevice } = portalQrTestUtils;
 
   it('classifies phone, tablet, and desktop user agents', () => {
-    expect(parseDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)').deviceClass).toBe('phone');
+    expect(parseDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)').deviceClass).toBe(
+      'phone',
+    );
     expect(parseDevice('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)').deviceClass).toBe('tablet');
-    expect(parseDevice('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0').deviceClass).toBe('desktop');
+    expect(
+      parseDevice('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0').deviceClass,
+    ).toBe('desktop');
     expect(parseDevice(null).deviceClass).toBe('unknown');
   });
 });

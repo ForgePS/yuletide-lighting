@@ -215,3 +215,7 @@ Requires: no open P0; no open security P1; emulator evidence complete; productio
 Complete **P2-S3** emulator commands and record evidence before changing status from IN_PROGRESS. Do not start deployment or production migration work.
 
 **NO DEPLOYMENT. NO PRODUCTION WRITES.**
+
+### P2-S6 status note (2026-08-02)
+
+S6 scope executed as transaction integrity + idempotency + provider-safe checkout (see portal-phase-2-s6-completion.md). Emulator integration expanded beyond legacy portal-phase2.integration.test.ts with dedicated S6 suite.

@@ -45,9 +45,10 @@ function normalizeAgreementInput(input: MultiYearAgreementInput | UpdateMultiYea
     startSeason: input.startSeason,
     endSeason: input.endSeason,
     annualValueCents: input.annualValueCents,
-    totalValueCents: years !== undefined && input.annualValueCents !== undefined
-      ? years * input.annualValueCents
-      : undefined,
+    totalValueCents:
+      years !== undefined && input.annualValueCents !== undefined
+        ? years * input.annualValueCents
+        : undefined,
     depositPercent: input.depositPercent,
     autoGenerateProjects: input.autoGenerateProjects,
     linkedProjectIds: input.linkedProjectIds,
@@ -62,7 +63,13 @@ function normalizeAgreementInput(input: MultiYearAgreementInput | UpdateMultiYea
 
 export async function listMultiYearAgreements360(
   orgId: string,
-  opts: { page?: number; pageSize?: number; search?: string; status?: MultiYearAgreementStatus; customerId?: string } = {},
+  opts: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    status?: MultiYearAgreementStatus;
+    customerId?: string;
+  } = {},
 ) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 50;
@@ -77,7 +84,8 @@ export async function listMultiYearAgreements360(
   items.sort((a, b) => (b.updatedAt?.getTime?.() ?? 0) - (a.updatedAt?.getTime?.() ?? 0));
 
   if (opts.status) items = items.filter((agreement) => agreement.status === opts.status);
-  if (opts.customerId) items = items.filter((agreement) => agreement.customerId === opts.customerId);
+  if (opts.customerId)
+    items = items.filter((agreement) => agreement.customerId === opts.customerId);
 
   const search = opts.search?.trim().toLowerCase();
   if (search) {
@@ -192,7 +200,11 @@ export async function sendAgreementForSignature360(
 ) {
   const agreement = await getMultiYearAgreement360(orgId, agreementId);
   if (!agreement) return null;
-  if (isAgreementSignedStatus(agreement.status) || agreement.status === 'completed' || agreement.status === 'cancelled') {
+  if (
+    isAgreementSignedStatus(agreement.status) ||
+    agreement.status === 'completed' ||
+    agreement.status === 'cancelled'
+  ) {
     return agreement;
   }
 
@@ -242,7 +254,8 @@ export async function getAgreementByPublicToken(token: string) {
 
   const orgId = agreement.organizationId;
   const organization = await getOrganization(orgId);
-  let branding: { companyName?: string; brandColor?: string; logoUrl?: string | null } | null = null;
+  let branding: { companyName?: string; brandColor?: string; logoUrl?: string | null } | null =
+    null;
   let termsVersion = agreement.termsVersion ?? AGREEMENT_TERMS_VERSION;
   let termsBody =
     "By signing this agreement you authorize the company to provide seasonal lighting services for the seasons listed above at the agreed annual value. Work will be scheduled according to weather and crew availability. Cancellations and renewals are subject to the company's standard policies.";
@@ -250,9 +263,13 @@ export async function getAgreementByPublicToken(token: string) {
     const { getBrandingForCustomerFacing, getAgreementSettings } = await import('./settings360');
     branding = await getBrandingForCustomerFacing(orgId);
     const agreementSettings = await getAgreementSettings(orgId);
-    termsVersion = agreement.termsVersion ?? agreementSettings.termsVersion ?? AGREEMENT_TERMS_VERSION;
+    termsVersion =
+      agreement.termsVersion ?? agreementSettings.termsVersion ?? AGREEMENT_TERMS_VERSION;
     const companyName = branding?.companyName || organization?.companyName || 'the company';
-    termsBody = (agreementSettings.termsBody || termsBody).replace(/\{\{\s*companyName\s*\}\}/g, companyName);
+    termsBody = (agreementSettings.termsBody || termsBody).replace(
+      /\{\{\s*companyName\s*\}\}/g,
+      companyName,
+    );
   } catch {
     branding = null;
     const companyName = organization?.companyName || 'the company';
@@ -316,9 +333,19 @@ export async function recordAgreementSignature(
   const orgId = agreement.organizationId;
   const db = getAdminFirestore();
   const ref = db.doc(`${agreementsPath(orgId)}/${agreement.id}`);
-  const now = ts();
-  await ref.update(
-    stripUndefined({
+  // Atomic status check + sign (P2-S6 concurrency / one-time semantics).
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error('Agreement is not available for signature');
+    const current = snap.data() as { status?: string };
+    if (current.status === 'active' || current.status === 'signed') {
+      return;
+    }
+    if (current.status !== 'awaiting_signature' && current.status !== 'draft') {
+      throw new Error('Agreement is not available for signature');
+    }
+    const now = ts();
+    const patch = stripUndefined({
       status: 'active',
       signedAt: now,
       signedByName: input.signedByName.trim(),
@@ -327,8 +354,9 @@ export async function recordAgreementSignature(
       signerUserAgent: input.userAgent ?? null,
       termsVersion: agreement.termsVersion ?? AGREEMENT_TERMS_VERSION,
       updatedAt: now,
-    }),
-  );
+    }) as Record<string, unknown>;
+    tx.update(ref, patch);
+  });
 
   return getAgreementByPublicToken(token);
 }

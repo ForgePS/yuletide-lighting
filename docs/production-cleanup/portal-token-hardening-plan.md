@@ -27,3 +27,7 @@ Legacy magic access tokens, including `customers.portalToken`, remain plaintext 
 No migration step in this plan is authorized by PORTAL-P2-S3.
 
 **PORTAL-P2-S5 note:** S5 adds route authorization and file access tickets only. It does not hash magic tokens, remove `customers.portalToken` plaintext, or change token URL compatibility. The deferred migration plan above remains authoritative.
+
+## S6 interaction (2026-08-02)
+
+Public-token flows (proposal/agreement/mockup/pay) remain on token URLs; S6 adds replay-safe transitions and server payment authority without changing token persistence model. Legacy plaintext magic-token migration remains deferred.

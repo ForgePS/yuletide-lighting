@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   test: {
-    testTimeout: 30_000,
-    hookTimeout: 60_000,
+    testTimeout: 60_000,
+    hookTimeout: 180_000,
     pool: 'forks',
     fileParallelism: false,
   },

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { CustomerInsights, CustomerOverviewStats } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
@@ -38,7 +38,9 @@ export function CustomerInsightsCard({ insights }: { insights: CustomerInsights 
       <div className="mt-4 space-y-4 text-sm">
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Health score</span>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${healthBadgeClass(insights.healthRating)}`}>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${healthBadgeClass(insights.healthRating)}`}
+          >
             {insights.healthScore} · {labelHealthRating(insights.healthRating)}
           </span>
         </div>
@@ -62,7 +64,9 @@ export function CustomerInsightsCard({ insights }: { insights: CustomerInsights 
           <div>
             <p className="text-muted-foreground">Suggested upsells</p>
             <ul className="mt-1 list-inside list-disc">
-              {insights.suggestedUpsells.map((u) => <li key={u}>{u}</li>)}
+              {insights.suggestedUpsells.map((u) => (
+                <li key={u}>{u}</li>
+              ))}
             </ul>
           </div>
         )}
@@ -93,7 +97,7 @@ export function CustomerPortalCard({
       toast('Portal enabled — copy the access link for your customer', 'success');
       utils.customer360.getById.invalidate({ customerId });
       refetch();
-      if (result.accessUrl) setLink(result.accessUrl);
+      if (result.accessUrl) setIssuedLink(result.accessUrl);
     },
     onError: (e) => toast(e.message, 'error'),
   });
@@ -115,13 +119,18 @@ export function CustomerPortalCard({
   });
   const invite = trpc.portal360.invite.useMutation({
     onSuccess: (result) => {
-      if (result.accessUrl) setLink(result.accessUrl);
+      if (result.accessUrl) setIssuedLink(result.accessUrl);
       utils.customer360.getById.invalidate({ customerId });
       refetch();
       if (result.sent) {
         toast(`Invite emailed to ${result.email}`, 'success');
       } else {
-        toast(result.reason ? `Portal ready — ${result.reason}` : 'Portal ready — copy the link to share', 'success');
+        toast(
+          result.reason
+            ? `Portal ready — ${result.reason}`
+            : 'Portal ready — copy the link to share',
+          'success',
+        );
       }
     },
     onError: (e) => toast(e.message, 'error'),
@@ -131,26 +140,33 @@ export function CustomerPortalCard({
       toast('Access link rotated — share the new link', 'success');
       utils.customer360.getById.invalidate({ customerId });
       refetch();
-      setLink(result.accessUrl);
+      setIssuedLink(result.accessUrl);
     },
     onError: (e) => toast(e.message, 'error'),
   });
 
   const view = accountView ?? portal;
-  const [link, setLink] = useState(view.accessUrl ?? view.accessLinkPlaceholder ?? portal.accessLinkPlaceholder);
-
-  useEffect(() => {
-    setLink(view.accessUrl ?? view.accessLinkPlaceholder ?? portal.accessLinkPlaceholder);
-  }, [view.accessUrl, view.accessLinkPlaceholder, portal.accessLinkPlaceholder]);
+  /** One-time raw access URL held only in component state after enable/rotate/invite. */
+  const [issuedLink, setIssuedLink] = useState<string | null>(null);
 
   async function copyLink() {
-    await navigator.clipboard.writeText(link);
+    if (!issuedLink) {
+      toast('Generate or rotate an access link first — stored links are not recoverable.', 'error');
+      return;
+    }
+    await navigator.clipboard.writeText(issuedLink);
     toast('Link copied', 'success');
   }
 
   const enabled = view.enabled;
-  const status = ('status' in view ? view.status : portal.status) ?? (enabled ? 'active' : 'not_invited');
-  const busy = enable.isPending || revoke.isPending || suspend.isPending || rotate.isPending || invite.isPending;
+  const status =
+    ('status' in view ? view.status : portal.status) ?? (enabled ? 'active' : 'not_invited');
+  const busy =
+    enable.isPending ||
+    revoke.isPending ||
+    suspend.isPending ||
+    rotate.isPending ||
+    invite.isPending;
 
   return (
     <div className="card p-6">
@@ -178,27 +194,80 @@ export function CustomerPortalCard({
         )}
       </div>
       <dl className="mt-4 space-y-3 text-sm">
-        <div className="flex justify-between"><dt className="text-muted-foreground">Portal enabled</dt><dd className="font-medium">{enabled ? 'Yes' : 'No'}</dd></div>
-        <div className="flex justify-between"><dt className="text-muted-foreground">Status</dt><dd className="font-medium capitalize">{String(status).replace(/_/g, ' ')}</dd></div>
-        <div className="flex justify-between"><dt className="text-muted-foreground">Invite sent</dt><dd>{view.inviteSentAt ? new Date(view.inviteSentAt).toLocaleDateString() : '—'}</dd></div>
-        <div className="flex justify-between"><dt className="text-muted-foreground">Last login</dt><dd>{view.lastLoginAt ? new Date(view.lastLoginAt).toLocaleDateString() : '—'}</dd></div>
+        <div className="flex justify-between">
+          <dt className="text-muted-foreground">Portal enabled</dt>
+          <dd className="font-medium">{enabled ? 'Yes' : 'No'}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-muted-foreground">Status</dt>
+          <dd className="font-medium capitalize">{String(status).replace(/_/g, ' ')}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-muted-foreground">Invite sent</dt>
+          <dd>{view.inviteSentAt ? new Date(view.inviteSentAt).toLocaleDateString() : '—'}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-muted-foreground">Last login</dt>
+          <dd>{view.lastLoginAt ? new Date(view.lastLoginAt).toLocaleDateString() : '—'}</dd>
+        </div>
         <div>
           <dt className="text-muted-foreground">Access link</dt>
-          <dd className="mt-1 break-all font-mono text-xs">{link}</dd>
+          <dd className="mt-1 break-all font-mono text-xs">
+            {issuedLink ??
+              (enabled
+                ? 'Not shown — generate or rotate to create a one-time access link.'
+                : (view.accessLinkPlaceholder ?? '/portal/login'))}
+          </dd>
           {enabled && (
             <div className="mt-2 flex flex-wrap gap-2">
-              <button type="button" className="btn-secondary text-xs" onClick={copyLink}>Copy link</button>
-              <a href={link} target="_blank" rel="noreferrer" className="btn-secondary text-xs">Open portal</a>
-              <button type="button" className="btn-secondary text-xs" disabled={busy} onClick={() => invite.mutate({ customerId })}>
-                {invite.isPending ? 'Sending…' : 'Email invite'}
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                disabled={!issuedLink}
+                onClick={copyLink}
+              >
+                Copy link
               </button>
-              <button type="button" className="btn-secondary text-xs" disabled={busy} onClick={() => rotate.mutate({ customerId })}>
-                Rotate link
+              {issuedLink ? (
+                <a
+                  href={issuedLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-secondary text-xs"
+                >
+                  Open portal
+                </a>
+              ) : null}
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                disabled={busy}
+                onClick={() => invite.mutate({ customerId })}
+              >
+                {invite.isPending ? 'Sending…' : 'Send new access link'}
               </button>
-              <button type="button" className="btn-secondary text-xs" disabled={busy} onClick={() => suspend.mutate({ customerId })}>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                disabled={busy}
+                onClick={() => rotate.mutate({ customerId })}
+              >
+                Rotate access link
+              </button>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                disabled={busy}
+                onClick={() => suspend.mutate({ customerId })}
+              >
                 Suspend
               </button>
-              <button type="button" className="btn-ghost text-xs text-red-600" disabled={busy} onClick={() => revoke.mutate({ customerId })}>
+              <button
+                type="button"
+                className="btn-ghost text-xs text-red-600"
+                disabled={busy}
+                onClick={() => revoke.mutate({ customerId })}
+              >
                 Revoke
               </button>
             </div>
@@ -206,8 +275,9 @@ export function CustomerPortalCard({
         </div>
       </dl>
       <p className="mt-4 text-xs text-muted-foreground">
-        Customers can view proposals, pay invoices, see install schedules, request service, and rebook for next season.
-        Email invite uses Resend when configured; otherwise copy the link manually.
+        Customers can view proposals, pay invoices, see install schedules, request service, and
+        rebook for next season. Access links are issued once on enable/rotate and cannot be
+        retrieved later from stored account data.
       </p>
     </div>
   );

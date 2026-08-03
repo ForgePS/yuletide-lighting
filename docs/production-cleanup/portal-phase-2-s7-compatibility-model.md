@@ -24,6 +24,10 @@
 - Successful POST `/api/portal/session` → `router.replace` to `/portal/app/...`.
 - Authenticated UI uses tokenless nav (`portalAppPath`).
 
+## Session after exchange (S7A)
+
+`__portal_session` resolution loads the portal account by trusted `portalAccountId` and enforces `sessionVersion`. It does **not** re-enter magic credential lookup (`accessToken` / `accessTokenHash` / `portalToken`).
+
 ## Upgrade-on-read
 
 **Disabled by default.** `portalMagicUpgradeOnReadAllowed()` requires emulator env + `PORTAL_MAGIC_TOKEN_UPGRADE_ON_READ=1`. Not used by `requirePortalAccess`.

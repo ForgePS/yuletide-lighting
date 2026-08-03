@@ -13,7 +13,9 @@ import {
   portalMagicCredentialWriteFields,
   allowLegacyPlaintextMagicTokenLookup,
   getPortalMagicTokenMode,
+  PORTAL_ACCESS_SECRET_DOMAIN,
 } from './portal-magic-access';
+import { hashPortalSecret } from './portal-security';
 
 describe('P2-S7 magic access generation', () => {
   it('generates URL-safe high-entropy tokens without Math.random', () => {
@@ -43,6 +45,17 @@ describe('P2-S7 magic access hashing', () => {
 
   it('rejects invalid input', () => {
     expect(() => hashPortalAccessToken('short')).toThrow(/INVALID_MAGIC_TOKEN/);
+  });
+
+  it('uses portal-magic-access domain distinct from invitation/otp', () => {
+    expect(PORTAL_ACCESS_SECRET_DOMAIN).toBe('portal-magic-access');
+    const raw = generatePortalAccessToken();
+    const magic = hashPortalAccessToken(raw);
+    const invitation = `v1:${hashPortalSecret(raw, 'portal-invitation')}`;
+    const otp = `v1:${hashPortalSecret(raw, 'portal-otp')}`;
+    expect(magic).not.toBe(invitation);
+    expect(magic).not.toBe(otp);
+    expect(magic).toBe(`v1:${hashPortalSecret(raw, PORTAL_ACCESS_SECRET_DOMAIN)}`);
   });
 
   it('fails closed on unknown hash version', () => {

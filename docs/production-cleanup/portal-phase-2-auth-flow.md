@@ -18,6 +18,10 @@
 
 Invitations and OTPs are hashed at rest, replacements invalidate predecessors, claims are transactional, OTPs have TTL/attempt/cooldown controls, and delivery is emulator-only. Legacy plaintext magic-token migration is documented separately and not applied in S3.
 
-## P2-S7 update (2026-08-02)
+## P2-S7A update (2026-08-02)
 
-Magic-access hashing and hash-only writes implemented in S7 worktree (`portal-magic-access.ts`, `resolvePortalMagicAccess`). P2-R01 (legacy plaintext) **partially mitigated for new credentials**; existing production plaintext at rest remains open until authorized migration. Evidence pending: `portal-phase-2-s7-token-security-evidence.md`.
+- Magic-access hashing: `hashPortalAccessToken` / domain `portal-magic-access` (`portal-magic-access.ts`).
+- New credentials hash-only at rest; legacy plaintext dual-read in `COMPATIBILITY` mode only.
+- Session path after `__portal_session` uses portal account identity + `sessionVersion` — **not** plaintext magic re-entry.
+- Dashboard / staff getAccount / getCustomerPortalAccess no longer expose recoverable raw magic URLs.
+- Full tokenless cutover and production plaintext removal remain **S7B+**. See `portal-phase-2-s7a-completion.md`.

@@ -43,6 +43,7 @@ import {
 } from './portal-security-config';
 import { getPortalDeliveryProvider } from './portal-delivery';
 import { consumePortalRateLimit, portalRateLimitKey } from './portal-rate-limit';
+import { generatePortalAccessToken } from './portal-magic-access';
 
 const TOKEN_BYTES = 32;
 const GENERIC_BLOCK_MESSAGE =
@@ -1165,14 +1166,18 @@ export async function verifyPortalQrCodeAndActivate(
 
   await colUpdate(orgId, 'portalQrVerifications', latest.id, { consumedAt: new Date() });
 
+  // P2-S7A: mint one-time hash-only magic credential for redirect/session exchange.
+  // Never dual-write plaintext to customers.portalToken or portalAccounts.accessToken.
+  const rawMagic = generatePortalAccessToken();
   const { account, token: accessToken } = await ensurePortalAccount(orgId, qr.customerId, {
+    token: rawMagic,
     portalEnabled: true,
     status: 'active',
   });
 
   await colUpdate(orgId, 'customers', qr.customerId, {
     portalEnabled: true,
-    portalToken: accessToken,
+    portalToken: null,
   });
   const firstActivation = !account.activatedAt;
   await colUpdate(orgId, 'portalAccounts', account.id, {

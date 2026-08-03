@@ -870,14 +870,14 @@ export async function getCustomerOverviewStats(
 export function getCustomerPortalAccess(customer: CustomerRecord): CustomerPortalAccess {
   const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app';
   const root = base.replace(/\/$/, '');
-  const accessUrl = customer.portalToken ? `${root}/portal/${customer.portalToken}` : null;
+  // P2-S7A: never reconstruct /portal/{rawToken} from stored plaintext — raw is not recoverable.
   return {
     enabled: customer.portalEnabled ?? false,
     status: customer.portalEnabled ? 'active' : 'not_invited',
     inviteSentAt: customer.portalInviteSentAt ?? null,
     lastLoginAt: customer.portalLastLoginAt ?? null,
-    accessUrl,
-    accessLinkPlaceholder: accessUrl ?? `${root}/portal/login`,
+    accessUrl: null,
+    accessLinkPlaceholder: `${root}/portal/login`,
   };
 }
 

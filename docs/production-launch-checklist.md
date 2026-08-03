@@ -53,15 +53,15 @@ Go-live gates for Yuletide CRM against the Production Readiness blueprint.
 - [x] `/api/health` returns `{ status: "ok" }`
 - [x] `npm run test:e2e` smoke passes against production or staging
 
-## Customer Portal Phase 2 S7 (emulator — pending gate)
+## Customer Portal Phase 2 S7A (emulator — credential foundation)
 
-- [ ] `audit:portal-token-security` PASS
-- [ ] S7 unit + integration tests PASS (hash-only writes, legacy modes, session-first routes)
-- [ ] Portal E2E launch-critical skipped = 0 on emulator (`portal-phase2-s7-token-hardening.spec.ts`)
+- [x] `audit:portal-token-security` PASS (S7A worktree)
+- [x] S7A unit + integration tests PASS (hash-only writes, legacy modes, session decoupling, DTO sanitization)
+- [ ] S7B tokenless route / plaintext-removal gates (separate checkpoint)
 - [ ] Legacy magic-token production migration plan approved separately (docs only until authorized)
 - [ ] `PORTAL_MAGIC_TOKEN_MODE=HASH_ONLY` cutover not applied until migration evidence complete
 
-**Note:** S7 implementation in progress on branch `work/portal-p2-s7-token-hardening`; do not check PASS until parent gate runs.
+**Note:** See `docs/production-cleanup/portal-phase-2-s7a-completion.md`. Full S7 not complete until S7B.
 
 ## Rollback
 

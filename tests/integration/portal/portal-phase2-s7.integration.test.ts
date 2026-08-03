@@ -231,6 +231,7 @@ describe('P2-S7 rotation', () => {
     const oldToken = o.token;
     const rotated = await rotatePortalAccessToken(o.orgId, o.customerId, staffUserId);
     expect(rotated.token).not.toBe(oldToken);
+    expect(rotated.account).not.toHaveProperty('accessTokenHash');
     expect(await requirePortalAccess(oldToken)).toBeNull();
     expect(await requirePortalAccess(rotated.token)).not.toBeNull();
 
@@ -282,7 +283,8 @@ describe('P2-S7 session exchange', () => {
     expect(verified?.customerId).toBe(o.customerId);
     const dash = await getPortalDashboard({ sessionToken: session!.token });
     expect(dash?.customer.id).toBe(o.customerId);
-    expect(dash?.accessToken).toBeFalsy();
+    expect(dash).not.toHaveProperty('accessToken');
+    expect(JSON.stringify(dash)).not.toMatch(/accessTokenHash|portalToken/);
   });
 });
 
@@ -311,6 +313,60 @@ describe('P2-S7 staff portal view', () => {
     expect(view!.accessUrl).toBeNull();
     expect(JSON.stringify(view)).not.toContain(o.token);
     expect(view!.credentialFingerprint).toMatch(/^[a-f0-9]{8}$/);
+    expect(view!.account).not.toHaveProperty('accessToken');
+    expect(view!.account).not.toHaveProperty('accessTokenHash');
+  });
+});
+
+describe('P2-S7A one-time credential + DTO sanitization', () => {
+  it('enable returns one-time credential and sanitized account (no hash/plaintext)', async () => {
+    const o = owners.hash;
+    const rotated = await rotatePortalAccessToken(o.orgId, o.customerId, staffUserId);
+    expect(rotated.token.length).toBeGreaterThan(16);
+    expect(rotated.credential.token).toBe(rotated.token);
+    expect(rotated.account).not.toHaveProperty('accessToken');
+    expect(rotated.account).not.toHaveProperty('accessTokenHash');
+    expect(rotated.account.credentialConfigured).toBe(true);
+
+    const later = await getStaffPortalAccountView(o.orgId, o.customerId);
+    expect(later!.accessUrl).toBeNull();
+    expect(JSON.stringify(later)).not.toContain(rotated.token);
+    o.token = rotated.token;
+  });
+
+  it('getCustomerPortalAccess does not reconstruct magic URL from portalToken', async () => {
+    const { getCustomerPortalAccess } = await import('@yuletide/firebase');
+    const leaky = getCustomerPortalAccess({
+      id: 'c1',
+      organizationId: 'o1',
+      firstName: 'A',
+      lastName: 'B',
+      portalEnabled: true,
+      portalToken: 'legacy-plaintext-token-value-xxxxxx',
+      emailOptIn: true,
+      smsOptIn: false,
+      billingSameAsPhysical: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as never);
+    expect(leaky.accessUrl).toBeNull();
+    expect(leaky.accessLinkPlaceholder).toMatch(/\/portal\/login$/);
+    expect(JSON.stringify(leaky)).not.toContain('legacy-plaintext-token-value-xxxxxx');
+  });
+});
+
+describe('P2-S7A session decoupling', () => {
+  it('session remains valid when accessToken and portalToken are absent', async () => {
+    setMagicMode('COMPATIBILITY');
+    const o = owners.hash;
+    const session = await establishPortalSessionFromAccessToken(o.token);
+    expect(session).not.toBeNull();
+    await colUpdate(o.orgId, 'portalAccounts', o.accountId, { accessToken: null });
+    await colUpdate(o.orgId, 'customers', o.customerId, { portalToken: null });
+    const verified = await verifyPortalSessionTokenServer(session!.token);
+    expect(verified?.customerId).toBe(o.customerId);
+    const dash = await getPortalDashboard({ sessionToken: session!.token });
+    expect(dash?.customer.id).toBe(o.customerId);
   });
 });
 

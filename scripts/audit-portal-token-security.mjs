@@ -200,6 +200,49 @@ for (const file of firebaseSrc) {
   }
 }
 
+// S7A: QR bridge must not dual-write magic credential plaintext
+const qrSrc = read('packages/firebase/src/portal-qr360.ts') || '';
+if (/portalToken:\s*accessToken/.test(qrSrc) || /portalToken:\s*rawMagic/.test(qrSrc)) {
+  add(
+    'qr-plaintext-magic-write',
+    'QR activation writes customers.portalToken with magic credential',
+  );
+}
+
+// S7A: getCustomerPortalAccess must not reconstruct magic URLs from stored plaintext
+const customer360 = read('packages/firebase/src/customer360.ts') || '';
+const portalAccessFn =
+  /export function getCustomerPortalAccess[\s\S]*?\nexport /.exec(customer360)?.[0] || '';
+if (
+  portalAccessFn &&
+  (/portal\/\$\{.*portalToken/.test(portalAccessFn) ||
+    /accessUrl\s*=\s*customer\.portalToken/.test(portalAccessFn))
+) {
+  add(
+    'customer-access-url-reconstruction',
+    'getCustomerPortalAccess reconstructs magic URL from stored portalToken',
+  );
+}
+
+// Dashboard must not expose accessToken field
+const dashType =
+  /export type PortalDashboardPublic[\s\S]*?export async function getPortalDashboard/.exec(
+    portal360 || '',
+  )?.[0] || '';
+if (dashType && /^\s*accessToken\s*:/m.test(dashType)) {
+  add('dashboard-accessToken-field', 'PortalDashboardPublic still declares accessToken');
+}
+
+// rotate/enable must sanitize account (no accessTokenHash on returned account DTO helper)
+if (portal360 && !/toSanitizedPortalAccountDto/.test(portal360)) {
+  add('missing-sanitized-account-dto', 'toSanitizedPortalAccountDto missing');
+}
+
+// Domain constant must exist and differ from invitation domain
+if (magic && !/PORTAL_ACCESS_SECRET_DOMAIN\s*=\s*['"]portal-magic-access['"]/.test(magic)) {
+  add('missing-access-domain', 'PORTAL_ACCESS_SECRET_DOMAIN must be portal-magic-access');
+}
+
 if (findings.length) {
   console.error('audit:portal-token-security FAILED');
   for (const f of findings) {

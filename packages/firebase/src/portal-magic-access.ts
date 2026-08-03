@@ -16,7 +16,13 @@ import {
 export type PortalCredentialKind = 'magic_access' | 'invitation' | 'otp' | 'session';
 
 export const PORTAL_MAGIC_ACCESS_HASH_VERSION = 1 as const;
-export const PORTAL_MAGIC_ACCESS_HASH_SALT = 'portal-magic-access-v1';
+/**
+ * Domain-separated secret salt for magic-access hashing (S7A).
+ * Must NOT equal invitation (`portal-invitation`) or OTP (`portal-otp`) domains.
+ */
+export const PORTAL_ACCESS_SECRET_DOMAIN = 'portal-magic-access';
+/** @deprecated Use PORTAL_ACCESS_SECRET_DOMAIN — kept as alias for existing imports/tests. */
+export const PORTAL_MAGIC_ACCESS_HASH_SALT = PORTAL_ACCESS_SECRET_DOMAIN;
 
 export type PortalMagicTokenMode = 'COMPATIBILITY' | 'HASH_ONLY';
 
@@ -52,12 +58,13 @@ export function generatePortalAccessToken(bytes = 32): string {
 
 /**
  * Canonical magic-access hash. Output format: `v1:<sha256-hex>`.
+ * Uses reviewed `hashPortalSecret` with PORTAL_ACCESS_SECRET_DOMAIN.
  * Unknown version prefix → fail closed at parse time.
  */
 export function hashPortalAccessToken(rawToken: string): string {
   const normalized = normalizeRawMagicToken(rawToken);
   if (!normalized) throw new Error('INVALID_MAGIC_TOKEN');
-  const digest = hashPortalSecret(normalized, PORTAL_MAGIC_ACCESS_HASH_SALT);
+  const digest = hashPortalSecret(normalized, PORTAL_ACCESS_SECRET_DOMAIN);
   return `v${PORTAL_MAGIC_ACCESS_HASH_VERSION}:${digest}`;
 }
 
@@ -355,6 +362,9 @@ export async function resolvePortalMagicAccess(
   emitPortalMagicTelemetry('portal.magic_token.lookup_failed', { requestId: opts?.requestId });
   return null;
 }
+
+/** Alias for S7A naming — same as resolvePortalMagicAccess. */
+export const resolvePortalAccessCredential = resolvePortalMagicAccess;
 
 /** Fields to persist for a NEW or ROTATED magic credential (hash-only at rest). */
 export function portalMagicCredentialWriteFields(rawToken: string): {

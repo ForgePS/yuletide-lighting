@@ -34,4 +34,4 @@ Move all magic-access credentials to hash-only at rest while preserving session-
 
 See `portal-phase-2-s7-rollback.md`. Revert S7 branch; COMPATIBILITY mode restores legacy reads if plaintext fields still exist.
 
-**Gate status:** Design documented; live migration evidence pending gate runs.
+**Gate status (S7A):** Emulator tool + production hard-block present; hash domain `portal-magic-access`. Full plaintext removal execution remains S7B / separately authorized production program.

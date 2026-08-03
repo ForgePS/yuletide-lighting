@@ -1,12 +1,10 @@
 # Portal Legacy Magic-Token Hardening Plan
 
-**STATUS:** IN PROGRESS (P2-S7 emulator implementation) — production migration NOT AUTHORIZED
+**STATUS:** S7A APPLIED (EMULATOR) — S7B / production migration NOT AUTHORIZED
 **ENVIRONMENT:** EMULATOR
 **Production writes / deploys:** PROHIBITED
 
-Legacy magic access tokens, including `customers.portalToken`, remain plaintext for compatibility. Invitation and QR/OTP hashing in S3 does not remove this risk.
-
-## Proposed migration
+## Proposed migration (original)
 
 1. Inventory every reader, writer, URL, index, test fixture, and dual-write field for portal magic tokens.
 2. Add versioned `accessTokenHash` storage with purpose-separated hashing; issue raw tokens only once.
@@ -26,12 +24,22 @@ Legacy magic access tokens, including `customers.portalToken`, remain plaintext 
 
 No migration step in this plan is authorized by PORTAL-P2-S3.
 
-**PORTAL-P2-S5 note:** S5 adds route authorization and file access tickets only. It does not hash magic tokens, remove `customers.portalToken` plaintext, or change token URL compatibility. The deferred migration plan above remains authoritative.
+**PORTAL-P2-S5 note:** S5 adds route authorization and file access tickets only. It does not hash magic tokens, remove `customers.portalToken` plaintext, or change token URL compatibility.
 
 ## S6 interaction (2026-08-02)
 
-Public-token flows (proposal/agreement/mockup/pay) remain on token URLs; S6 adds replay-safe transitions and server payment authority without changing token persistence model. Legacy plaintext magic-token migration remains deferred.
+Public-token flows (proposal/agreement/mockup/pay) remain on token URLs; S6 adds replay-safe transitions and server payment authority without changing token persistence model.
 
-## S7 update (2026-08-02)
+## S7A update (2026-08-02)
 
-P2-S7 implements hash-only **new writes**, `resolvePortalMagicAccess`, session-first `/portal/app/**` routes, and COMPATIBILITY/HASH_ONLY modes in emulator worktree `work/portal-p2-s7-token-hardening`. Production backfill and HASH_ONLY cutover remain **NOT AUTHORIZED** — see `portal-token-production-migration-plan.md`. Gate PASS not recorded.
+Checkpoint **PORTAL-P2-S7A** implements in emulator worktree:
+
+- Canonical `hashPortalAccessToken` / `PORTAL_ACCESS_SECRET_DOMAIN = portal-magic-access`
+- Hash-only **new** writes (`accessTokenHash`); no new plaintext dual-writes
+- Centralized `resolvePortalMagicAccess` (hash-first, legacy COMPATIBILITY fallback, duplicate DENY)
+- Session resolution decoupled from magic credential storage
+- DTO leak removal; one-time enable/rotate delivery
+- Emulator migration tool + `audit:portal-token-security`
+- Evidence: `portal-phase-2-s7a-completion.md`
+
+**S7B / production:** tokenless route finalization, plaintext removal simulation, production backfill — **NOT AUTHORIZED**.

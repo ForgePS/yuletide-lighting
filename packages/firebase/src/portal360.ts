@@ -1,6 +1,7 @@
 import {
   emitPortalMagicTelemetry,
   generatePortalAccessToken,
+  magicAccessFingerprint,
   portalMagicCredentialWriteFields,
   resolvePortalMagicAccess,
 } from './portal-magic-access';
@@ -46,6 +47,35 @@ function portalAccessUrl(token: string) {
 
 export function buildPortalAccessUrl(token: string) {
   return portalAccessUrl(token);
+}
+
+/** Staff/public-safe portal account — never includes raw token, hash, or portalToken. */
+export type SanitizedPortalAccountDto = {
+  id: string;
+  customerId: string;
+  portalEnabled: boolean;
+  status: PortalAccountStatus;
+  invitedAt?: Date | null;
+  lastLoginAt?: Date | null;
+  updatedAt?: Date;
+  sessionVersion: number;
+  credentialConfigured: boolean;
+  credentialFingerprint?: string | null;
+};
+
+export function toSanitizedPortalAccountDto(account: PortalAccount): SanitizedPortalAccountDto {
+  return {
+    id: account.id,
+    customerId: account.customerId,
+    portalEnabled: account.portalEnabled,
+    status: account.status,
+    invitedAt: account.invitedAt ?? null,
+    lastLoginAt: account.lastLoginAt ?? null,
+    updatedAt: account.updatedAt,
+    sessionVersion: account.sessionVersion ?? 0,
+    credentialConfigured: Boolean(account.accessTokenHash || account.accessToken),
+    credentialFingerprint: magicAccessFingerprint(account.accessTokenHash),
+  };
 }
 
 export function toPublicCustomer(customer: CustomerRecord): PortalCustomerPublic {
@@ -671,7 +701,12 @@ export async function enableCustomerPortal(
   orgId: string,
   customerId: string,
   userId?: string | null,
-): Promise<{ token: string; accessUrl: string; account: PortalAccount }> {
+): Promise<{
+  token: string;
+  accessUrl: string;
+  credential: { token: string; accessUrl: string };
+  account: SanitizedPortalAccountDto;
+}> {
   const features = await resolvePortalFeatures(orgId);
   if (!features.moduleEnabled && !features.settings.enabled) {
     throw new Error('Customer Portal is disabled for this organization');
@@ -723,7 +758,13 @@ export async function enableCustomerPortal(
     'System',
   );
   const fresh = (await colGet<PortalAccount>(orgId, 'portalAccounts', account.id))!;
-  return { token, accessUrl: portalAccessUrl(token), account: fresh };
+  const accessUrl = portalAccessUrl(token);
+  return {
+    token,
+    accessUrl,
+    credential: { token, accessUrl },
+    account: toSanitizedPortalAccountDto(fresh),
+  };
 }
 
 export async function revokeCustomerPortal(
@@ -794,7 +835,12 @@ export async function rotatePortalAccessToken(
   orgId: string,
   customerId: string,
   userId?: string | null,
-): Promise<{ token: string; accessUrl: string; account: PortalAccount }> {
+): Promise<{
+  token: string;
+  accessUrl: string;
+  credential: { token: string; accessUrl: string };
+  account: SanitizedPortalAccountDto;
+}> {
   const token = generatePortalAccessToken();
   const fields = portalMagicCredentialWriteFields(token);
   const { account } = await ensurePortalAccount(orgId, customerId, {
@@ -827,7 +873,13 @@ export async function rotatePortalAccessToken(
     'System',
   );
   const fresh = (await colGet<PortalAccount>(orgId, 'portalAccounts', account.id))!;
-  return { token, accessUrl: portalAccessUrl(token), account: fresh };
+  const accessUrl = portalAccessUrl(token);
+  return {
+    token,
+    accessUrl,
+    credential: { token, accessUrl },
+    account: toSanitizedPortalAccountDto(fresh),
+  };
 }
 
 /** Bump session versions for all users on a portal account (logout-all). */
@@ -884,7 +936,6 @@ export async function changePortalUserRole(
 }
 
 export async function getStaffPortalAccountView(orgId: string, customerId: string) {
-  const { magicAccessFingerprint } = await import('./portal-magic-access');
   const customer = await colGet<CustomerRecord>(orgId, 'customers', customerId);
   if (!customer) return null;
   let account = await getPortalAccountByCustomer(orgId, customerId);
@@ -892,30 +943,17 @@ export async function getStaffPortalAccountView(orgId: string, customerId: strin
     const ensured = await ensurePortalAccount(orgId, customerId);
     account = ensured.account;
   }
-  const credentialExists = Boolean(
-    account?.accessTokenHash || account?.accessToken || customer.portalToken,
-  );
-  // P2-S7: never return raw token / magic URL from normal staff reads.
+  const sanitized = account ? toSanitizedPortalAccountDto(account) : null;
+  // P2-S7A: never return raw token / magic URL from normal staff reads.
   return {
-    account: account
-      ? {
-          id: account.id,
-          customerId: account.customerId,
-          portalEnabled: account.portalEnabled,
-          status: account.status,
-          invitedAt: account.invitedAt ?? null,
-          lastLoginAt: account.lastLoginAt ?? null,
-          updatedAt: account.updatedAt,
-          credentialExists,
-          credentialFingerprint: magicAccessFingerprint(account.accessTokenHash),
-        }
-      : null,
+    account: sanitized,
     enabled: account?.portalEnabled ?? customer.portalEnabled ?? false,
     status: account?.status ?? (customer.portalEnabled ? 'active' : 'not_invited'),
     inviteSentAt: account?.invitedAt ?? customer.portalInviteSentAt ?? null,
     lastLoginAt: account?.lastLoginAt ?? customer.portalLastLoginAt ?? null,
-    credentialExists,
-    credentialFingerprint: magicAccessFingerprint(account?.accessTokenHash),
+    credentialExists: sanitized?.credentialConfigured ?? false,
+    credentialConfigured: sanitized?.credentialConfigured ?? false,
+    credentialFingerprint: sanitized?.credentialFingerprint ?? null,
     accessUrl: null,
     accessLinkPlaceholder: `${(process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')}/portal/login`,
   };
@@ -1115,7 +1153,6 @@ export type PortalDashboardPublic = {
     | 'permissions'
   >;
   enabledFeatures: PortalFeatureKey[];
-  accessToken: string;
   proposals: Array<{
     id: string;
     title: string;
@@ -1350,8 +1387,6 @@ export async function getPortalDashboard(
       permissions: settings.permissions,
     },
     enabledFeatures,
-    // P2-S7: do not expose magic token on normal dashboard DTOs (session is enough).
-    accessToken: '',
     proposals: canProposals ? proposals : [],
     invoices: canInvoices ? invoices : [],
     schedule: portalHasFeature(enabledFeatures, 'scheduling') ? schedule : [],

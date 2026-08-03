@@ -1,39 +1,46 @@
-# Portal Phase 2 S7 — Token Security Evidence
+# Portal Phase 2 S7A — Token Security Evidence
 
 **ENVIRONMENT:** EMULATOR
-**Production:** NO CONTACT
+**DATE:** 2026-08-02
+**CHECKPOINT:** PORTAL-P2-S7A
+**Production Firebase / deploy:** PROHIBITED
 
-## Static audits
+## Gates run (S7A)
 
-| Audit          | Script                                    | Expected                                              |
-| -------------- | ----------------------------------------- | ----------------------------------------------------- |
-| Token security | `scripts/audit-portal-token-security.mjs` | PASS — resolver, hash-only writes, staff DTO, headers |
-| Portal routes  | `scripts/audit-portal-routes.mjs`         | PASS — `/portal/app` namespace                        |
+| Gate | Result |
+| --- | --- |
+| format:changed:check | PASS |
+| lint | PASS |
+| typecheck | PASS |
+| unit (`npm test`) | PASS — 214 |
+| test:integration | PASS (includes S7/S7A suite — 15) |
+| test:firebase-rules | PASS — 18 |
+| audit:portal-permissions | PASS |
+| audit:portal-sessions | PASS |
+| audit:portal-auth-security | PASS |
+| audit:portal-query-scope | PASS |
+| audit:portal-public-dtos | PASS |
+| audit:portal-routes | PASS |
+| audit:portal-files | PASS |
+| audit:portal-mutations | PASS |
+| audit:portal-idempotency | PASS |
+| audit:portal-token-security | PASS |
+| build | PASS |
+| production:check:audits | PASS (10 portal audits) |
 
-## Automated tests
+## Evidence highlights
 
-| Layer       | File                                       | Coverage                                                                                                 |
-| ----------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| Unit        | `portal-phase2-s7-magic-access.test.ts`    | Hash, mode, migration guard, fingerprint                                                                 |
-| Integration | `portal-phase2-s7.integration.test.ts`     | Hash auth, legacy modes, rotate/revoke/suspend, duplicate hash, session, routes, staff DTO, cross-tenant |
-| E2E         | `portal-phase2-s7-token-hardening.spec.ts` | Entry shim denial, session-only routes, session API hardening                                            |
+- Hash domain `portal-magic-access` ≠ invitation/otp domains (unit)
+- New enable/rotate: `accessTokenHash` present, `accessToken` null, `portalToken` null (integration)
+- Legacy COMPATIBILITY / HASH_ONLY modes (integration)
+- Duplicate hash DENY (integration)
+- Session valid with plaintext fields absent (integration S7A)
+- Dashboard / getAccount / getCustomerPortalAccess no raw credential (integration + audit)
+- QR activation does not write `portalToken: accessToken` (static audit)
+- Migration tool production guard string present (static audit)
 
-## Security properties (target)
+## Not claimed
 
-- [ ] No plaintext persistence on new writes
-- [ ] Revoked/suspended deny legacy bypass
-- [ ] Duplicate hash fail-closed
-- [ ] Staff never receives raw token from reads
-- [ ] Legacy token URLs: `Referrer-Policy: no-referrer`, `Cache-Control: no-store`, `noindex`
-- [ ] Session API POST: `Cache-Control: no-store`
-
-## Gate results
-
-| Gate           | Run date         | Result |
-| -------------- | ---------------- | ------ |
-| Static audit   | pending gate run | —      |
-| Unit           | pending gate run | —      |
-| Integration    | pending gate run | —      |
-| E2E (emulator) | pending gate run | —      |
-
-**Parent agent fills PASS/FAIL after consecutive production:check runs.**
+- Production token migration
+- HASH_ONLY production cutover
+- Full S7 / S7B complete

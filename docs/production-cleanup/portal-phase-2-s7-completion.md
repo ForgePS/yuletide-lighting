@@ -1,19 +1,19 @@
 # Portal Phase 2 S7 — Completion
 
 **PHASE:** PORTAL-P2-S7 Legacy Magic-Token Hardening, Hash-Only Storage, and Session-First URL Cutover
-**STATUS:** COMPLETE
+**STATUS:** NOT COMPLETE — superseded by checkpoint reports (`portal-phase-2-s7a-completion.md`; S7B pending)
 **DATE:** 2026-08-02
 **ENVIRONMENT:** EMULATOR
 
 ## Checkpoints
 
-| Item | Value |
-| --- | --- |
+| Item               | Value                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
 | S7 WORKTREE/BRANCH | `C:\Users\jerem\Projects\christmas-light-crm-s7-token-hardening` / `work/portal-p2-s7-token-hardening` |
-| BASE SHA | `d98c3e90715e4a7e104285a68ea16cc56811c30b` |
-| S5 SHA | `d9d8242ad6df0f9e6f58af27baa96bcf16135a3d` |
-| S6 SHA | `b7f2cc1edadfd4351f70e5b3682ac561751369eb` |
-| S7 SHA | `630aa7f50a8fa3c8bc868505e6288ede9c6965b4` |
+| BASE SHA           | `d98c3e90715e4a7e104285a68ea16cc56811c30b`                                                             |
+| S5 SHA             | `d9d8242ad6df0f9e6f58af27baa96bcf16135a3d`                                                             |
+| S6 SHA             | `b7f2cc1edadfd4351f70e5b3682ac561751369eb`                                                             |
+| S7 SHA             | `630aa7f50a8fa3c8bc868505e6288ede9c6965b4`                                                             |
 
 ## Repository isolation
 
@@ -77,34 +77,34 @@
 
 ## Static audits (10)
 
-| Audit | Result |
-| --- | --- |
-| portal-permissions | PASS |
-| portal-sessions | PASS |
-| portal-auth-security | PASS |
-| portal-query-scope | PASS |
-| portal-public-dtos | PASS |
-| portal-routes | PASS |
-| portal-files | PASS |
-| portal-mutations | PASS |
-| portal-idempotency | PASS |
-| portal-token-security | PASS |
+| Audit                 | Result |
+| --------------------- | ------ |
+| portal-permissions    | PASS   |
+| portal-sessions       | PASS   |
+| portal-auth-security  | PASS   |
+| portal-query-scope    | PASS   |
+| portal-public-dtos    | PASS   |
+| portal-routes         | PASS   |
+| portal-files          | PASS   |
+| portal-mutations      | PASS   |
+| portal-idempotency    | PASS   |
+| portal-token-security | PASS   |
 
 ## Test results
 
-| Gate | Result |
-| --- | --- |
-| Format | PASS |
-| Lint | PASS |
-| Typecheck | PASS |
-| Unit | PASS — 213 |
-| Integration | PASS (includes S7 ×12) |
-| Firebase rules | PASS — 18/18 |
-| E2E | PASS — 68 passed, 13 skipped (P0.2C staging-auth NON_PORTAL) |
-| Portal launch-critical skipped | 0 |
-| Token-hardening launch-critical skipped | 0 |
-| Build | PASS |
-| production:check ×3 | PASS / PASS / PASS |
+| Gate                                    | Result                                                       |
+| --------------------------------------- | ------------------------------------------------------------ |
+| Format                                  | PASS                                                         |
+| Lint                                    | PASS                                                         |
+| Typecheck                               | PASS                                                         |
+| Unit                                    | PASS — 213                                                   |
+| Integration                             | PASS (includes S7 ×12)                                       |
+| Firebase rules                          | PASS — 18/18                                                 |
+| E2E                                     | PASS — 68 passed, 13 skipped (P0.2C staging-auth NON_PORTAL) |
+| Portal launch-critical skipped          | 0                                                            |
+| Token-hardening launch-critical skipped | 0                                                            |
+| Build                                   | PASS                                                         |
+| production:check ×3                     | PASS / PASS / PASS                                           |
 
 ## Defects
 

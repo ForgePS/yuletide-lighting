@@ -1,12 +1,6 @@
 /** Customer 360 domain types — Sprint CUST-001 */
 
-export type CustomerType =
-  | 'residential'
-  | 'commercial'
-  | 'hoa'
-  | 'municipal'
-  | 'church'
-  | 'school';
+export type CustomerType = 'residential' | 'commercial' | 'hoa' | 'municipal' | 'church' | 'school';
 
 export type CustomerStatus =
   | 'lead'
@@ -347,8 +341,11 @@ export type CustomerPortalAccess = {
   status?: string;
   inviteSentAt?: Date | null;
   lastLoginAt?: Date | null;
+  /** Always null for normal reads after P2-S7A — raw magic URL is one-time on enable/rotate only. */
   accessUrl?: string | null;
   accessLinkPlaceholder: string;
+  /** True when portal is enabled; does not imply a recoverable stored raw token. */
+  credentialConfigured?: boolean;
 };
 
 export type CustomerInsights = {

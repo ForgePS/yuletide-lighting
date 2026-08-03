@@ -32,7 +32,8 @@ function assertEmulatorGuard() {
 function hashPortalAccessToken(raw) {
   const t = String(raw ?? '').trim();
   if (t.length < 16) throw new Error('INVALID_MAGIC_TOKEN');
-  const digest = createHash('sha256').update(`portal-magic-access-v1:${t}`, 'utf8').digest('hex');
+  // Must match packages/firebase/src/portal-magic-access.ts PORTAL_ACCESS_SECRET_DOMAIN.
+  const digest = createHash('sha256').update(`portal-magic-access:${t}`, 'utf8').digest('hex');
   return `v1:${digest}`;
 }
 

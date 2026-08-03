@@ -115,10 +115,38 @@ const entry = read('apps/web/src/lib/portal-token-entry.tsx');
 if (!entry || !/LegacyPortalEntryShim|mapLegacyPortalPathToAppPath/.test(entry)) {
   add('missing-entry-shim', 'legacy token entry shim missing');
 }
+if (entry && !/router\.replace/.test(entry)) {
+  add('entry-shim-must-replace', 'legacy shim must router.replace to tokenless destination');
+}
+if (entry && !/status === 409|res\.status === 409/.test(entry)) {
+  add('entry-shim-409', 'legacy shim must handle session/token 409 conflict');
+}
+
+const legacyPath = read('packages/types/src/portal-legacy-path.ts');
+if (
+  !legacyPath ||
+  !/translateLegacyPortalPathToSessionPath|mapLegacyPortalPathToAppPath/.test(legacyPath)
+) {
+  add('missing-legacy-path-helper', 'canonical legacy path translator missing in @clcrm/types');
+}
+if (legacyPath && !/redactPortalMagicTokenPath/.test(legacyPath)) {
+  add('missing-path-redaction', 'redactPortalMagicTokenPath missing');
+}
+if (legacyPath && !/portalSessionTokenScopeConflict/.test(legacyPath)) {
+  add('missing-scope-conflict-helper', 'portalSessionTokenScopeConflict missing');
+}
 
 const appHome = read('apps/web/src/app/portal/app/page.tsx');
 if (!appHome) {
   add('missing-tokenless-home', '/portal/app page missing');
+}
+
+const tokenCatchAll = read('apps/web/src/app/portal/[token]/[[...segments]]/page.tsx') || '';
+if (!/LegacyPortalEntryShim/.test(tokenCatchAll)) {
+  add('token-route-not-shim', 'token catch-all must render LegacyPortalEntryShim only');
+}
+if (/PortalAuthedFrame|getPortalDashboard|components\/portal\/pages/.test(tokenCatchAll)) {
+  add('token-route-renders-app', 'token catch-all must not render protected portal pages');
 }
 
 const migration = read('scripts/portal-token-migration.mjs');
@@ -140,6 +168,12 @@ if (!migration) {
   // Reject any production bypass helpers
   if (/ALLOW_PRODUCTION_TOKEN_MIGRATION\s*=\s*['"]1['"]/.test(migration)) {
     add('production-bypass', 'migration tool contains production bypass');
+  }
+  if (!/hasPlaintextAccessToken/.test(migration) || !/skipped/.test(migration)) {
+    add(
+      'remove-plaintext-idempotent',
+      'remove-plaintext must skip writes when plaintext already absent',
+    );
   }
 }
 

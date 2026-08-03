@@ -1,59 +1,51 @@
 # Portal Token — Production Migration Plan (DOCS ONLY)
 
-**STATUS:** NOT AUTHORIZED
-**ENVIRONMENT:** Planning document — **no production Firebase access**
+**STATUS:** NOT AUTHORIZED  
+**ENVIRONMENT:** Planning document — **no production Firebase access**  
+**DATE:** 2026-08-03  
+**Related:** PORTAL-P2-S7B emulator proof (does **not** authorize any step below)
 
-This plan describes a future production cutover. **S7 emulator work does not authorize any step below.**
+This plan describes a future production cutover. **S7 / S7B emulator work does not authorize any step below.**
 
 ## Preconditions
 
-- [ ] S7 emulator gates PASS (integration, E2E, static audits, production:check ×3)
+- [ ] S7A + S7B emulator gates PASS (integration, E2E, static audits, production:check ×3, post-commit)
 - [ ] Security review sign-off
-- [ ] Customer comms template for link rotation
+- [ ] Customer comms template for link rotation (if rotation path chosen)
 - [ ] Rollback drill on staging clone
 - [ ] Backup verified within 24h of migration window
 
-## Phases (production — when authorized)
+## Emulator-proven production sequence (§77)
 
-### Phase 1 — Observe (read-only)
+Future production migration must follow this order. Each production step requires **separate** authorization:
 
-- Export inventory: accounts with `accessToken`, `customers.portalToken`, missing `accessTokenHash`
-- Enable sanitized telemetry (`portal.magic_token.legacy_lookup_used`) — no raw tokens in logs
-
-### Phase 2 — Dual-write (deploy S7 code, COMPATIBILITY mode)
-
-- Deploy application with hash-only **new** writes
-- `PORTAL_MAGIC_TOKEN_MODE=COMPATIBILITY`
-- Monitor legacy lookup rate
-
-### Phase 3 — Backfill via rotation (not hash-in-place)
-
-- For each account with legacy plaintext only: **rotate** magic link, email customer, clear plaintext fields transactionally
-- Never derive stored hash from leaked/exported raw tokens without rotation
-
-### Phase 4 — Session-first URLs
-
-- Confirm `/portal/app/**` live; marketing materials updated to prefer login + session
-
-### Phase 5 — HASH_ONLY
-
-- Set `PORTAL_MAGIC_TOKEN_MODE=HASH_ONLY` when legacy lookups = 0 for agreed window
-- Remove legacy indexes/queries after verification period
-
-### Phase 6 — Field removal
-
-- Drop `accessToken`, `customers.portalToken` columns after backup + rollback window
+1. Deploy hash-read/hash-write compatibility code.
+2. Verify runtime.
+3. Separately authorize production read-only inventory.
+4. Separately authorize tokenHash backfill.
+5. Measure legacy fallback usage (`portal.magic_token.legacy_lookup_used`).
+6. Prove zero plaintext dependency.
+7. Separately authorize plaintext-field removal.
+8. Disable legacy plaintext lookup (`HASH_ONLY` / equivalent).
+9. Monitor.
 
 ## Explicit prohibitions
 
-- No production migration from developer laptops without `assertEmulatorPortalTokenMigration`-equivalent ops runbook
-- No `--force-production` flags
-- No hashing tokens from database dumps without rotation
+- No production migration from developer laptops without ops-authorized runbook
+- No `--force-production` / `--allow-production` flags
+- Tooling must return `PRODUCTION_PORTAL_TOKEN_MIGRATION_NOT_AUTHORIZED` and exit nonzero without emulator host
+- No hashing tokens from database dumps without an approved rotation/backfill program
+- S7B does not inventory, backfill, remove, or rotate production credentials
 
 ## Success criteria
 
-- Zero plaintext magic tokens at rest
-- Zero legacy lookup telemetry for 7 days
+- Zero plaintext magic tokens at rest (after authorized Phase 7+)
+- Zero legacy lookup telemetry for agreed window
 - Portal launch-critical E2E green on production-like staging
+- Session-first `/portal/app/**` preferred for authenticated use
 
-**Authorization record:** _empty — fill when program approves production execution_
+## Authorization record
+
+_empty — fill when program approves production execution_
+
+**NO PRODUCTION FIREBASE CONTACT FROM S7B. NO DEPLOY. DO NOT START P2-S8.**

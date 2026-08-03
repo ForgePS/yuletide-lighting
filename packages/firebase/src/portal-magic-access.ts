@@ -111,6 +111,30 @@ export type PortalMagicTelemetryEvent =
   | 'portal.magic_token.session_exchanged'
   | 'portal.magic_token.duplicate_hash_blocked';
 
+/** In-memory counters for emulator proofs (never expose secrets). */
+const portalMagicTelemetryCounts: Record<PortalMagicTelemetryEvent, number> = {
+  'portal.magic_token.created': 0,
+  'portal.magic_token.rotated': 0,
+  'portal.magic_token.revoked': 0,
+  'portal.magic_token.hash_lookup_succeeded': 0,
+  'portal.magic_token.legacy_lookup_used': 0,
+  'portal.magic_token.lookup_failed': 0,
+  'portal.magic_token.session_exchanged': 0,
+  'portal.magic_token.duplicate_hash_blocked': 0,
+};
+
+export function resetPortalMagicTelemetryCounts(): void {
+  for (const key of Object.keys(portalMagicTelemetryCounts) as PortalMagicTelemetryEvent[]) {
+    portalMagicTelemetryCounts[key] = 0;
+  }
+}
+
+export function getPortalMagicTelemetryCounts(): Readonly<
+  Record<PortalMagicTelemetryEvent, number>
+> {
+  return { ...portalMagicTelemetryCounts };
+}
+
 /** Sanitized telemetry — never raw token, hash, URL, or session cookie. */
 export function emitPortalMagicTelemetry(
   event: PortalMagicTelemetryEvent,
@@ -121,6 +145,7 @@ export function emitPortalMagicTelemetry(
     requestId?: string | null;
   } = {},
 ): void {
+  portalMagicTelemetryCounts[event] = (portalMagicTelemetryCounts[event] ?? 0) + 1;
   const payload = redactPortalLogMetadata({
     event,
     organizationId: meta.organizationId ?? null,

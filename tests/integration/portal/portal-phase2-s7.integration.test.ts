@@ -384,3 +384,93 @@ describe('P2-S7 cross-tenant denial', () => {
     ).rejects.toBeInstanceOf(PortalResourceNotFoundError);
   });
 });
+
+describe('P2-S7B session/token scope conflict helper', () => {
+  it('same customer tokens do not conflict; different customers do', async () => {
+    const { portalSessionTokenScopeConflict } = await import('@clcrm/types');
+    const a = await establishPortalSessionFromAccessToken(owners.hash.token);
+    const b = await establishPortalSessionFromAccessToken(crossTenant!.token);
+    expect(a).not.toBeNull();
+    expect(b).not.toBeNull();
+    expect(portalSessionTokenScopeConflict(a!.context.customerId, a!.context.customerId)).toBe(
+      false,
+    );
+    expect(portalSessionTokenScopeConflict(a!.context.customerId, b!.context.customerId)).toBe(
+      true,
+    );
+  });
+});
+
+describe('P2-S7B migration stages D–F (hash-only end state)', () => {
+  it('backfill → disable legacy lookup → remove plaintext → original raw link still works', async () => {
+    const {
+      getPortalMagicTelemetryCounts,
+      hashPortalAccessToken,
+      resetPortalMagicTelemetryCounts,
+    } = await import('@yuletide/firebase');
+    const { mapLegacyPortalPathToAppPath } = await import('@clcrm/types');
+
+    // Stage: plaintext-only fixture (synthetic)
+    const raw = owners.legacy.token;
+    setMagicMode('COMPATIBILITY');
+    await colUpdate(owners.legacy.orgId, 'portalAccounts', owners.legacy.accountId, {
+      accessToken: raw,
+      accessTokenHash: null,
+      accessTokenHashVersion: null,
+      portalEnabled: true,
+      status: 'active',
+      revokedAt: null,
+    });
+    await colUpdate(owners.legacy.orgId, 'customers', owners.legacy.customerId, {
+      portalToken: raw,
+    });
+
+    // Stage D prep: backfill hash, keep plaintext temporarily
+    const hash = hashPortalAccessToken(raw);
+    await colUpdate(owners.legacy.orgId, 'portalAccounts', owners.legacy.accountId, {
+      accessTokenHash: hash,
+      accessTokenHashVersion: 1,
+    });
+
+    resetPortalMagicTelemetryCounts();
+    setMagicMode('HASH_ONLY');
+    const resolvedBeforeRemove = await resolvePortalMagicAccess(raw);
+    expect(resolvedBeforeRemove?.lookupMethod).toBe('hash');
+    expect(getPortalMagicTelemetryCounts()['portal.magic_token.legacy_lookup_used']).toBe(0);
+
+    // Stage E: remove plaintext fields (emulator fixture)
+    await colUpdate(owners.legacy.orgId, 'portalAccounts', owners.legacy.accountId, {
+      accessToken: null,
+    });
+    await colUpdate(owners.legacy.orgId, 'customers', owners.legacy.customerId, {
+      portalToken: null,
+    });
+
+    const account = await getPortalAccountByCustomer(owners.legacy.orgId, owners.legacy.customerId);
+    const customer = await colGet<{ portalToken?: string | null }>(
+      owners.legacy.orgId,
+      'customers',
+      owners.legacy.customerId,
+    );
+    expect(account?.accessToken ?? null).toBeNull();
+    expect(customer?.portalToken ?? null).toBeNull();
+    expect(account?.accessTokenHash).toBe(hash);
+
+    // Stage F: original raw link still authenticates via hash
+    resetPortalMagicTelemetryCounts();
+    const resolved = await resolvePortalMagicAccess(raw);
+    expect(resolved?.lookupMethod).toBe('hash');
+    expect(resolved?.account.id).toBe(owners.legacy.accountId);
+    expect(getPortalMagicTelemetryCounts()['portal.magic_token.legacy_lookup_used']).toBe(0);
+
+    const session = await establishPortalSessionFromAccessToken(raw);
+    expect(session).not.toBeNull();
+    const dest = mapLegacyPortalPathToAppPath(`/portal/${raw}/billing`);
+    expect(dest).toBe('/portal/app/billing');
+    expect(dest).not.toContain(raw);
+
+    const dash = await getPortalDashboard({ sessionToken: session!.token });
+    expect(dash?.customer.id).toBe(owners.legacy.customerId);
+    expect(JSON.stringify(dash)).not.toContain(raw);
+  });
+});

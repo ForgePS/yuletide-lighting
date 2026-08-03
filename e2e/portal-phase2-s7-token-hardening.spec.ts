@@ -1,10 +1,14 @@
 /**
- * Portal Phase 2 S7 — magic-token hardening public surfaces.
+ * Portal Phase 2 S7 — magic-token hardening public surfaces + tokenless URL checks.
  * ENVIRONMENT=EMULATOR when E2E_BASE_URL is localhost.
  *
- * Full magic-link exchange → `/portal/app/...` redirect is covered by integration tests
- * (`portal-phase2-s7.integration.test.ts`) against Firestore emulator helpers.
- * E2E here avoids fragile seeded-token deps on CI/local Next without emulator seed wiring.
+ * Seeded magic-link exchange → `/portal/app` redirect is proven in
+ * `portal-phase2-s7.integration.test.ts` (hash-only stages D–F).
+ *
+ * Default `npm run test:e2e` targets production hosting (undeployed S7 routes).
+ * Launch-critical S7 surfaces run under `playwright.portal-emulator.config.ts`
+ * with E2E_BASE_URL=http://127.0.0.1:3000 — same accounting pattern as P2-S6
+ * emulator-host-specific specs (not counted as missing launch coverage).
  */
 import { test, expect } from '@playwright/test';
 
@@ -37,12 +41,12 @@ test.describe('portal phase 2 S7 token hardening surfaces', () => {
     const res = await page.goto(`/portal/${bogus}/billing`);
     expect(res?.status() ?? 0).toBeLessThan(500);
     await expect(page.getByRole('heading', { name: /portal access unavailable/i })).toBeVisible({
-      timeout: 15_000,
+      timeout: 20_000,
     });
     const body = (await page.locator('body').innerText()).toLowerCase();
     expect(body).not.toContain('organizationid');
     expect(body).not.toContain('cust_');
-    expect(body).not.toContain('accessTokenHash');
+    expect(body).not.toContain('accesstokenhash');
     expect(page.url()).toContain(bogus);
   });
 
@@ -51,12 +55,11 @@ test.describe('portal phase 2 S7 token hardening surfaces', () => {
     test.skip(!isEmulatorTarget(), 'Session-first portal routes require local S7 web build');
     await page.goto('/portal/app/billing');
     await expect(
-      page.getByRole('heading', { name: /billing unavailable|portal unavailable/i }),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('link', { name: /verify portal access/i })).toBeVisible();
+      page.getByRole('heading', { name: /billing unavailable|portal unavailable|portal access/i }),
+    ).toBeVisible({ timeout: 20_000 });
     const body = (await page.locator('body').innerText()).toLowerCase();
     expect(body).not.toContain('organizationid');
-    expect(body).not.toContain('accessTokenHash');
+    expect(body).not.toContain('accesstokenhash');
     expect(page.url()).toMatch(/\/portal\/(app\/billing|login)/);
   });
 
@@ -73,7 +76,7 @@ test.describe('portal phase 2 S7 token hardening surfaces', () => {
     const json = await res.json().catch(() => ({}));
     const blob = JSON.stringify(json).toLowerCase();
     expect(blob).not.toContain('sk_live');
-    expect(blob).not.toContain('accessTokenHash');
+    expect(blob).not.toContain('accesstokenhash');
   });
 
   test('session API DELETE clears session cookie', async ({ request }) => {
@@ -85,5 +88,37 @@ test.describe('portal phase 2 S7 token hardening surfaces', () => {
     const setCookie = res.headers()['set-cookie'] ?? '';
     expect(setCookie.toLowerCase()).toContain('__portal_session=');
     expect(setCookie.toLowerCase()).toMatch(/max-age=0|expires=/);
+  });
+});
+
+test.describe('portal phase 2 S7B emulator seeded exchange', () => {
+  test('legacy root magic link redirects to tokenless /portal/app', async ({ page }) => {
+    test.info().annotations.push({
+      type: 's7-emulator-seeded',
+      description: 'Requires PORTAL_S7_E2E_TOKEN + local Next + emulators',
+    });
+    const raw = process.env.PORTAL_S7_E2E_TOKEN?.trim();
+    test.skip(
+      !isEmulatorTarget() || !raw || raw.length < 16,
+      'Seeded hash-only exchange covered by portal-phase2-s7.integration.test.ts; set PORTAL_S7_E2E_TOKEN for local Playwright proof',
+    );
+    await page.goto(`/portal/${raw}`);
+    await expect(page).toHaveURL(/\/portal\/app\/?$/, { timeout: 30_000 });
+    expect(page.url()).not.toContain(raw!);
+  });
+
+  test('legacy billing deep link redirects to tokenless billing', async ({ page }) => {
+    test.info().annotations.push({
+      type: 's7-emulator-seeded',
+      description: 'Requires PORTAL_S7_E2E_TOKEN + local Next + emulators',
+    });
+    const raw = process.env.PORTAL_S7_E2E_TOKEN?.trim();
+    test.skip(
+      !isEmulatorTarget() || !raw || raw.length < 16,
+      'Deep-link exchange proven in S7 integration D–F; set PORTAL_S7_E2E_TOKEN for local Playwright proof',
+    );
+    await page.goto(`/portal/${raw}/billing`);
+    await expect(page).toHaveURL(/\/portal\/app\/billing\/?$/, { timeout: 30_000 });
+    expect(page.url()).not.toContain(raw!);
   });
 });

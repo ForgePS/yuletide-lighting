@@ -5,7 +5,7 @@
 **BRANCH/WORKTREE:** `work/portal-p2-s7-token-hardening` / `C:\Users\jerem\Projects\christmas-light-crm-s7-token-hardening`  
 **BASE SHA:** `d98c3e90715e4a7e104285a68ea16cc56811c30b`  
 **S7A SHA:** worktree (S7A corrections on top of prior S7 commits; commit when authorized)  
-**ENVIRONMENT:** EMULATOR  
+**ENVIRONMENT:** EMULATOR
 
 ## HASH MODEL
 
@@ -84,31 +84,31 @@
 
 ## STATIC AUDITS
 
-| Audit | Result |
-| --- | --- |
-| portal-permissions | PASS |
-| portal-sessions | PASS |
-| portal-auth-security | PASS |
-| portal-query-scope | PASS |
-| portal-public-dtos | PASS |
-| portal-routes | PASS |
-| portal-files | PASS |
-| portal-mutations | PASS |
-| portal-idempotency | PASS |
-| portal-token-security | PASS |
+| Audit                 | Result |
+| --------------------- | ------ |
+| portal-permissions    | PASS   |
+| portal-sessions       | PASS   |
+| portal-auth-security  | PASS   |
+| portal-query-scope    | PASS   |
+| portal-public-dtos    | PASS   |
+| portal-routes         | PASS   |
+| portal-files          | PASS   |
+| portal-mutations      | PASS   |
+| portal-idempotency    | PASS   |
+| portal-token-security | PASS   |
 
 ## TESTS
 
-| Gate | Result |
-| --- | --- |
-| Format | PASS |
-| Lint | PASS |
-| Typecheck | PASS |
-| Unit | PASS — 214 |
-| Integration | PASS (S7 suite 15 including S7A cases) |
-| Firebase rules | PASS — 18 |
-| Build | PASS |
-| production:check (audits) | PASS |
+| Gate                      | Result                                 |
+| ------------------------- | -------------------------------------- |
+| Format                    | PASS                                   |
+| Lint                      | PASS                                   |
+| Typecheck                 | PASS                                   |
+| Unit                      | PASS — 214                             |
+| Integration               | PASS (S7 suite 15 including S7A cases) |
+| Firebase rules            | PASS — 18                              |
+| Build                     | PASS                                   |
+| production:check (audits) | PASS                                   |
 
 ## DEFECTS
 

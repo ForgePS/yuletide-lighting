@@ -4,61 +4,10 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { LoadingState } from '@/components/ui/states';
-import { portalAppPath } from '@/lib/portal-paths';
+import { mapLegacyPortalPathToAppPath as mapLegacyPortalPathToAppPathCanonical } from '@clcrm/types';
 
-const KNOWN_SEGMENTS = new Set([
-  '',
-  'schedule',
-  'schedule-request',
-  'service-request',
-  'messages',
-  'notifications',
-  'contacts',
-  'sign',
-  'billing',
-  'proposals',
-  'agreements',
-  'properties',
-  'mockups',
-  'documents',
-  'jobs',
-  'takedowns',
-  'storage',
-  'consultations',
-  'reviews',
-  'rebook',
-]);
-
-/**
- * Map legacy magic-token portal URL to session-first `/portal/app/...` destination.
- * Returns null when the path is not a recognized portal feature route.
- */
-export function mapLegacyPortalPathToAppPath(pathname: string): string | null {
-  const parts = pathname.split('/').filter(Boolean);
-  // ['portal', token, ...rest]
-  if (parts[0] !== 'portal' || parts.length < 2) return null;
-  const namespace = parts[1];
-  if (
-    !namespace ||
-    namespace === 'app' ||
-    namespace === 'login' ||
-    namespace === 'access' ||
-    namespace === 'invite'
-  ) {
-    return null;
-  }
-
-  const rest = parts.slice(2);
-  if (rest.length === 0) return portalAppPath();
-
-  if (rest[0] === 'jobs' && rest.length >= 2) {
-    return portalAppPath('jobs', rest[1]!);
-  }
-
-  const segment = rest[0]!;
-  if (!KNOWN_SEGMENTS.has(segment)) return null;
-  return portalAppPath(...rest);
-}
+/** Re-export canonical mapper for web callers. */
+export const mapLegacyPortalPathToAppPath = mapLegacyPortalPathToAppPathCanonical;
 
 type EntryState =
   | { status: 'loading' }

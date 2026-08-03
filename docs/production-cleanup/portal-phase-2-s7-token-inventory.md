@@ -1,8 +1,8 @@
 # Portal Phase 2 S7 — Magic Access Token Inventory
 
-**ENVIRONMENT:** EMULATOR
-**PHASE:** PORTAL-P2-S7 / Checkpoint **S7A**
-**DATE:** 2026-08-02
+**ENVIRONMENT:** EMULATOR  
+**PHASE:** PORTAL-P2-S7 / Checkpoint **S7A**  
+**DATE:** 2026-08-02  
 **STATUS:** S7A implementation inventory (updated after hash cutover foundation)
 
 Related: `portal-phase-2-s7-token-model.md`, `portal-phase-2-s7a-completion.md`.
@@ -72,14 +72,14 @@ S7B owns full tokenless cutover hardening; S7A closes storage/resolution.
 
 ## 5. Invitation hashing (reuse pattern)
 
-`hashPortalSecret(raw, 'portal-invitation')` → store hash only → collectionGroup lookup.
+`hashPortalSecret(raw, 'portal-invitation')` → store hash only → collectionGroup lookup.  
 Magic uses same primitive with domain `portal-magic-access` (+ `v1:` prefix).
 
 ---
 
 ## 6. Session establishment
 
-Entry raw magic → `establishPortalSessionFromAccessToken` → `__portal_session`.
+Entry raw magic → `establishPortalSessionFromAccessToken` → `__portal_session`.  
 Subsequent auth: session payload IDs + `sessionVersion` (no plaintext / hash credential lookup).
 
 ---

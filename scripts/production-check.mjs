@@ -794,6 +794,11 @@ function auditPortalPhase2() {
     'docs/production-cleanup/portal-phase-2-s7-token-model.md',
     'docs/production-cleanup/portal-phase-2-s7-compatibility-model.md',
     'docs/production-cleanup/portal-token-production-migration-plan.md',
+    'docs/production-cleanup/portal-phase-2-s7a-completion.md',
+    'docs/production-cleanup/portal-phase-2-s7b-baseline.md',
+    'docs/production-cleanup/portal-phase-2-s7b-workspace-resolution.md',
+    'docs/production-cleanup/portal-phase-2-s7b-route-inventory.md',
+    'packages/types/src/portal-legacy-path.ts',
   ];
   const missing = required.filter((f) => !fs.existsSync(path.join(root, f)));
   if (missing.length) {

@@ -1,7 +1,9 @@
 # Portal Legacy Magic-Token Hardening Plan
 
-**STATUS:** S7A APPLIED (EMULATOR) — S7B / production migration NOT AUTHORIZED
-**ENVIRONMENT:** EMULATOR
+**STATUS:** S7A APPLIED (EMULATOR); S7B session-first cutover IN_PROGRESS — production migration NOT AUTHORIZED  
+**ENVIRONMENT:** EMULATOR  
+**DATE:** 2026-08-03  
+**S7A CHECKPOINT SHA:** `472c2479066a9591974588297059e7aec59f1b2e`  
 **Production writes / deploys:** PROHIBITED
 
 ## Proposed migration (original)
@@ -42,4 +44,14 @@ Checkpoint **PORTAL-P2-S7A** implements in emulator worktree:
 - Emulator migration tool + `audit:portal-token-security`
 - Evidence: `portal-phase-2-s7a-completion.md`
 
-**S7B / production:** tokenless route finalization, plaintext removal simulation, production backfill — **NOT AUTHORIZED**.
+## S7B update (2026-08-03)
+
+Checkpoint **PORTAL-P2-S7B** (IN_PROGRESS) focuses on session-first cutover:
+
+- Canonical authenticated namespace `/portal/app/*` with `__portal_session` only
+- Legacy `/portal/[token]/[[...segments]]` as entry shims → session exchange → `router.replace`
+- Mapper `mapLegacyPortalPathToAppPath` / `translateLegacyPortalPathToSessionPath`
+- URL / browser / logging evidence docs; emulator stages D–F (HASH_ONLY + plaintext removal)
+- Production migration sequence remains **NOT AUTHORIZED** (see `portal-token-production-migration-plan.md`)
+
+Evidence stubs: `portal-phase-2-s7b-completion.md` (gates pending). Do **not** start P2-S8.

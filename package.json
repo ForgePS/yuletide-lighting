@@ -10,7 +10,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "vitest run packages/firebase/src packages/types/src/module-presets.test.ts packages/types/src/configuration.test.ts packages/types/src/portal.test.ts",
+    "test": "vitest run packages/firebase/src packages/types/src/module-presets.test.ts packages/types/src/configuration.test.ts packages/types/src/portal.test.ts packages/types/src/portal-phase2-s7b-routes.test.ts",
     "test:integration": "node scripts/run-integration-tests.mjs",
     "format:changed": "node scripts/format-changed.mjs",
     "format:changed:check": "node scripts/format-changed.mjs --check",

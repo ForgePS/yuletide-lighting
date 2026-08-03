@@ -215,22 +215,29 @@ async function main() {
 
   if (mode === 'remove-plaintext') {
     let writes = 0;
+    let skipped = 0;
     for (const row of rows) {
       if (!row.hasHash) {
         console.error('Refusing plaintext removal: account missing hash', row.accountId);
         process.exit(1);
       }
       const accRef = db.doc(`organizations/${row.orgId}/portalAccounts/${row.accountId}`);
-      await accRef.set({ accessToken: null }, { merge: true });
-      writes += 1;
-      if (row.customerId) {
+      if (row.hasPlaintextAccessToken) {
+        await accRef.set({ accessToken: null }, { merge: true });
+        writes += 1;
+      } else {
+        skipped += 1;
+      }
+      if (row.customerId && row.hasCustomerPortalToken) {
         await db
           .doc(`organizations/${row.orgId}/customers/${row.customerId}`)
           .set({ portalToken: null }, { merge: true });
         writes += 1;
+      } else if (row.customerId) {
+        skipped += 1;
       }
     }
-    console.log(JSON.stringify({ ok: true, mode, writes }, null, 2));
+    console.log(JSON.stringify({ ok: true, mode, writes, skipped }, null, 2));
     return;
   }
 

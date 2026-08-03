@@ -5,6 +5,7 @@ import {
   portalSessionCookieOptions,
   verifyPortalSessionTokenServer,
 } from '@yuletide/firebase';
+import { portalSessionTokenScopeConflict } from '@clcrm/types';
 import { cookies } from 'next/headers';
 
 export const runtime = 'nodejs';
@@ -86,7 +87,10 @@ export async function POST(req: Request) {
     const existingCookie = cookieStore.get(PORTAL_SESSION_COOKIE)?.value ?? null;
     if (existingCookie) {
       const existingContext = await verifyPortalSessionTokenServer(existingCookie);
-      if (existingContext && existingContext.customerId !== session.context.customerId) {
+      if (
+        existingContext &&
+        portalSessionTokenScopeConflict(existingContext.customerId, session.context.customerId)
+      ) {
         return NextResponse.json(
           { error: 'Session conflict — link is for a different customer account.' },
           { status: 409, headers: { 'Cache-Control': NO_STORE } },

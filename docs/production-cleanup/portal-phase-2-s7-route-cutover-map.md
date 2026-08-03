@@ -1,9 +1,9 @@
 # Portal Phase 2 S7 — Route Cutover Map
 
-**ENVIRONMENT:** EMULATOR
-**PHASE:** PORTAL-P2-S7 Session-first URL cutover
-**DATE:** 2026-08-02
-**BASE SHA:** `d98c3e90715e4a7e104285a68ea16cc56811c30b`
+**ENVIRONMENT:** EMULATOR  
+**PHASE:** PORTAL-P2-S7 / S7B Session-first URL cutover  
+**DATE:** 2026-08-03  
+**S7A CHECKPOINT SHA:** `472c2479066a9591974588297059e7aec59f1b2e`
 
 ## Summary
 
@@ -35,7 +35,7 @@ Magic-token URLs (`/portal/{accessToken}/...`) are **entry shims only**. After P
 | `/portal/{token}/reviews`          | `/portal/app/reviews`          |
 | `/portal/{token}/rebook`           | `/portal/app/rebook`           |
 
-Implementation: `mapLegacyPortalPathToAppPath()` in `apps/web/src/lib/portal-token-entry.tsx`.
+Canonical helpers: `mapLegacyPortalPathToAppPath` / `translateLegacyPortalPathToSessionPath` in `packages/types/src/portal-legacy-path.ts` (re-exported from `apps/web/src/lib/portal-token-entry.tsx`).
 
 ## Route classes (authorization)
 
@@ -45,19 +45,17 @@ Implementation: `mapLegacyPortalPathToAppPath()` in `apps/web/src/lib/portal-tok
 | `/portal/{token}/**`                                               | PUBLIC_ENTRY (shim)                       | Magic token exchanged for session; no app render   |
 | `/portal/app` and `/portal/app/**`                                 | PORTAL_AUTHENTICATED / FEATURE / RESOURCE | `__portal_session` cookie (token optional in tRPC) |
 
-`resolvePortalRouteDefinition()` treats `/portal/app/...` and legacy `/portal/{token}/...` suffixes identically for the feature matrix. `authorizePortalPath()` returns public for legacy token paths (shim phase) and requires session auth on `/portal/app/**`.
-
 ## Entry shim flow
 
 1. User opens legacy URL `/portal/{token}/...`
 2. `LegacyPortalEntryShim` POSTs `{ accessToken: token }` to `/api/portal/session`
-3. On **409** (existing session for different customer): error UI — no silent account switch (S2 preserved)
+3. On **409** (`portalSessionTokenScopeConflict`): error UI — no silent account switch
 4. On success: `router.replace()` to mapped `/portal/app/...` path
 5. Authenticated app renders only under `/portal/app/**`
 
 ## Security headers (legacy token paths only)
 
-Applied via `apps/web/src/app/portal/[token]/layout.tsx` metadata and `next.config.js` headers:
+Applied via `apps/web/next.config.js` for `/portal/:token` and `/portal/:token/:path*`:
 
 - `Referrer-Policy: no-referrer`
 - `Cache-Control: no-store`
@@ -67,21 +65,20 @@ Session API POST responses also set `Cache-Control: no-store`.
 
 ## File layout
 
-| Path                                                       | Role                                          |
-| ---------------------------------------------------------- | --------------------------------------------- |
-| `apps/web/src/app/portal/app/**/page.tsx`                  | Thin re-exports to shared page components     |
-| `apps/web/src/components/portal/pages/*.tsx`               | Session-first page bodies                     |
-| `apps/web/src/app/portal/[token]/[[...segments]]/page.tsx` | Legacy entry shim (all token deep links)      |
-| `apps/web/src/lib/portal-paths.ts`                         | `portalAppPath()`, `portalSessionInput`       |
-| `apps/web/src/lib/portal-token-entry.tsx`                  | Mapping + `LegacyPortalEntryShim`             |
-| `apps/web/src/components/portal/portal-shell.tsx`          | Tokenless nav (`/portal/app/...`)             |
-| `packages/firebase/src/portal-route-access.ts`             | `/portal/app` namespace + legacy public entry |
+| Path                                                       | Role                                        |
+| ---------------------------------------------------------- | ------------------------------------------- |
+| `apps/web/src/app/portal/app/**/page.tsx`                  | Thin re-exports to shared page components   |
+| `apps/web/src/components/portal/pages/*.tsx`               | Session-first page bodies                   |
+| `apps/web/src/app/portal/[token]/[[...segments]]/page.tsx` | Legacy entry shim (all token deep links)    |
+| `packages/types/src/portal-legacy-path.ts`                 | Mapper + redaction + scope-conflict helpers |
+| `apps/web/src/lib/portal-paths.ts`                         | `portalAppPath()`, `portalSessionInput`     |
+| `apps/web/src/lib/portal-token-entry.tsx`                  | `LegacyPortalEntryShim` + mapper re-export  |
+| `apps/web/src/components/portal/portal-shell.tsx`          | Tokenless nav (`/portal/app/...`)           |
 
 ## Out of scope (unchanged)
 
 - Invitation `/portal/invite/{token}`
 - QR `/portal/access/{token}`
 - Proposal/agreement/invoice/mockup public tokens (`/p/`, `/pay/`, etc.)
-- Magic-access hash generation/resolution (`portal-magic-access.ts`)
 
-**NO DEPLOYMENT. NO PRODUCTION FIREBASE.**
+**NO DEPLOYMENT. NO PRODUCTION FIREBASE. DO NOT START P2-S8.**

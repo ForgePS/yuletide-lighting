@@ -1,7 +1,7 @@
 # Portal Phase 2 S7 — Token Model
 
-**ENVIRONMENT:** EMULATOR
-**Checkpoint:** PORTAL-P2-S7A
+**ENVIRONMENT:** EMULATOR  
+**Checkpoint:** PORTAL-P2-S7A  
 **Production Firebase / migration:** PROHIBITED
 
 ## Credential kinds

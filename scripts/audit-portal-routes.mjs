@@ -119,6 +119,16 @@ const legacyCatchAll = read('apps/web/src/app/portal/[token]/[[...segments]]/pag
 if (!legacyCatchAll || !/LegacyPortalEntryShim/.test(legacyCatchAll)) {
   findings.push('[token]/[[...segments]] must render LegacyPortalEntryShim');
 }
+if (legacyCatchAll && /PortalAuthedFrame|components\/portal\/pages/.test(legacyCatchAll)) {
+  findings.push('[token] catch-all must not render protected portal page components (shim only)');
+}
+
+// Tokenless app namespace must exist
+const appRoot = read('apps/web/src/app/portal/app/page.tsx');
+if (!appRoot) findings.push('canonical /portal/app page missing');
+if (routeAccess && !/authorizePortalPath/.test(routeAccess)) {
+  findings.push('authorizePortalPath required for session-only routes');
+}
 
 for (const pagePath of protectedPages) {
   const rel = path.relative(portalApp, pagePath).replace(/\\/g, '/');

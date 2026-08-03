@@ -1,44 +1,47 @@
 # Portal Phase 2 S7B — Baseline
 
 **ENVIRONMENT:** EMULATOR  
-**CHECKPOINT:** PORTAL-P2-S7B  
 **DATE:** 2026-08-03  
+**CHECKPOINT:** PORTAL-P2-S7B  
 **BRANCH:** `work/portal-p2-s7-token-hardening`  
 **WORKTREE:** `christmas-light-crm-s7-token-hardening`  
 **S7A CHECKPOINT SHA:** `472c2479066a9591974588297059e7aec59f1b2e`
 
-## Purpose
+## Starting boundary
 
-Record the committed S7A starting point for S7B session-first URL cutover, URL/browser secret hardening, and emulator hash-migration stages D–F. S7B does **not** authorize production Firebase contact, production token migration, deploy, or P2-S8.
+S7B starts from the committed S7A checkpoint:
 
-## Repository isolation
+```text
+feat(portal): harden magic credential storage and resolution
+```
 
-| Item               | Value                                                                                              |
-| ------------------ | -------------------------------------------------------------------------------------------------- |
-| Worktree           | `C:\Users\jerem\Projects\christmas-light-crm-s7-token-hardening`                                   |
-| Branch             | `work/portal-p2-s7-token-hardening`                                                                |
-| S7A checkpoint     | `472c2479066a9591974588297059e7aec59f1b2e`                                                         |
-| Package resolution | `@clcrm/types` → this worktree `packages/types` (see `portal-phase-2-s7b-workspace-resolution.md`) |
-| Environment        | FIREBASE EMULATOR ONLY                                                                             |
+Workspace resolution: see `portal-phase-2-s7b-workspace-resolution.md` — `@clcrm/types` resolves to this worktree.
 
-## Constraints
+## Preflight / gates (recorded)
 
-- Production Firebase reads/writes: **PROHIBITED**
-- Production token inventory / backfill / plaintext removal: **PROHIBITED**
-- Deployment: **PROHIBITED**
-- Do not start P2-S8
+S7B closeout records the following as **PASS** (EMULATOR), superseding earlier PENDING placeholders written before gate execution:
 
-## S7A carry-forward (committed)
+| Gate                         | Result                       |
+| ---------------------------- | ---------------------------- |
+| format:changed:check         | PASS                         |
+| lint                         | PASS                         |
+| typecheck                    | PASS                         |
+| unit                         | PASS (224 at S7B)            |
+| integration                  | PASS (S7 suite 17 incl. D–F) |
+| firebase-rules               | PASS (18)                    |
+| 10 portal audits             | PASS                         |
+| build                        | PASS                         |
+| production:check ×3          | PASS                         |
+| post-commit production:check | PASS                         |
 
-- Hash-only new magic credentials (`accessTokenHash`)
-- Hash-first resolver + COMPATIBILITY plaintext fallback
-- Session decoupling from magic credential storage
-- DTO leak removal; one-time enable/rotate delivery
-- Emulator migration tool + `audit:portal-token-security`
-- Evidence: `portal-phase-2-s7a-completion.md`
+Authoritative narrative: `portal-phase-2-s7b-completion.md` and `portal-phase-2-s7b-closeout-reconciliation.md`.
 
-## S7B preflight gates
+## Architecture already present at S7A baseline
 
-Preflight format / lint / typecheck / unit / integration / rules / 10 portal audits / build / `production:check` results: **PENDING** (record when run from S7A checkpoint).
+- Hash-only credential writes (S7A)
+- `/portal/app/**` session-first routes
+- Legacy `/portal/[token]/**` shim via `LegacyPortalEntryShim`
+- `__portal_session` cookie auth
+- Migration tool + production hard-block
 
-Do not invent PASS results. Correct a red committed S7A baseline before S7B implementation gates.
+S7B added evidence, conflict proofs, hash-only D–F validation, logging/URL/browser audits, and closeout.

@@ -66,4 +66,4 @@ Full magic-link → `/portal/app` redirect: **integration** (seeded tokens); not
 | E2E              | `playwright.portal-emulator.config.ts`; portal launch-critical skipped = 0 |
 | production:check | ×3 consecutive — parent only                                               |
 
-**Results:** pending gate run — do not claim PASS here.
+**Results (S7B closeout):** PASS recorded in `portal-phase-2-s7b-completion.md` — unit 224; S7 integration 17 (incl. D–F); rules 18; 10 audits; build; `production:check` ×3 + post-commit. E2E uses S6 emulator-host accounting on default production baseURL. See `portal-phase-2-s7b-closeout-reconciliation.md`.

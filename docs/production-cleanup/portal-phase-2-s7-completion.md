@@ -101,6 +101,10 @@
 
 ## DEPLOYMENT: NO
 
+## CLOSEOUT
+
+Stale PENDING wording in sibling S7 docs reconciled — see `portal-phase-2-s7b-closeout-reconciliation.md` (**CLOSEOUT PASS**).
+
 ## RECOMMENDATION
 
-**PROCEED TO PORTAL-P2-S8** after S7B SHA is committed and post-commit verification PASS.
+**CLOSE PORTAL-P2-S7.** Authorize **PORTAL-P2-S8** only in a separate instruction after the closeout reconciliation commit exists on this branch.

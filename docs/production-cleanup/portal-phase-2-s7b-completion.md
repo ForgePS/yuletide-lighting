@@ -122,7 +122,7 @@ All PASS: permissions, sessions, auth-security, query-scope, public-dtos, routes
 - S7 launch-critical skipped (missing cases): 0
 - Build: PASS
 - production:check ×3: PASS / PASS / PASS (recorded after triple run)
-- Post-commit: pending after commit
+- Post-commit production:check: PASS (after `2661de3` / SHA stamp `11365f8`)
 
 ## DEFECTS
 
@@ -131,6 +131,10 @@ All PASS: permissions, sessions, auth-security, query-scope, public-dtos, routes
 - P2: prior workspace-resolution note cleared (types local)
 - Remaining: authorized production migration (out of scope)
 
+## CLOSEOUT
+
+Documentation contradictions (COMPLETE reports vs stale PENDING baseline/migration/test-plan lines) resolved in `portal-phase-2-s7b-closeout-reconciliation.md` — **CLOSEOUT PASS**.
+
 ## RECOMMENDATION
 
-**CLOSE PORTAL-P2-S7** and **PROCEED TO PORTAL-P2-S8** after S7B commit SHA recorded and post-commit verification PASS.
+**CLOSE PORTAL-P2-S7.** P2-S8 requires a separate explicit authorization after this closeout is committed.

@@ -2,53 +2,64 @@
 
 **PHASE:** PORTAL-P2-S8  
 **TITLE:** Final Release Readiness, Real Nonproduction Validation, and Go-Live Gate  
-**STATUS:** READY*PENDING_NONPROD_PROJECT *(pending: local gate ×3 green + staging deploy/smoke after RC commit)_  
+**STATUS:** READY_PENDING_NONPROD_SMOKE  
 **DATE:** 2026-08-03  
 **RELEASE BRANCH:** `release/yuletide-go-live-readiness`  
 **BASE SHA:** `899b715d8c5067fce9fd345395c05025366a0a16`  
-**RELEASE CANDIDATE SHA:** \_pending this commit_  
+**RELEASE CANDIDATE SHA:** `e78914dfda6574eaa559f3e0d097e2d4effa4cf4`  
 **ENVIRONMENT:** EMULATOR + Firebase CLI metadata
 
 ## SOURCE CONTROL
 
 - Clean worktree: YES (`christmas-light-crm-s8-go-live`)
-- Workspace provenance: PASS (all `@clcrm/*` / `@yuletide/firebase` → this worktree)
-- Unrelated dirty S7 worktree: not used for gates
-- RC frozen: after post-commit gates
+- Workspace provenance: PASS
+- `@clcrm/types` source: this worktree
+- Unrelated changes included: NO (docs-only RC commit)
+- RC frozen: pending post-commit stamp after this report update
+
+## LOCAL GATES
+
+- Format: PASS
+- Lint: PASS
+- Typecheck: PASS
+- Unit: PASS (224)
+- Integration: PASS (isolated portal-phase2 87/87; earlier full-suite batch flake under load noted as P2)
+- Firebase rules: PASS (18)
+- Portal audits (10): PASS
+- E2E: PASS with emulator-host skips classified (S6 pattern)
+- Build: PASS
+- production:check 1/2/3: **PASS / PASS / PASS**
 
 ## FIREBASE ENVIRONMENTS
 
-- CLI identity: `admin@forgepublicsafety.com`
-- Production: `yuletide-lighting` — VERIFIED_PRODUCTION
-- Nonproduction: `yuletide-lighting-staging` — VERIFIED_NONPRODUCTION (exists)
-- Prior fake-staging assumption: RESOLVED (project listed)
-- Production contact in S8: reads 0 / writes 0 / deploys 0 (to date)
-- Nonprod deploy: authorized by user **after** local ×3 green; Hosting SA in `firebase.json` still names production SA (**S8-001**)
+- Firebase CLI identity: `admin@forgepublicsafety.com`
+- Production project: `yuletide-lighting` — VERIFIED_PRODUCTION
+- Nonproduction project: `yuletide-lighting-staging` — VERIFIED_NONPRODUCTION
+- Prior fake staging assumption: RESOLVED
+- Nonprod deployment performed: **NO** (awaiting explicit scope confirmation; S8-001 Hosting SA caution)
+- Production deployment: **NO**
+- Production reads/writes: **0**
 
-## LOCAL GATES (recorded so far)
+## DEFECT REGISTER
 
-- Format: PASS after `format:changed`
-- Lint / typecheck / unit (224): PASS
-- Integration: full suite intermittently flaky on batch-2 under load; isolated portal-phase2 **87/87 PASS**
-- Firebase rules: PASS (18)
-- 10 portal audits: PASS
-- Build: PASS
-- E2E sample: 21 passed / 6 skipped (emulator-host accounting)
-- production:check ×3: **in progress / must be green before staging**
+- P0 open: **0**
+- Launch-critical P1 open: **S8-001** (firebase.json Hosting serviceAccount names production SA — verify before Hosting deploy)
+- Launch blockers for _code/gates_: **0** after ×3
 
-## DEFECTS
-
-- P0 open: 0
-- Launch-critical P1: S8-001 (prod SA string in firebase.json before Hosting deploy)
-- P2: Node 24 vs engines 20; integration batch flake under parallel port pressure
-
-## REAL SIDE EFFECTS
+## REAL SIDE EFFECTS DURING S8
 
 - Production Firebase reads: 0 (CLI project list only)
-- Production writes: 0
-- Real charges / email / SMS: 0
+- Production Firebase writes: 0
+- Real payment transactions: 0
+- Real charges: 0
+- Real email: 0
+- Real SMS: 0
 - Production deployment: NO
 
-## RECOMMENDATION (interim)
+## RECOMMENDATION
 
-Complete RC commit → `production:check` ×3 PASS → deploy **only** to `yuletide-lighting-staging` → nonprod smoke → then upgrade STATUS to `READY_FOR_GO_LIVE_AUTHORIZATION` or keep pending if Hosting blocked by S8-001.
+**READY_PENDING_NONPROD_SMOKE**
+
+Next authorized step (not yet executed): deploy RC `e78914d` to **`yuletide-lighting-staging` only**, then nonprod smoke. Do **not** treat as `READY_FOR_GO_LIVE_AUTHORIZATION` until nonprod smoke PASS and S8-001 resolved/waived for Hosting.
+
+Production go-live remains a **separate** authorization.

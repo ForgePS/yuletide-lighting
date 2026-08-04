@@ -8,7 +8,7 @@
 | Release branch                   | `release/yuletide-go-live-readiness`                       |
 | Base SHA (S7 closeout)           | `899b715d8c5067fce9fd345395c05025366a0a16`                 |
 | Worktree                         | `C:\Users\jerem\Projects\christmas-light-crm-s8-go-live`   |
-| RC SHA                           | _pending — commit S8 docs + format fixes_                  |
+| RC SHA                           | `e78914dfda6574eaa559f3e0d097e2d4effa4cf4`                 |
 | Lockfile                         | `package-lock.json` (from base; no intentional dep change) |
 | Node observed                    | v24.15.0 (engines: 20 — prefer 20 for Hosting)             |
 | Firebase CLI                     | 15.22.4                                                    |

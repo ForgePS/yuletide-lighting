@@ -9,6 +9,8 @@ const rootEnvPath = path.join(repoRoot, '.env');
 const stagingEnvPath = path.join(repoRoot, '.env.staging');
 const webEnvPath = path.join(webRoot, '.env');
 const webEnvBackupPath = path.join(webRoot, '.env.deploy-backup');
+const firebaseJsonPath = path.join(repoRoot, 'firebase.json');
+const firebaseJsonBackupPath = path.join(repoRoot, 'firebase.json.deploy-backup');
 const only = process.argv.includes('--hosting-only') ? '--only hosting' : '';
 const force = process.argv.includes('--force') || !process.argv.includes('--hosting-only')
   ? '--force'
@@ -28,16 +30,43 @@ const PROJECT_BY_ALIAS = {
   default: 'yuletide-lighting',
 };
 
+/** Hosting frameworksBackend SA must live in the target project (S8-001). */
+const SERVICE_ACCOUNT_BY_PROJECT = {
+  'yuletide-lighting':
+    'firebase-adminsdk-fbsvc@yuletide-lighting.iam.gserviceaccount.com',
+  'yuletide-lighting-staging':
+    'firebase-adminsdk-fbsvc@yuletide-lighting-staging.iam.gserviceaccount.com',
+};
+
 const firebaseProject =
   PROJECT_BY_ALIAS[projectAlias] || projectAlias || 'yuletide-lighting';
 
+const expectedServiceAccount = SERVICE_ACCOUNT_BY_PROJECT[firebaseProject];
+if (!expectedServiceAccount) {
+  throw new Error(
+    `HARD FAIL: unknown Firebase deploy project "${firebaseProject}". ` +
+      `Allowed: ${Object.keys(SERVICE_ACCOUNT_BY_PROJECT).join(', ')}`,
+  );
+}
+
 const isStaging = firebaseProject === 'yuletide-lighting-staging';
+if (firebaseProject === 'yuletide-lighting' && process.argv.includes('--staging')) {
+  throw new Error('HARD FAIL: --staging resolved to production project');
+}
+
 const publicAppUrl = isStaging
   ? (process.env.STAGING_APP_URL || 'https://yuletide-lighting-staging.web.app')
   : 'https://yuletide-lighting.web.app';
 const envSourcePath = isStaging && fs.existsSync(stagingEnvPath)
   ? stagingEnvPath
   : rootEnvPath;
+
+if (isStaging && !fs.existsSync(stagingEnvPath)) {
+  throw new Error(
+    'HARD FAIL: staging deploy requires .env.staging (gitignored). ' +
+      'Copy .env.staging.example and fill NEXT_PUBLIC_FIREBASE_* from the staging web app.',
+  );
+}
 
 const RESERVED_ENV_PREFIXES = ['X_GOOGLE_', 'FIREBASE_', 'EXT_'];
 
@@ -103,6 +132,43 @@ function restoreEnv() {
   }
 }
 
+function applyHostingServiceAccount() {
+  if (!fs.existsSync(firebaseJsonBackupPath)) {
+    fs.copyFileSync(firebaseJsonPath, firebaseJsonBackupPath);
+  }
+  const config = JSON.parse(fs.readFileSync(firebaseJsonPath, 'utf8'));
+  if (!config.hosting) config.hosting = {};
+  if (!config.hosting.frameworksBackend) config.hosting.frameworksBackend = {};
+  config.hosting.frameworksBackend.serviceAccount = expectedServiceAccount;
+
+  const applied = config.hosting.frameworksBackend.serviceAccount;
+  if (applied !== expectedServiceAccount) {
+    throw new Error(
+      `HARD FAIL: frameworksBackend.serviceAccount mismatch (got ${applied}, want ${expectedServiceAccount})`,
+    );
+  }
+  if (
+    isStaging &&
+    applied.includes('@yuletide-lighting.iam.gserviceaccount.com')
+  ) {
+    throw new Error(
+      'HARD FAIL: staging Hosting deploy would bind production service account (S8-001)',
+    );
+  }
+
+  fs.writeFileSync(firebaseJsonPath, `${JSON.stringify(config, null, 2)}\n`);
+  console.log(
+    `frameworksBackend.serviceAccount → ${applied} (project=${firebaseProject})`,
+  );
+}
+
+function restoreFirebaseJson() {
+  if (fs.existsSync(firebaseJsonBackupPath)) {
+    fs.copyFileSync(firebaseJsonBackupPath, firebaseJsonPath);
+    fs.rmSync(firebaseJsonBackupPath);
+  }
+}
+
 const nodeMajor = Number(process.version.slice(1).split('.')[0]);
 if (nodeMajor > 20) {
   console.warn(
@@ -113,6 +179,8 @@ if (nodeMajor > 20) {
 }
 
 try {
+  console.log(`Deploy target project=${firebaseProject} identity-check SA=${expectedServiceAccount}`);
+  applyHostingServiceAccount();
   prepareEnv();
   execSync('node scripts/prepare-firebase-deps.mjs', { cwd: webRoot, stdio: 'inherit' });
   execSync(`firebase deploy ${only} ${force} --project ${firebaseProject}`.replace(/\s+/g, ' ').trim(), {
@@ -122,4 +190,5 @@ try {
 } finally {
   execSync('node scripts/prepare-firebase-deps.mjs --restore', { cwd: webRoot, stdio: 'inherit' });
   restoreEnv();
+  restoreFirebaseJson();
 }

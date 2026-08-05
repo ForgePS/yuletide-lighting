@@ -7,6 +7,7 @@ dist
 .env.staging
 .env.*.local
 apps/web/.env.deploy-backup
+firebase.json.deploy-backup
 build-theme-check.txt
 turbo-web-ok.txt
 docs/production-cleanup/organization-module-audit.json

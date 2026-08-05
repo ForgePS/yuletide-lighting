@@ -37,16 +37,18 @@
 - Production project: `yuletide-lighting` — VERIFIED_PRODUCTION
 - Nonproduction project: `yuletide-lighting-staging` — VERIFIED_NONPRODUCTION
 - Prior fake staging assumption: RESOLVED
-- Nonprod deployment performed: **PARTIAL YES** — Firestore rules+indexes PASS; Storage rules PASS after console Get Started; Hosting not attempted (S8-001)
+- Nonprod deployment performed: **PARTIAL YES** — Firestore rules+indexes PASS; Storage rules PASS; Hosting not yet deployed
+- S8-001: **RESOLVED** — deploy-time SA selection (`s8-001-hosting-sa-resolution.md`)
+- Staging web app: `1:636852862858:web:004bc578eb8aa7a2ecd273` (local `.env.staging` generated, gitignored)
 - Evidence: `docs/production-cleanup/s8-nonprod-deploy-evidence.md`
-- Production deployment: **NO** (user linked production console; deploy deliberately targeted staging only)
+- Production deployment: **NO**
 - Production reads/writes: **0**
 
 ## DEFECT REGISTER
 
 - P0 open: **0**
-- Launch-critical P1 open: **S8-001** only (Hosting SA)
-- S8-006 (staging Storage bootstrap): **RESOLVED** 2026-08-05
+- Launch-critical P1 open: **0**
+- S8-001 / S8-006: **RESOLVED** 2026-08-05
 - Launch blockers for _code/gates_: **0** after ×3
 
 ## REAL SIDE EFFECTS DURING S8
@@ -63,6 +65,6 @@
 
 **READY_PENDING_NONPROD_SMOKE**
 
-Rules-first staging deploy complete (Firestore + Storage). Still required before `READY_FOR_GO_LIVE_AUTHORIZATION`: resolve/waive **S8-001**, Hosting deploy to staging (if UI smoke needed), `.env.staging`, full nonprod smoke PASS.
+S8-001 closed. Remaining before `READY_FOR_GO_LIVE_AUTHORIZATION`: staging Hosting deploy via `npm run deploy:staging` (or hosting-only), then nonprod smoke PASS.
 
 Production go-live remains a **separate** authorization. Do **not** use the production console URL as a deploy target.

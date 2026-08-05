@@ -19,4 +19,4 @@
 **Open launch-critical P1:** 0  
 **Resolved this pass:** S8-001, S8-006  
 **Rule:** P0 = 0; Hosting deploy must use `deploy-firebase.mjs` so staging cannot bind production SA.  
-**Nonprod deploy progress:** Firestore + Storage + Hosting/SSR live on `https://yuletide-lighting-staging.web.app` (SHA `d98669b`). Anonymous smoke PARTIAL_PASS; authenticated smoke pending.
+**Nonprod deploy progress:** Hosting live; Auth enabled; staff AUTH_PASS + portal PORTAL_PASS on staging. Status → `READY_FOR_GO_LIVE_AUTHORIZATION` (production deploy still separately authorized).

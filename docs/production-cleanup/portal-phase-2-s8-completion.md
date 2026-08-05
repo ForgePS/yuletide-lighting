@@ -37,9 +37,12 @@
 - Production project: `yuletide-lighting` — VERIFIED_PRODUCTION
 - Nonproduction project: `yuletide-lighting-staging` — VERIFIED_NONPRODUCTION
 - Prior fake staging assumption: RESOLVED
-- Nonprod deployment performed: **PARTIAL YES** — Firestore rules+indexes PASS; Storage rules PASS; Hosting not yet deployed
+- Nonprod deployment performed: **YES** — Firestore rules+indexes; Storage rules; Hosting+SSR (`d98669b`)
+- Staging URL: https://yuletide-lighting-staging.web.app
 - S8-001: **RESOLVED** — deploy-time SA selection (`s8-001-hosting-sa-resolution.md`)
-- Staging web app: `1:636852862858:web:004bc578eb8aa7a2ecd273` (local `.env.staging` generated, gitignored)
+- Staging web app: `1:636852862858:web:004bc578eb8aa7a2ecd273` (local `.env.staging` gitignored)
+- Anonymous smoke: `/api/health`, `/`, `/sign-in` → **200**
+- Authenticated smoke: **NOT RUN**
 - Evidence: `docs/production-cleanup/s8-nonprod-deploy-evidence.md`
 - Production deployment: **NO**
 - Production reads/writes: **0**
@@ -65,6 +68,6 @@
 
 **READY_PENDING_NONPROD_SMOKE**
 
-S8-001 closed. Remaining before `READY_FOR_GO_LIVE_AUTHORIZATION`: staging Hosting deploy via `npm run deploy:staging` (or hosting-only), then nonprod smoke PASS.
+Staging Hosting is live with anonymous health PASS. Remaining before `READY_FOR_GO_LIVE_AUTHORIZATION`: provision staging Auth/verification tenant and complete authenticated staff + portal session smoke.
 
 Production go-live remains a **separate** authorization. Do **not** use the production console URL as a deploy target.

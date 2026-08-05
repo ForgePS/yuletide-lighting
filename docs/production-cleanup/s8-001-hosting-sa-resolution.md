@@ -28,5 +28,6 @@ Checked-in `firebase.json` retains the production SA as the production default.
 
 - [x] Create Firebase Web app on staging — `1:636852862858:web:004bc578eb8aa7a2ecd273`
 - [x] Populate local `.env.staging` from staging SDK config (gitignored)
-- [ ] Run `npm run deploy:staging` (or `--hosting-only`) against `yuletide-lighting-staging` only
-- [ ] Execute post-deploy smoke; keep REAL charges/email/SMS = 0
+- [x] Run Hosting-only deploy to `yuletide-lighting-staging` (`d98669b`, `--force` PASS)
+- [x] Anonymous smoke (`/api/health`, `/`, `/sign-in`) PASS; REAL charges/email/SMS = 0
+- [ ] Authenticated staff + portal session smoke (Auth/tenant provision)

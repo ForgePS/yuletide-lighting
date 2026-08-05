@@ -59,3 +59,16 @@ Local gates use Firestore/Storage emulators (`firebase.json` emulator ports 8080
 - Emulators for local
 
 **Caution:** `firebase.json` `hosting.frameworksBackend.serviceAccount` currently names `firebase-adminsdk-fbsvc@yuletide-lighting.iam.gserviceaccount.com` (production project SA). Before nonprod Hosting/Functions deploy, confirm nonprod-safe service account / backend settings so deploy cannot target production resources. Treat misconfigured SA as **LAUNCH P1** until verified.
+
+## Staging deploy executed (rules-first, 2026-08-05)
+
+| Service | Staging status |
+| ------- | -------------- |
+| Firestore rules | Deployed to `yuletide-lighting-staging` |
+| Firestore indexes | Deployed to `yuletide-lighting-staging` |
+| Storage (bucket) | Created via console Get Started → `yuletide-lighting-staging.firebasestorage.app` |
+| Storage rules | Deployed to `yuletide-lighting-staging` |
+| Hosting | **Not deployed** (S8-001) |
+
+Evidence: `docs/production-cleanup/s8-nonprod-deploy-evidence.md`  
+Production deploy URL (`…/project/yuletide-lighting/…`) is **not** the deploy target.

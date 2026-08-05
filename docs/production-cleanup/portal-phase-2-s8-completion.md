@@ -3,19 +3,20 @@
 **PHASE:** PORTAL-P2-S8  
 **TITLE:** Final Release Readiness, Real Nonproduction Validation, and Go-Live Gate  
 **STATUS:** READY_PENDING_NONPROD_SMOKE  
-**DATE:** 2026-08-03  
+**DATE:** 2026-08-05  
 **RELEASE BRANCH:** `release/yuletide-go-live-readiness`  
 **BASE SHA:** `899b715d8c5067fce9fd345395c05025366a0a16`  
 **RELEASE CANDIDATE SHA:** `e78914dfda6574eaa559f3e0d097e2d4effa4cf4`  
-**ENVIRONMENT:** EMULATOR + Firebase CLI metadata
+**STATUS STAMP SHA:** `414dbf90e527ab1886a76c44b791f4f4d6569c69`  
+**ENVIRONMENT:** EMULATOR + Firebase CLI + staging rules/indexes/storage deploy
 
 ## SOURCE CONTROL
 
 - Clean worktree: YES (`christmas-light-crm-s8-go-live`)
 - Workspace provenance: PASS
 - `@clcrm/types` source: this worktree
-- Unrelated changes included: NO (docs-only RC commit)
-- RC frozen: pending post-commit stamp after this report update
+- Unrelated changes included: NO (docs-only RC commits)
+- RC frozen: status stamp at `414dbf9`; evidence updates trailing
 
 ## LOCAL GATES
 
@@ -36,14 +37,16 @@
 - Production project: `yuletide-lighting` — VERIFIED_PRODUCTION
 - Nonproduction project: `yuletide-lighting-staging` — VERIFIED_NONPRODUCTION
 - Prior fake staging assumption: RESOLVED
-- Nonprod deployment performed: **NO** (awaiting explicit scope confirmation; S8-001 Hosting SA caution)
-- Production deployment: **NO**
+- Nonprod deployment performed: **PARTIAL YES** — Firestore rules+indexes PASS; Storage rules PASS after console Get Started; Hosting not attempted (S8-001)
+- Evidence: `docs/production-cleanup/s8-nonprod-deploy-evidence.md`
+- Production deployment: **NO** (user linked production console; deploy deliberately targeted staging only)
 - Production reads/writes: **0**
 
 ## DEFECT REGISTER
 
 - P0 open: **0**
-- Launch-critical P1 open: **S8-001** (firebase.json Hosting serviceAccount names production SA — verify before Hosting deploy)
+- Launch-critical P1 open: **S8-001** only (Hosting SA)
+- S8-006 (staging Storage bootstrap): **RESOLVED** 2026-08-05
 - Launch blockers for _code/gates_: **0** after ×3
 
 ## REAL SIDE EFFECTS DURING S8
@@ -60,6 +63,6 @@
 
 **READY_PENDING_NONPROD_SMOKE**
 
-Next authorized step (not yet executed): deploy RC `e78914d` to **`yuletide-lighting-staging` only**, then nonprod smoke. Do **not** treat as `READY_FOR_GO_LIVE_AUTHORIZATION` until nonprod smoke PASS and S8-001 resolved/waived for Hosting.
+Rules-first staging deploy complete (Firestore + Storage). Still required before `READY_FOR_GO_LIVE_AUTHORIZATION`: resolve/waive **S8-001**, Hosting deploy to staging (if UI smoke needed), `.env.staging`, full nonprod smoke PASS.
 
-Production go-live remains a **separate** authorization.
+Production go-live remains a **separate** authorization. Do **not** use the production console URL as a deploy target.

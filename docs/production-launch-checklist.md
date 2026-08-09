@@ -62,7 +62,7 @@ _Full end-to-end lifecycle path not re-run as a single scripted suite on go-live
 - [x] Portal Phase 2 S7A credential foundation COMPLETE (hash-only writes, session decoupling)
 - [x] Portal Phase 2 S7B session-only authenticated routes COMPLETE (`2661de3` + closeout reconcile)
 - [x] Staging portal session smoke PASS (`POST /api/portal/session` → `/portal/app`)
-- [ ] Production portal authenticated smoke (real customer / magic link)
+- [x] Production portal authenticated smoke (real customer / magic link) — `PORTAL_PASS` 2026-08-09 org `bdyeQorlWRWNU00fVpuN`
 - [ ] Legacy magic-token production migration (tools exist; **not** applied — emulator-proven only)
 - [ ] `PORTAL_MAGIC_TOKEN_MODE=HASH_ONLY` cutover (blocked until production migration evidence)
 

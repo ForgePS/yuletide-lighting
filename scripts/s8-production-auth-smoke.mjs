@@ -28,10 +28,16 @@ async function main() {
   const fileEnv = loadEnvFile(path.join(repoRoot, '.env'));
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || fileEnv.NEXT_PUBLIC_FIREBASE_API_KEY;
   const email = process.env.SMOKE_EMAIL || '';
-  const password = process.env.SMOKE_PASSWORD || '';
+  let password = process.env.SMOKE_PASSWORD || '';
+  const pwFile = process.env.SMOKE_PASSWORD_FILE || path.join(repoRoot, 'secrets', '.prod-smoke-password');
+  if (!password && fs.existsSync(pwFile)) {
+    password = fs.readFileSync(pwFile, 'utf8').trim();
+  }
   if (!apiKey) throw new Error('Missing NEXT_PUBLIC_FIREBASE_API_KEY');
   if (!email || !password) {
-    throw new Error('Set SMOKE_EMAIL and SMOKE_PASSWORD for production auth smoke');
+    throw new Error(
+      'Set SMOKE_EMAIL and SMOKE_PASSWORD (or secrets/.prod-smoke-password) for production auth smoke',
+    );
   }
 
   const results = [];

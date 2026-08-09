@@ -81,6 +81,6 @@ See `docs/production-cleanup/portal-phase-2-s7b-closeout-reconciliation.md` and 
 - [x] `/sign-in` works
 - [x] `/api/health` OK on production Hosting
 - [x] `/app` redirects unauthenticated users
-- [ ] Authenticated owner can open Dashboard, Customers, Proposals, Schedule
+- [x] Authenticated owner can open Dashboard, Customers, Proposals, Schedule
 - [ ] Public proposal token page loads for a known token
-- [ ] Creator console reachable for allowlisted operator (`/creator`)
+- [x] Creator console reachable for allowlisted operator (`/creator`)

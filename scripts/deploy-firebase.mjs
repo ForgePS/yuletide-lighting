@@ -12,17 +12,16 @@ const webEnvBackupPath = path.join(webRoot, '.env.deploy-backup');
 const firebaseJsonPath = path.join(repoRoot, 'firebase.json');
 const firebaseJsonBackupPath = path.join(repoRoot, 'firebase.json.deploy-backup');
 const only = process.argv.includes('--hosting-only') ? '--only hosting' : '';
-const force = process.argv.includes('--force') || !process.argv.includes('--hosting-only')
-  ? '--force'
-  : '';
+const force =
+  process.argv.includes('--force') || !process.argv.includes('--hosting-only') ? '--force' : '';
 
 const projectArgIdx = process.argv.findIndex((a) => a === '--project');
-const projectFromFlag =
-  projectArgIdx >= 0 ? process.argv[projectArgIdx + 1] : null;
-const projectAlias = process.env.FIREBASE_DEPLOY_PROJECT
-  || projectFromFlag
-  || (process.argv.includes('--staging') ? 'staging' : null)
-  || 'production';
+const projectFromFlag = projectArgIdx >= 0 ? process.argv[projectArgIdx + 1] : null;
+const projectAlias =
+  process.env.FIREBASE_DEPLOY_PROJECT ||
+  projectFromFlag ||
+  (process.argv.includes('--staging') ? 'staging' : null) ||
+  'production';
 
 const PROJECT_BY_ALIAS = {
   production: 'yuletide-lighting',
@@ -32,14 +31,12 @@ const PROJECT_BY_ALIAS = {
 
 /** Hosting frameworksBackend SA must live in the target project (S8-001). */
 const SERVICE_ACCOUNT_BY_PROJECT = {
-  'yuletide-lighting':
-    'firebase-adminsdk-fbsvc@yuletide-lighting.iam.gserviceaccount.com',
+  'yuletide-lighting': 'firebase-adminsdk-fbsvc@yuletide-lighting.iam.gserviceaccount.com',
   'yuletide-lighting-staging':
     'firebase-adminsdk-fbsvc@yuletide-lighting-staging.iam.gserviceaccount.com',
 };
 
-const firebaseProject =
-  PROJECT_BY_ALIAS[projectAlias] || projectAlias || 'yuletide-lighting';
+const firebaseProject = PROJECT_BY_ALIAS[projectAlias] || projectAlias || 'yuletide-lighting';
 
 const expectedServiceAccount = SERVICE_ACCOUNT_BY_PROJECT[firebaseProject];
 if (!expectedServiceAccount) {
@@ -55,11 +52,9 @@ if (firebaseProject === 'yuletide-lighting' && process.argv.includes('--staging'
 }
 
 const publicAppUrl = isStaging
-  ? (process.env.STAGING_APP_URL || 'https://yuletide-lighting-staging.web.app')
+  ? process.env.STAGING_APP_URL || 'https://yuletide-lighting-staging.web.app'
   : 'https://yuletide-lighting.web.app';
-const envSourcePath = isStaging && fs.existsSync(stagingEnvPath)
-  ? stagingEnvPath
-  : rootEnvPath;
+const envSourcePath = isStaging && fs.existsSync(stagingEnvPath) ? stagingEnvPath : rootEnvPath;
 
 if (isStaging && !fs.existsSync(stagingEnvPath)) {
   throw new Error(
@@ -68,10 +63,19 @@ if (isStaging && !fs.existsSync(stagingEnvPath)) {
   );
 }
 
+if (!isStaging && !fs.existsSync(rootEnvPath)) {
+  throw new Error(
+    'HARD FAIL: production deploy requires .env (gitignored) with NEXT_PUBLIC_FIREBASE_* ' +
+      'and PLATFORM_CREATOR_EMAILS (empty allowlist denies all /creator access in production).',
+  );
+}
+
 const RESERVED_ENV_PREFIXES = ['X_GOOGLE_', 'FIREBASE_', 'EXT_'];
 
 function isAllowedDeployEnvKey(key) {
   if (key.startsWith('NEXT_PUBLIC_')) return true;
+  // Must ship with Hosting SSR — production denies /creator when both lists are empty.
+  if (key === 'PLATFORM_CREATOR_EMAILS' || key === 'PLATFORM_CREATOR_UIDS') return true;
   return !RESERVED_ENV_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
@@ -91,13 +95,26 @@ function prepareEnv() {
     fs.copyFileSync(webEnvPath, webEnvBackupPath);
   }
   const lines = fs.readFileSync(envSourcePath, 'utf8').split(/\r?\n/);
+  const droppedReserved = [];
   const kept = lines.filter((line) => {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) return true;
     const key = trimmed.split('=')[0]?.trim();
-    return key ? isAllowedDeployEnvKey(key) : true;
+    if (!key) return true;
+    if (!isAllowedDeployEnvKey(key)) {
+      droppedReserved.push(key);
+      return false;
+    }
+    return true;
   });
-  const adminKey = parseEnvValue(lines, 'CLCRM_FIREBASE_ADMIN_KEY') ?? parseEnvValue(lines, 'FIREBASE_SERVICE_ACCOUNT_KEY');
+  if (droppedReserved.length) {
+    console.warn(
+      `Stripped reserved Hosting env keys (${droppedReserved.length}): ${droppedReserved.join(', ')}`,
+    );
+  }
+  const adminKey =
+    parseEnvValue(lines, 'CLCRM_FIREBASE_ADMIN_KEY') ??
+    parseEnvValue(lines, 'FIREBASE_SERVICE_ACCOUNT_KEY');
   if (adminKey) {
     kept.push(`CLCRM_FIREBASE_ADMIN_KEY=${adminKey}`);
   }
@@ -105,10 +122,7 @@ function prepareEnv() {
   if (!/^NEXT_PUBLIC_APP_URL=/m.test(env)) {
     env += `\nNEXT_PUBLIC_APP_URL=${publicAppUrl}\n`;
   } else {
-    env = env.replace(
-      /^NEXT_PUBLIC_APP_URL=.*/m,
-      `NEXT_PUBLIC_APP_URL=${publicAppUrl}`,
-    );
+    env = env.replace(/^NEXT_PUBLIC_APP_URL=.*/m, `NEXT_PUBLIC_APP_URL=${publicAppUrl}`);
   }
   if (isStaging) {
     env = env.replace(
@@ -119,8 +133,24 @@ function prepareEnv() {
       env += '\nNEXT_PUBLIC_FIREBASE_PROJECT_ID=yuletide-lighting-staging\n';
     }
   }
+
+  const creatorEmails = parseEnvValue(lines, 'PLATFORM_CREATOR_EMAILS');
+  const creatorUids = parseEnvValue(lines, 'PLATFORM_CREATOR_UIDS');
+  if (
+    !isStaging &&
+    !(creatorEmails && creatorEmails.trim()) &&
+    !(creatorUids && creatorUids.trim())
+  ) {
+    throw new Error(
+      'HARD FAIL: production Hosting deploy requires PLATFORM_CREATOR_EMAILS or PLATFORM_CREATOR_UIDS. ' +
+        'Empty allowlist denies all Creator Console access in production.',
+    );
+  }
+
   fs.writeFileSync(webEnvPath, env.endsWith('\n') ? env : `${env}\n`);
-  console.log(`Copied ${path.basename(envSourcePath)} to apps/web for Firebase build (project=${firebaseProject}).`);
+  console.log(
+    `Copied ${path.basename(envSourcePath)} to apps/web for Firebase build (project=${firebaseProject}).`,
+  );
 }
 
 function restoreEnv() {
@@ -147,19 +177,14 @@ function applyHostingServiceAccount() {
       `HARD FAIL: frameworksBackend.serviceAccount mismatch (got ${applied}, want ${expectedServiceAccount})`,
     );
   }
-  if (
-    isStaging &&
-    applied.includes('@yuletide-lighting.iam.gserviceaccount.com')
-  ) {
+  if (isStaging && applied.includes('@yuletide-lighting.iam.gserviceaccount.com')) {
     throw new Error(
       'HARD FAIL: staging Hosting deploy would bind production service account (S8-001)',
     );
   }
 
   fs.writeFileSync(firebaseJsonPath, `${JSON.stringify(config, null, 2)}\n`);
-  console.log(
-    `frameworksBackend.serviceAccount → ${applied} (project=${firebaseProject})`,
-  );
+  console.log(`frameworksBackend.serviceAccount → ${applied} (project=${firebaseProject})`);
 }
 
 function restoreFirebaseJson() {
@@ -179,14 +204,24 @@ if (nodeMajor > 20) {
 }
 
 try {
-  console.log(`Deploy target project=${firebaseProject} identity-check SA=${expectedServiceAccount}`);
+  console.log(
+    `Deploy target project=${firebaseProject} identity-check SA=${expectedServiceAccount}`,
+  );
+  // Next.js frameworks Hosting loads Cloud Functions source; cold analysis often exceeds 10s.
+  if (!process.env.FUNCTIONS_DISCOVERY_TIMEOUT) {
+    process.env.FUNCTIONS_DISCOVERY_TIMEOUT = '120';
+  }
   applyHostingServiceAccount();
   prepareEnv();
   execSync('node scripts/prepare-firebase-deps.mjs', { cwd: webRoot, stdio: 'inherit' });
-  execSync(`firebase deploy ${only} ${force} --project ${firebaseProject}`.replace(/\s+/g, ' ').trim(), {
-    cwd: repoRoot,
-    stdio: 'inherit',
-  });
+  execSync(
+    `firebase deploy ${only} ${force} --project ${firebaseProject}`.replace(/\s+/g, ' ').trim(),
+    {
+      cwd: repoRoot,
+      stdio: 'inherit',
+      env: process.env,
+    },
+  );
 } finally {
   execSync('node scripts/prepare-firebase-deps.mjs --restore', { cwd: webRoot, stdio: 'inherit' });
   restoreEnv();

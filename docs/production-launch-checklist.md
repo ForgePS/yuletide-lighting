@@ -1,16 +1,18 @@
 # Production Launch Checklist
 
-Go-live gates for Yuletide CRM against the Production Readiness blueprint.
+Go-live gates for Yuletide CRM. Updated **2026-08-08** after production Hosting go-live (`1583f01` / evidence in `docs/production-cleanup/s8-production-go-live-evidence.md`).
 
 ## Security
 
 - [x] Unauthenticated users cannot render `/app` content (middleware + server layout)
-- [ ] Cross-organization access tests return zero unauthorized records
+- [ ] Cross-organization access tests return zero unauthorized records (production verification still open)
 - [x] Firestore and storage security rules deployed and tested
 - [x] No service credentials in client bundles (`NEXT_PUBLIC_*` only for public config)
 - [x] `/access-denied` shown for inactive/pending/no-org users
 
-## Lifecycle smoke (staging)
+## Lifecycle smoke (staging / production)
+
+_Full end-to-end lifecycle path not re-run as a single scripted suite on go-live day. Track remaining ops smokes below._
 
 - [ ] Public website form creates CMS submission **and** CRM lead (`new_lead`)
 - [ ] Consultation scheduled → completed with survey fields
@@ -38,11 +40,13 @@ Go-live gates for Yuletide CRM against the Production Readiness blueprint.
 
 ## Environments
 
-- [ ] Staging project separate from production (project + Firestore ready; billing/Storage/Auth still needed for full hosting)
-- [ ] Backups enabled; restore drill documented (backup bucket + first manual export started)
+- [x] Staging project separate from production (`yuletide-lighting-staging` — rules, Storage, Auth, Hosting validated in S8)
+- [ ] Backups enabled; restore drill documented
 - [ ] Error monitoring (e.g. Sentry) receiving events
 - [x] `OPERATING_ORGANIZATION_ID` set for public → CRM lead routing
 - [ ] Season settings `seasonYear` matches active booking year
+- [x] Org `enabledModules` migrated / stamped (professional pack applied 2026-08-08)
+- [x] Creator allowlist configured (`PLATFORM_CREATOR_EMAILS` includes `info@yuletidelightingco.com`)
 
 ## UX gates
 
@@ -53,15 +57,16 @@ Go-live gates for Yuletide CRM against the Production Readiness blueprint.
 - [x] `/api/health` returns `{ status: "ok" }`
 - [x] `npm run test:e2e` smoke passes against production or staging
 
-## Customer Portal Phase 2 S7A (emulator — credential foundation)
+## Customer Portal
 
-- [x] `audit:portal-token-security` PASS (S7A worktree)
-- [x] S7A unit + integration tests PASS (hash-only writes, legacy modes, session decoupling, DTO sanitization)
-- [ ] S7B tokenless route / plaintext-removal gates (separate checkpoint)
-- [ ] Legacy magic-token production migration plan approved separately (docs only until authorized)
-- [ ] `PORTAL_MAGIC_TOKEN_MODE=HASH_ONLY` cutover not applied until migration evidence complete
+- [x] Portal Phase 2 S7A credential foundation COMPLETE (hash-only writes, session decoupling)
+- [x] Portal Phase 2 S7B session-only authenticated routes COMPLETE (`2661de3` + closeout reconcile)
+- [x] Staging portal session smoke PASS (`POST /api/portal/session` → `/portal/app`)
+- [ ] Production portal authenticated smoke (real customer / magic link)
+- [ ] Legacy magic-token production migration (tools exist; **not** applied — emulator-proven only)
+- [ ] `PORTAL_MAGIC_TOKEN_MODE=HASH_ONLY` cutover (blocked until production migration evidence)
 
-**Note:** See `docs/production-cleanup/portal-phase-2-s7a-completion.md`. Full S7 not complete until S7B.
+See `docs/production-cleanup/portal-phase-2-s7b-closeout-reconciliation.md` and S8 evidence docs.
 
 ## Rollback
 
@@ -70,10 +75,12 @@ Go-live gates for Yuletide CRM against the Production Readiness blueprint.
 3. Revert Firestore rules only if rules deploy caused the incident
 4. Document incident in `deploy-log.txt`
 
-## Post-deploy smoke
+## Post-deploy smoke (2026-08-08)
 
 - [x] `/` marketing page loads
 - [x] `/sign-in` works
+- [x] `/api/health` OK on production Hosting
 - [x] `/app` redirects unauthenticated users
 - [ ] Authenticated owner can open Dashboard, Customers, Proposals, Schedule
 - [ ] Public proposal token page loads for a known token
+- [ ] Creator console reachable for allowlisted operator (`/creator`)

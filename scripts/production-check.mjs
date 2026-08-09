@@ -369,6 +369,98 @@ function auditEnv() {
       correction: 'n/a',
     });
   }
+
+  // Creator allowlist — production Hosting denies /creator when both lists are empty.
+  let creatorEmails = '';
+  let creatorUids = '';
+  if (fs.existsSync(localEnvPath)) {
+    const local = fs.readFileSync(localEnvPath, 'utf8');
+    creatorEmails = (local.match(/^PLATFORM_CREATOR_EMAILS=(.*)$/m)?.[1] ?? '').trim();
+    creatorUids = (local.match(/^PLATFORM_CREATOR_UIDS=(.*)$/m)?.[1] ?? '').trim();
+  }
+  const creatorConfigured = Boolean(creatorEmails || creatorUids);
+  if (!creatorConfigured && (appEnv === 'production' || appEnv === 'staging')) {
+    add({
+      name: 'environment-platform-creator-allowlist',
+      severity: 'launch',
+      category: 'ops',
+      status: 'FAIL',
+      file: '.env',
+      problem: `PLATFORM_CREATOR_EMAILS / PLATFORM_CREATOR_UIDS empty while APP_ENV=${appEnv}`,
+      correction:
+        'Set PLATFORM_CREATOR_EMAILS to operator login emails before Hosting deploy (production denies empty allowlist)',
+      docs: 'docs/production-launch-checklist.md',
+    });
+  } else if (!creatorConfigured) {
+    add({
+      name: 'environment-platform-creator-allowlist',
+      severity: 'warning',
+      category: 'ops',
+      status: 'WARN',
+      problem: 'Creator allowlist empty locally — /creator is open to all users only outside production',
+      correction: 'Set PLATFORM_CREATOR_EMAILS before staging/production Hosting deploys',
+    });
+  } else {
+    add({
+      name: 'environment-platform-creator-allowlist',
+      severity: 'info',
+      category: 'ops',
+      status: 'PASS',
+      problem: 'Creator allowlist configured',
+      correction: 'n/a',
+    });
+  }
+
+  const moduleAuditScript = path.join(root, 'scripts/audit-organization-modules.ts');
+  const moduleMigrateScript = path.join(root, 'scripts/migrate-organization-modules.ts');
+  const moduleStampScript = path.join(root, 'scripts/stamp-professional-modules.ts');
+  if (
+    !fs.existsSync(moduleAuditScript) ||
+    !fs.existsSync(moduleMigrateScript) ||
+    !fs.existsSync(moduleStampScript)
+  ) {
+    add({
+      name: 'org-modules-tooling',
+      severity: 'launch',
+      category: 'ops',
+      status: 'FAIL',
+      problem: 'org module audit/migrate/stamp scripts missing',
+      correction: 'Restore scripts/audit-organization-modules.ts, migrate-organization-modules.ts, stamp-professional-modules.ts',
+    });
+  } else {
+    add({
+      name: 'org-modules-tooling',
+      severity: 'info',
+      category: 'ops',
+      status: 'PASS',
+      problem: 'org module audit/migrate/stamp tooling present',
+      correction: 'n/a',
+    });
+  }
+
+  const exampleHasCreator = fs
+    .readFileSync(envPath, 'utf8')
+    .includes('PLATFORM_CREATOR_EMAILS=');
+  if (!exampleHasCreator) {
+    add({
+      name: 'environment-creator-example',
+      severity: 'operational',
+      category: 'ops',
+      status: 'FAIL',
+      file: '.env.example',
+      problem: 'PLATFORM_CREATOR_EMAILS not declared in .env.example',
+      correction: 'Document PLATFORM_CREATOR_EMAILS / PLATFORM_CREATOR_UIDS in .env.example',
+    });
+  } else {
+    add({
+      name: 'environment-creator-example',
+      severity: 'info',
+      category: 'ops',
+      status: 'PASS',
+      problem: 'PLATFORM_CREATOR_EMAILS declared in .env.example',
+      correction: 'n/a',
+    });
+  }
 }
 
 function auditMocks() {

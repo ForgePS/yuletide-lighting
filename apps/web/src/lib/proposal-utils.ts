@@ -89,8 +89,14 @@ export function proposalDepositCents(proposal: { subtotalCents: number; depositP
 }
 
 export function formatDateTime(date: Date | string | null | undefined) {
-  if (!date) return '—';
-  return new Date(date).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+  try {
+    if (!date) return '—';
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return '—';
+  }
 }
 
 export function statusBadgeClass(status: string) {

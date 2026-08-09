@@ -55,12 +55,37 @@ const DATE_FIELDS = [
   'currentPeriodEnd',
 ] as const;
 
+function coerceTimestampField(val: unknown): Date | unknown {
+  if (val == null || val === '') return val;
+  if (val instanceof Date) return val;
+  if (typeof val === 'object') {
+    if ('toDate' in (val as object) && typeof (val as TimestampLike).toDate === 'function') {
+      try {
+        return (val as TimestampLike).toDate();
+      } catch {
+        return val;
+      }
+    }
+    const o = val as { seconds?: number; _seconds?: number; nanoseconds?: number; _nanoseconds?: number };
+    const seconds = typeof o.seconds === 'number' ? o.seconds : typeof o._seconds === 'number' ? o._seconds : null;
+    if (seconds != null) {
+      const nanos =
+        typeof o.nanoseconds === 'number'
+          ? o.nanoseconds
+          : typeof o._nanoseconds === 'number'
+            ? o._nanoseconds
+            : 0;
+      return new Date(seconds * 1000 + Math.floor(nanos / 1e6));
+    }
+  }
+  return val;
+}
+
 export function mapTimestampsFromData<T extends Record<string, unknown>>(data: T): T {
   const result = { ...data };
   for (const key of DATE_FIELDS) {
-    const val = result[key];
-    if (val && typeof val === 'object' && 'toDate' in (val as object)) {
-      (result as Record<string, unknown>)[key] = (val as TimestampLike).toDate();
+    if (key in result) {
+      (result as Record<string, unknown>)[key] = coerceTimestampField(result[key]);
     }
   }
   return result;

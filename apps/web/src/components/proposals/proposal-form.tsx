@@ -44,7 +44,26 @@ type FormState = {
 
 function dateInputValue(d: unknown): string {
   if (!d) return '';
-  const date = d instanceof Date ? d : new Date(String(d));
+  if (d instanceof Date) {
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
+  if (typeof d === 'object') {
+    const o = d as { toDate?: () => Date; seconds?: number; _seconds?: number };
+    if (typeof o.toDate === 'function') {
+      try {
+        const date = o.toDate();
+        return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : '';
+      } catch {
+        return '';
+      }
+    }
+    const seconds = typeof o.seconds === 'number' ? o.seconds : typeof o._seconds === 'number' ? o._seconds : null;
+    if (seconds != null) {
+      const date = new Date(seconds * 1000);
+      return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+    }
+  }
+  const date = new Date(typeof d === 'number' || typeof d === 'string' ? d : String(d));
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 }
 

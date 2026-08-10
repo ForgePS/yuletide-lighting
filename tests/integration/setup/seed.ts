@@ -87,6 +87,7 @@ export async function seedOrganization(opts: SeedOrgOptions = {}): Promise<Seede
       { code: '1YR', label: '1 Year', active: true },
       { code: '3YR', label: '3 Year', active: true },
     ],
+    lifecycleStatus: 'active' as const,
     ...provisioning,
     enabledModules,
     featureFlags: {
@@ -168,6 +169,17 @@ export async function seedTenant(opts?: {
 export async function setUserStatus(userId: string, status: UserStatus): Promise<void> {
   const db = getAdminFirestore();
   await db.collection('users').doc(userId).update({ status, updatedAt: nowTs() });
+}
+
+export async function setOrgLifecycleStatus(
+  orgId: string,
+  lifecycleStatus: 'active' | 'inactive' | 'suspended' | 'archived',
+): Promise<void> {
+  const db = getAdminFirestore();
+  await db.collection('organizations').doc(orgId).update({
+    lifecycleStatus,
+    updatedAt: nowTs(),
+  });
 }
 
 export async function setOrgEnabledModules(

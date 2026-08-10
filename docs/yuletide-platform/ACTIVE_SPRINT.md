@@ -1,5 +1,5 @@
 PROGRAM: YULETIDE-FIREBASE-SAAS
-AUTHORIZED SPRINT: YL-S0
+AUTHORIZED SPRINT: YL-S1
 STATUS: COMPLETE
 PRODUCTION DEPLOY: NO
 PRODUCTION FIRESTORE WRITES: NO
@@ -7,5 +7,5 @@ PRODUCTION STORAGE WRITES: NO
 PRODUCTION AUTH CHANGES: NO
 AUTOMATIC NEXT SPRINT: NO
 
-Baseline established: docs/yuletide-platform/YL-S0-baseline.md
-Do not start YL-S1 until separately authorized.
+Domain doc: docs/yuletide-platform/YL-S1-organization-domain.md
+Do not start YL-S2 until separately authorized.

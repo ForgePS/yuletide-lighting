@@ -17,6 +17,10 @@ const REASONS: Record<string, { title: string; body: string }> = {
     title: 'Organization unavailable',
     body: 'Your organization record could not be loaded. Contact support or your administrator.',
   },
+  org_inactive: {
+    title: 'Organization inactive',
+    body: 'Your organization has been deactivated, suspended, or archived. Contact support or your platform administrator.',
+  },
   forbidden: {
     title: 'Access denied',
     body: 'You do not have permission to view this page.',

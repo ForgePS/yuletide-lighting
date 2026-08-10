@@ -12,6 +12,7 @@ import {
   getUserByFirebaseUid,
   isPlatformCreator,
   isSubscriptionLocked,
+  evaluateOrganizationAccess,
 } from '@yuletide/firebase';
 
 const LEGACY_ROLES: UserRole[] = ['owner', 'admin', 'office', 'crew'];
@@ -20,6 +21,7 @@ const INACTIVE_STATUSES: UserStatus[] = ['suspended', 'archived'];
 export type AccessDeniedReason =
   | 'unauthenticated'
   | 'inactive'
+  | 'org_inactive'
   | 'pending'
   | 'no_account'
   | 'no_org'
@@ -131,7 +133,11 @@ export async function resolveTestSession(
   }
 
   const org = await getOrganization(user.organizationId);
-  if (!org) return { status: 'denied', reason: 'no_org' };
+  const orgAccess = evaluateOrganizationAccess(org);
+  if (!orgAccess.ok || !org) {
+    const reason = orgAccess.ok ? 'no_org' : orgAccess.reason === 'org_inactive' ? 'org_inactive' : 'no_org';
+    return { status: 'denied', reason };
+  }
 
   const settingsRole = settingsRoleFromUser(user);
   const ctx: AuthContext = {

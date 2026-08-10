@@ -11,6 +11,7 @@ import {
   isSubscriptionLocked,
   isPlatformCreator,
   getUserPermissions,
+  evaluateOrganizationAccess,
 } from '@yuletide/firebase';
 import { cookies, headers } from 'next/headers';
 import { createHash } from 'crypto';
@@ -28,6 +29,7 @@ type CacheEntry =
 export type AccessDeniedReason =
   | 'unauthenticated'
   | 'inactive'
+  | 'org_inactive'
   | 'pending'
   | 'no_account'
   | 'no_org'
@@ -169,9 +171,11 @@ export async function resolveAppAccess(): Promise<AppAccessResult> {
     }
 
     const org = await getOrganization(user.organizationId);
-    if (!org) {
-      authCache.set(key, { ok: false, reason: 'no_org', expiresAt: Date.now() + AUTH_FAIL_TTL_MS });
-      return { status: 'denied', reason: 'no_org' };
+    const orgAccess = evaluateOrganizationAccess(org);
+    if (!orgAccess.ok || !org) {
+      const reason = orgAccess.ok ? 'no_org' : orgAccess.reason === 'org_inactive' ? 'org_inactive' : 'no_org';
+      authCache.set(key, { ok: false, reason, expiresAt: Date.now() + AUTH_FAIL_TTL_MS });
+      return { status: 'denied', reason };
     }
 
     const settingsRole = settingsRoleFromUser(user);

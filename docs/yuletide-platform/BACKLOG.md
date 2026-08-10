@@ -73,3 +73,11 @@ Reason Deferred: Infra; no deploy in S0.
 Suggested Sprint: YL-S24
 Priority: MEDIUM
 Blocking Current Sprint: NO
+
+## YL-BACKLOG-010
+Discovered During: YL-S1
+Description: Mirror `organizations.lifecycleStatus` inactive denials in Firestore security rules (`belongsToOrg`).
+Reason Deferred: YL-S1 enforced app-layer only; rules changes belong in YL-S4.
+Suggested Sprint: YL-S4
+Priority: MEDIUM
+Blocking Current Sprint: NO

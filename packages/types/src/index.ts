@@ -31,3 +31,4 @@ export * from './site-cms-extended';
 export * from './portal';
 export * from './portal-permissions';
 export * from './portal-legacy-path';
+export * from './organization';

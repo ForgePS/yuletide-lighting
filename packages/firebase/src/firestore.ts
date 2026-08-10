@@ -30,6 +30,11 @@ export type OrganizationRecord = {
   stripeCustomerId?: string | null;
   stripeSubscriptionId?: string | null;
   stripeConnectAccountId?: string | null;
+  /**
+   * Org operating lifecycle (YL-S1). Distinct from Stripe `subscriptionStatus`.
+   * Missing / null treated as `active` for legacy documents.
+   */
+  lifecycleStatus?: 'active' | 'inactive' | 'suspended' | 'archived' | null;
   subscriptionStatus?: 'none' | 'trialing' | 'active' | 'past_due' | 'canceled' | 'locked' | null;
   subscriptionPlan?: 'monthly' | 'yearly' | null;
   subscriptionInterval?: 'month' | 'year' | null;
@@ -241,6 +246,7 @@ export async function ensureOrganization(
       { code: '3YR', label: '3 Year', active: true },
       { code: '5YR', label: '5 Year', active: true },
     ],
+    lifecycleStatus: 'active' as const,
     ...provisioning,
     trialEndsAt,
     createdAt: now,

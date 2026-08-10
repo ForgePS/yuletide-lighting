@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import {
+  AUTH_USER_DISABLED,
+  classifyStaffAuthError,
+  isFirebaseAuthUserDisabled,
+} from './auth-session';
 
 /** Mirrors apps/web/src/lib/session-token.ts for package-level tests. */
 function decodeFirebaseIdTokenPayload(token: string): { exp?: number; sub?: string; user_id?: string } | null {
@@ -49,5 +54,28 @@ describe('middleware session token structural validation', () => {
   it('rejects expired tokens', () => {
     const token = `${b64url({ alg: 'RS256' })}.${b64url({ sub: 'uid123', exp: Math.floor(Date.now() / 1000) - 120 })}.sig`;
     expect(isFirebaseIdTokenStructurallyValid(token)).toBe(false);
+  });
+});
+
+describe('YL-S2 auth-session helpers', () => {
+  it('detects disabled auth users', () => {
+    expect(isFirebaseAuthUserDisabled({ disabled: true })).toBe(true);
+    expect(isFirebaseAuthUserDisabled({ disabled: false })).toBe(false);
+    expect(isFirebaseAuthUserDisabled(null)).toBe(false);
+  });
+
+  it('classifies disabled errors', () => {
+    expect(classifyStaffAuthError(new Error(AUTH_USER_DISABLED))).toBe('disabled');
+    expect(classifyStaffAuthError(new Error('Firebase: Error (auth/user-disabled).'))).toBe('disabled');
+  });
+
+  it('classifies revoked tokens', () => {
+    expect(classifyStaffAuthError(new Error('ID_TOKEN_REVOKED'))).toBe('revoked');
+    expect(classifyStaffAuthError(new Error('auth/id-token-revoked'))).toBe('revoked');
+  });
+
+  it('classifies other errors as invalid_token', () => {
+    expect(classifyStaffAuthError(new Error('auth/argument-error'))).toBe('invalid_token');
+    expect(classifyStaffAuthError('boom')).toBe('invalid_token');
   });
 });

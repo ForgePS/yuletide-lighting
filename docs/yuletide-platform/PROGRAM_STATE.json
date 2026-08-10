@@ -1,7 +1,7 @@
 {
   "program": "YULETIDE-FIREBASE-SAAS",
-  "currentAuthorizedSprint": "YL-S1",
-  "lastCompletedSprint": "YL-S1",
+  "currentAuthorizedSprint": "YL-S2",
+  "lastCompletedSprint": "YL-S2",
   "status": "ACTIVE",
   "automaticSprintAdvance": false,
   "productionAuthorized": false,
@@ -10,12 +10,11 @@
   "baselineEstablished": true,
   "worktree": "C:\\Users\\jerem\\Projects\\christmas-light-crm-s8-go-live",
   "branch": "feat/sneat-theme-tailwind",
-  "lastCommit": "e4cb23d",
+  "lastCommit": null,
   "verification": {
-    "unit": "PASS 231/231",
-    "integrationTenantsAuth": "PASS 23/23",
+    "unit": "PASS 235/235",
+    "integrationAuth": "PASS 11/11",
     "firestoreRules": "NOT_RUN",
-    "storageRules": "NOT_RUN",
     "lint": "NOT_RUN",
     "typecheck": "NOT_RUN",
     "build": "NOT_RUN"
@@ -31,6 +30,7 @@
     "YL-BACKLOG-007 Dual role/path models",
     "YL-BACKLOG-008 packages/db legacy",
     "YL-BACKLOG-009 Node 20 Functions deprecation",
-    "YL-BACKLOG-010 Org lifecycleStatus in Firestore rules"
+    "YL-BACKLOG-010 Org lifecycleStatus in Firestore rules",
+    "YL-BACKLOG-011 Staging Auth disabled-user live E2E"
   ]
 }

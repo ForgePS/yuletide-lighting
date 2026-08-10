@@ -55,5 +55,6 @@ export * from './public-season';
 export * from './module-entitlement';
 export * from './org-provisioning';
 export * from './organization-access';
+export * from './auth-session';
 export * from './follow-up-automation';
 export * from './compat-metrics';

@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { UserRole } from '@clcrm/validators';
 import type { CustomerStage } from '@clcrm/types';
-import { getAdminFirestore, getAdminAuth, FieldValue, Timestamp, docToData } from './admin';
+import { getAdminFirestore, FieldValue, Timestamp, docToData } from './admin';
 import { stripUndefined, stripUndefinedDeep } from './firestore-utils';
 
 export type UserRecord = {
@@ -515,10 +515,6 @@ export async function getByPublicToken<T>(
   if (groupSnap.empty) return null;
   const doc = groupSnap.docs[0]!;
   return mapTimestamps({ id: doc.id, ...doc.data()! }) as T;
-}
-
-export async function verifyIdToken(idToken: string) {
-  return getAdminAuth().verifyIdToken(idToken);
 }
 
 export { nanoid, FieldValue, Timestamp };

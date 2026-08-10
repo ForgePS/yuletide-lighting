@@ -100,4 +100,28 @@ describe('integration: auth session', () => {
     expect(session.ctx.settingsRole).toBe('installer');
     expect(session.ctx.organizationId).toBe(org.id);
   });
+
+  it('role changes are visible on next session resolve (no stale membership cache)', async () => {
+    const { org, user } = await seedTenant({
+      user: { settingsRole: 'owner', role: 'owner' },
+    });
+    const first = await resolveTestSession(user.firebaseUid);
+    expect(first.status).toBe('ok');
+    if (first.status !== 'ok') return;
+    expect(first.ctx.settingsRole).toBe('owner');
+
+    const db = (await import('@yuletide/firebase')).getAdminFirestore();
+    await db.collection('users').doc(user.id).update({
+      settingsRole: 'read_only',
+      role: 'crew',
+      updatedAt: new Date(),
+    });
+
+    const second = await resolveTestSession(user.firebaseUid);
+    expect(second.status).toBe('ok');
+    if (second.status !== 'ok') return;
+    expect(second.ctx.organizationId).toBe(org.id);
+    expect(second.ctx.settingsRole).toBe('read_only');
+    expect(second.ctx.role).toBe('crew');
+  });
 });

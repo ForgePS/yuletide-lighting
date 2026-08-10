@@ -3,7 +3,8 @@ import type { PermissionMatrix, SettingsRole, UserStatus } from '@clcrm/types';
 import { DEFAULT_PERMISSION_MATRIX, SYSTEM_ROLES, hasPermission } from '@clcrm/types';
 import type { UserRole } from '@clcrm/validators';
 import {
-  verifyIdToken,
+  verifyStaffIdToken,
+  classifyStaffAuthError,
   getUserByFirebaseUid,
   getOrganization,
   ensureOrganization,
@@ -18,18 +19,16 @@ import { createHash } from 'crypto';
 import { redirect } from 'next/navigation';
 
 const LEGACY_ROLES: UserRole[] = ['owner', 'admin', 'office', 'crew'];
-const AUTH_CACHE_TTL_MS = 45_000;
 const AUTH_FAIL_TTL_MS = 8_000;
 const INACTIVE_STATUSES: UserStatus[] = ['suspended', 'archived'];
 
-type CacheEntry =
-  | { ok: true; ctx: AuthContext; expiresAt: number }
-  | { ok: false; reason: AccessDeniedReason; expiresAt: number };
+type CacheEntry = { ok: false; reason: AccessDeniedReason; expiresAt: number };
 
 export type AccessDeniedReason =
   | 'unauthenticated'
   | 'inactive'
   | 'org_inactive'
+  | 'disabled'
   | 'pending'
   | 'no_account'
   | 'no_org'
@@ -39,7 +38,8 @@ export type AppAccessResult =
   | { status: 'ok'; ctx: AuthContext }
   | { status: 'denied'; reason: AccessDeniedReason };
 
-const authCache = new Map<string, CacheEntry>();
+/** YL-S2: deny-only short cache. Successful contexts are never cached (stale role/status). */
+const authDenyCache = new Map<string, CacheEntry>();
 
 function tokenCacheKey(token: string) {
   return createHash('sha256').update(token).digest('hex').slice(0, 32);
@@ -126,15 +126,19 @@ export async function resolveAppAccess(): Promise<AppAccessResult> {
   if (!token) return { status: 'denied', reason: 'unauthenticated' };
 
   const key = tokenCacheKey(token);
-  const cached = authCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) {
-    if (cached.ok) return { status: 'ok', ctx: cached.ctx };
-    return { status: 'denied', reason: cached.reason };
+  const cachedDeny = authDenyCache.get(key);
+  if (cachedDeny && cachedDeny.expiresAt > Date.now()) {
+    return { status: 'denied', reason: cachedDeny.reason };
   }
+
+  const deny = (reason: AccessDeniedReason): AppAccessResult => {
+    authDenyCache.set(key, { ok: false, reason, expiresAt: Date.now() + AUTH_FAIL_TTL_MS });
+    return { status: 'denied', reason };
+  };
 
   try {
     const decoded = await Promise.race([
-      verifyIdToken(token),
+      verifyStaffIdToken(token),
       new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error('Token verification timed out')), 8_000);
       }),
@@ -143,8 +147,7 @@ export async function resolveAppAccess(): Promise<AppAccessResult> {
 
     if (!user) {
       if (!allowAutoProvision()) {
-        authCache.set(key, { ok: false, reason: 'no_account', expiresAt: Date.now() + AUTH_FAIL_TTL_MS });
-        return { status: 'denied', reason: 'no_account' };
+        return deny('no_account');
       }
       const org = await ensureOrganization(
         decoded.name ?? decoded.email?.split('@')[0] ?? 'My Company',
@@ -162,40 +165,42 @@ export async function resolveAppAccess(): Promise<AppAccessResult> {
 
     const status = ((user as { status?: UserStatus }).status ?? 'active') as UserStatus;
     if (INACTIVE_STATUSES.includes(status)) {
-      authCache.set(key, { ok: false, reason: 'inactive', expiresAt: Date.now() + AUTH_FAIL_TTL_MS });
-      return { status: 'denied', reason: 'inactive' };
+      return deny('inactive');
     }
     if (status === 'pending') {
-      authCache.set(key, { ok: false, reason: 'pending', expiresAt: Date.now() + AUTH_FAIL_TTL_MS });
-      return { status: 'denied', reason: 'pending' };
+      return deny('pending');
     }
 
     const org = await getOrganization(user.organizationId);
     const orgAccess = evaluateOrganizationAccess(org);
     if (!orgAccess.ok || !org) {
       const reason = orgAccess.ok ? 'no_org' : orgAccess.reason === 'org_inactive' ? 'org_inactive' : 'no_org';
-      authCache.set(key, { ok: false, reason, expiresAt: Date.now() + AUTH_FAIL_TTL_MS });
-      return { status: 'denied', reason };
+      return deny(reason);
     }
 
     const settingsRole = settingsRoleFromUser(user);
     const permissions = await resolvePermissions(user.organizationId, settingsRole);
-    const ctx: AuthContext = {
-      organizationId: user.organizationId,
-      firebaseUid: decoded.uid,
-      userId: user.id,
-      role: normalizeLegacyRole(settingsRole, user.role),
-      settingsRole,
-      permissions,
-      email: user.email,
-      subscriptionLocked: isSubscriptionLocked(org),
-      isPlatformCreator: isPlatformCreator(user.email, decoded.uid),
+    // YL-S2: do not cache successful contexts — roles/status must reload from Firestore.
+    return {
+      status: 'ok',
+      ctx: {
+        organizationId: user.organizationId,
+        firebaseUid: decoded.uid,
+        userId: user.id,
+        role: normalizeLegacyRole(settingsRole, user.role),
+        settingsRole,
+        permissions,
+        email: user.email,
+        subscriptionLocked: isSubscriptionLocked(org),
+        isPlatformCreator: isPlatformCreator(user.email, decoded.uid),
+      },
     };
-    authCache.set(key, { ok: true, ctx, expiresAt: Date.now() + AUTH_CACHE_TTL_MS });
-    return { status: 'ok', ctx };
   } catch (err) {
+    const authReason = classifyStaffAuthError(err);
+    if (authReason === 'disabled') {
+      return deny('disabled');
+    }
     const msg = err instanceof Error ? err.message : String(err);
-    authCache.set(key, { ok: false, reason: 'unauthenticated', expiresAt: Date.now() + AUTH_FAIL_TTL_MS });
     if (/PERMISSION_DENIED|invalid_grant|Could not load the default credentials/i.test(msg)) {
       console.error(
         '[resolveAppAccess] Firebase Admin cannot access project data.\n' +
@@ -206,7 +211,7 @@ export async function resolveAppAccess(): Promise<AppAccessResult> {
     } else {
       console.error('[resolveAppAccess] failed', err);
     }
-    return { status: 'denied', reason: 'unauthenticated' };
+    return deny('unauthenticated');
   }
 }
 

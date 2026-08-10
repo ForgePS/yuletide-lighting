@@ -81,3 +81,11 @@ Reason Deferred: YL-S1 enforced app-layer only; rules changes belong in YL-S4.
 Suggested Sprint: YL-S4
 Priority: MEDIUM
 Blocking Current Sprint: NO
+
+## YL-BACKLOG-011
+Discovered During: YL-S2
+Description: Staging/production live E2E for Firebase Auth disabled-user denial (`verifyStaffIdToken` path).
+Reason Deferred: Needs Auth emulator or staging credentials; unit classification covered in S2.
+Suggested Sprint: YL-S23 or staging auth smoke extension
+Priority: MEDIUM
+Blocking Current Sprint: NO

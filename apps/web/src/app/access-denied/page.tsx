@@ -5,6 +5,10 @@ const REASONS: Record<string, { title: string; body: string }> = {
     title: 'Account inactive',
     body: 'Your user account has been suspended or archived. Contact your organization administrator.',
   },
+  disabled: {
+    title: 'Sign-in disabled',
+    body: 'This Firebase account has been disabled. Contact your organization or platform administrator.',
+  },
   pending: {
     title: 'Invitation pending',
     body: 'Your account invitation has not been accepted yet. Check your email or ask an admin to resend the invite.',

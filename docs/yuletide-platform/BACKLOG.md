@@ -89,3 +89,11 @@ Reason Deferred: Needs Auth emulator or staging credentials; unit classification
 Suggested Sprint: YL-S23 or staging auth smoke extension
 Priority: MEDIUM
 Blocking Current Sprint: NO
+
+## YL-BACKLOG-012
+Discovered During: YL-S3
+Description: Migrate CRM routers from broad `officeProcedure` to resource-scoped `permissionProcedure` / `assertAuthCan` (customers.view, proposals.edit, etc.).
+Reason Deferred: YL-S3 centralized registry + admin/office capability gates only; full router cutover is larger and riskier.
+Suggested Sprint: YL-S5 or dedicated RBAC cutover sprint
+Priority: MEDIUM
+Blocking Current Sprint: NO

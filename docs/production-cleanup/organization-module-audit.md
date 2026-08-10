@@ -1,19 +1,19 @@
 # Organization module audit
 
-Generated: 2026-07-31T03:09:55.539Z  
-Project: `yuletide-lighting-staging`  
+Generated: 2026-08-08T22:14:33.545Z  
+Project: `yuletide-lighting`  
 Emulator: false  
 Redacted: true
 
 ## Summary
 
-| Metric                         | Count |
-| ------------------------------ | ----: |
-| Organizations scanned          |     1 |
-| Missing enabledModules         |     0 |
-| Empty enabledModules           |     0 |
-| Unknown module key occurrences |     0 |
-| Migration required             |     0 |
+| Metric | Count |
+|--------|------:|
+| Organizations scanned | 2 |
+| Missing enabledModules | 0 |
+| Empty enabledModules | 0 |
+| Unknown module key occurrences | 0 |
+| Migration required | 0 |
 
 ## Notes
 

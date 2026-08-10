@@ -7,7 +7,7 @@ import type {
   PermissionResource,
   SettingsRole,
 } from '@clcrm/types';
-import { hasPermission } from '@clcrm/types';
+import { hasPermission, hasAdminCapability, hasOfficeCapability } from '@clcrm/types';
 
 export type AuthContext = {
   organizationId: string;
@@ -73,20 +73,16 @@ export const authProcedure = t.procedure.use(({ ctx, next }) => {
 });
 
 export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!['owner', 'admin'].includes(ctx.auth.role)) {
+  // YL-S3: capability-based (settings.edit), not legacy role === 'admin'
+  if (!hasAdminCapability(ctx.auth)) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-  }
-  if (ctx.auth.settingsRole === 'read_only') {
-    throw new TRPCError({
-      code: 'FORBIDDEN',
-      message: 'Read-only role cannot perform admin actions',
-    });
   }
   return next({ ctx });
 });
 
 export const officeProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!['owner', 'admin', 'office'].includes(ctx.auth.role)) {
+  // YL-S3: desk CRM capability from permission matrix (+ field-role exclusions)
+  if (!hasOfficeCapability(ctx.auth)) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Office access required' });
   }
   return next({ ctx });

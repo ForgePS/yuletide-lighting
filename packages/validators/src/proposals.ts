@@ -97,14 +97,14 @@ export const createProposal360Schema = z.object({
   propertyPhotoUrl: z.string().max(2000).optional().or(z.literal('')),
   mockupIds: z.array(z.string()).default([]),
   pricing: pricingComponentsSchema.optional(),
-  /** Manual proposal total override (cents). Wins over calc when set; line items still win when present. */
+  /** Manual proposal total override (cents). Ignored when preferPackages / filled packages win. */
   subtotalCents: z.number().int().min(0).optional(),
   financingOption: financingOptionSchema.default('deposit_50'),
   depositPercent: z.number().min(0).max(100).default(50),
   installDate: z.coerce.date().optional().nullable(),
   removalDate: z.coerce.date().optional().nullable(),
   termsAndConditions: z.string().max(20000).optional().or(z.literal('')),
-  /** When true, package pricing drives the proposal total (line items ignored for totals). */
+  /** When true (default), filled Good/Better/Best packages drive the total and wipe line items. */
   preferPackages: z.boolean().default(true),
   packages: z.array(proposalPackageSchema).optional(),
   templateId: z.string().optional(),

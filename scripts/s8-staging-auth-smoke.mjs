@@ -30,7 +30,8 @@ async function main() {
   const env = loadEnvFile(envPath);
   const apiKey = env.NEXT_PUBLIC_FIREBASE_API_KEY;
   if (!apiKey) throw new Error('Missing NEXT_PUBLIC_FIREBASE_API_KEY in .env.staging');
-  if (!fs.existsSync(credsPath)) throw new Error('Missing secrets/staging-verification-credentials.json');
+  if (!fs.existsSync(credsPath))
+    throw new Error('Missing secrets/staging-verification-credentials.json');
 
   const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
   const owner = creds.owner;
@@ -82,7 +83,11 @@ async function main() {
     });
     results.push({
       step: 'app_route',
-      ok: appRes.status === 200 || appRes.status === 307 || appRes.status === 302 || appRes.status === 401,
+      ok:
+        appRes.status === 200 ||
+        appRes.status === 307 ||
+        appRes.status === 302 ||
+        appRes.status === 401,
       status: appRes.status,
     });
   }
@@ -96,9 +101,10 @@ async function main() {
         ownerEmail: owner.email,
         authProvisioned: owner.authProvisioned,
         results,
-        SMOKE_RESULT: failed.length === 0 && results.some((r) => r.step === 'auth_signInWithPassword' && r.ok)
-          ? 'AUTH_PASS'
-          : 'AUTH_FAIL',
+        SMOKE_RESULT:
+          failed.length === 0 && results.some((r) => r.step === 'auth_signInWithPassword' && r.ok)
+            ? 'AUTH_PASS'
+            : 'AUTH_FAIL',
         REAL_CHARGES: 0,
         REAL_EMAIL: 0,
         REAL_SMS: 0,
@@ -107,7 +113,9 @@ async function main() {
       2,
     ),
   );
-  process.exit(failed.some((r) => r.step === 'auth_signInWithPassword' || r.step === 'health') ? 1 : 0);
+  process.exit(
+    failed.some((r) => r.step === 'auth_signInWithPassword' || r.step === 'health') ? 1 : 0,
+  );
 }
 
 main().catch((err) => {

@@ -104,7 +104,9 @@ async function main() {
     .limit(1)
     .get();
   if (customers.empty) {
-    throw new Error('Residential staging customer not found (externalRef=p02c-customer-residential)');
+    throw new Error(
+      'Residential staging customer not found (externalRef=p02c-customer-residential)',
+    );
   }
   const customerId = customers.docs[0]!.id;
 
@@ -192,6 +194,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(JSON.stringify({ SMOKE_RESULT: 'PORTAL_FAIL', error: String(err?.message || err) }));
+  console.error(
+    JSON.stringify({ SMOKE_RESULT: 'PORTAL_FAIL', error: String(err?.message || err) }),
+  );
   process.exit(1);
 });

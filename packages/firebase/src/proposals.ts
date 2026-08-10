@@ -341,7 +341,10 @@ export async function createProposal360(
     >;
     /** Manual total. Used when no line items and preferPackages is false. */
     subtotalCents?: number;
-    /** When true (default), selected package total wins over line items. */
+    /**
+     * When true, selected package total wins over line items.
+     * Defaults to true unless explicitly false; filled packages also force preference.
+     */
     preferPackages?: boolean;
   },
   userId?: string | null,
@@ -362,7 +365,16 @@ export async function createProposal360(
   const season = input.season ?? String(seasonSettings.seasonYear);
 
   const pricing = input.pricing ?? DEFAULT_PRICING;
-  const preferPackages = input.preferPackages !== false;
+  const packagesFilled = (input.packages ?? []).some((pkg) => {
+    const label = String(pkg.label ?? pkg.name ?? '').trim();
+    const description = String(pkg.description ?? '').trim();
+    const products = Array.isArray(pkg.products) ? pkg.products : [];
+    return label.length > 0 && (description.length > 0 || products.length > 0);
+  });
+  // Explicit preferPackages wins; otherwise filled Good/Better/Best deals take precedence.
+  const preferPackages =
+    input.preferPackages === true ||
+    (input.preferPackages !== false && (packagesFilled || input.packages == null));
   const lineItems = preferPackages
     ? []
     : (input.lineItems ?? []).map((li) =>

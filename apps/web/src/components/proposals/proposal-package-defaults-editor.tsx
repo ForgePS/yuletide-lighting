@@ -78,9 +78,9 @@ export function ProposalPackagesPage() {
       <div className="card space-y-2 p-5">
         <h2 className="font-semibold">Good / Better / Best package library</h2>
         <p className="text-sm text-muted-foreground">
-          Edit the default packages that appear when you create a proposal. Customers select one package on
-          the public proposal page. Line items on a proposal are optional and override package pricing when
-          present.
+          These defaults prefill Good / Better / Best on each new proposal (still editable per proposal).
+          When packages are filled on a proposal, they set the total and take precedence over line items.
+          Customers pick one package on the public proposal page.
         </p>
         <p className="text-sm text-muted-foreground">
           Same editor also lives under{' '}

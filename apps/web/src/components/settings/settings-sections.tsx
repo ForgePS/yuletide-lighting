@@ -383,7 +383,8 @@ export function ProposalSettingsPage() {
       </SettingsSection>
       <SettingsSection title="Package defaults">
         <p className="mb-4 text-sm text-muted-foreground">
-          These Good / Better / Best defaults fill new proposals. Customers pick a package; line items are optional overrides.
+          Prefill Good / Better / Best on each new proposal (still editable there). Filled packages set
+          the proposal total and take precedence over line items.
         </p>
         <div className="grid gap-4 lg:grid-cols-3">
           {(['good', 'better', 'best'] as const).map((tier) => (

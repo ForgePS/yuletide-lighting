@@ -1,0 +1,110 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\nvm4w\nodejs/node.exe" "C:\nvm4w\nodejs/node_modules/npm/bin/np ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+> test:e2e
+> playwright test --workers=2 --reporter=line
+
+
+Running 61 tests using 2 workers
+
+[1A[2K(node:21240) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:18960) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:21240) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:18960) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/61] [chromium] ΓÇ║ e2e\p0.1-sign-tracker.spec.ts:8:7 ΓÇ║ P0.1 Sign Tracker public/route checks ΓÇ║ legacy /app/field redirects toward marketing sign-tracker
+[1A[2K[2/61] [chromium] ΓÇ║ e2e\p0.1-sign-tracker.spec.ts:19:7 ΓÇ║ P0.1 Sign Tracker public/route checks ΓÇ║ sign-in page has no /app/field href
+[1A[2K[3/61] [chromium] ΓÇ║ e2e\p0.1-sign-tracker.spec.ts:25:7 ΓÇ║ P0.1 Sign Tracker public/route checks ΓÇ║ mobile viewport sign-in remains usable
+[1A[2K[4/61] [chromium] ΓÇ║ e2e\p0.2c-responsive.spec.ts:18:9 ΓÇ║ P0.2C Sign Tracker responsive ΓÇö mobile-phone ΓÇ║ critical workflow usable without horizontal overflow
+[1A[2K[5/61] [chromium] ΓÇ║ e2e\p0.2c-responsive.spec.ts:18:9 ΓÇ║ P0.2C Sign Tracker responsive ΓÇö tablet-portrait ΓÇ║ critical workflow usable without horizontal overflow
+[1A[2K[6/61] [chromium] ΓÇ║ e2e\p0.2c-responsive.spec.ts:18:9 ΓÇ║ P0.2C Sign Tracker responsive ΓÇö tablet-landscape ΓÇ║ critical workflow usable without horizontal overflow
+[1A[2K[7/61] [chromium] ΓÇ║ e2e\p0.2c-responsive.spec.ts:18:9 ΓÇ║ P0.2C Sign Tracker responsive ΓÇö desktop ΓÇ║ critical workflow usable without horizontal overflow
+[1A[2K[8/61] [chromium] ΓÇ║ e2e\p0.2c-sign-tracker-auth.spec.ts:4:7 ΓÇ║ P0.2C authenticated Sign Tracker ΓÇ║ authorized user opens canonical Sign Tracker with summary + filters
+[1A[2K[9/61] [chromium] ΓÇ║ e2e\p0.2c-sign-tracker-auth.spec.ts:13:7 ΓÇ║ P0.2C authenticated Sign Tracker ΓÇ║ legacy field routes redirect to canonical destinations
+[1A[2K[10/61] [chromium] ΓÇ║ e2e\p0.2c-sign-tracker-auth.spec.ts:28:7 ΓÇ║ P0.2C authenticated Sign Tracker ΓÇ║ create sign with required-field validation and list appearance
+[1A[2K[11/61] [chromium] ΓÇ║ e2e\p0.2c-sign-tracker-auth.spec.ts:50:7 ΓÇ║ P0.2C authenticated Sign Tracker ΓÇ║ export denied without permission; allowed with permission
+[1A[2K[12/61] [chromium] ΓÇ║ e2e\p0.2c-sign-tracker-auth.spec.ts:87:7 ΓÇ║ P0.2C authenticated Sign Tracker ΓÇ║ module denial for warehouse role without sign_tracker
+[1A[2K[13/61] [chromium] ΓÇ║ e2e\p0.2c-sign-tracker-auth.spec.ts:65:7 ΓÇ║ P0.2C authenticated Sign Tracker ΓÇ║ viewer cannot create; read-only cannot mutate; suspended denied
+[1A[2K[14/61] [chromium] ΓÇ║ e2e\p0.2c-unavailable.spec.ts:4:7 ΓÇ║ P0.2C unavailable features ΓÇ║ map unavailable state is intentional when token missing
+[1A[2K[15/61] [chromium] ΓÇ║ e2e\p0.2c-unavailable.spec.ts:18:7 ΓÇ║ P0.2C unavailable features ΓÇ║ follow-up automation is not in production navigation and API is disabled
+[1A[2K[16/61] [chromium] ΓÇ║ e2e\p0.2c-unavailable.spec.ts:33:7 ΓÇ║ P0.2C unavailable features ΓÇ║ planned integrations are not connectable
+[1A[2K[17/61] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:4:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal login is reachable
+[1A[2K[18/61] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:11:7 ΓÇ║ portal access + mobile shell ΓÇ║ invalid QR access page stays branded without leaking customer data
+[1A[2K[19/61] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:22:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal login has no horizontal overflow at phone width
+[1A[2K[20/61] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:36:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal PWA manifest is published
+[1A[2K[21/61] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:44:7 ΓÇ║ portal access + mobile shell ΓÇ║ login remains usable at 360px width
+[1A[2K[22/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:20:7 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ portal files API rejects missing/forged tickets without leaking paths
+[1A[2K[23/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:33:7 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ portal files API ignores arbitrary path query (no client path)
+[1A[2K[24/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token billing route stays generic
+[1A[2K[25/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token documents route stays generic
+[1A[2K[26/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token messages route stays generic
+[1A[2K[27/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token jobs route stays generic
+[1A[2K[28/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token mockups route stays generic
+[1A[2K[29/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token agreements route stays generic
+[1A[2K[30/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token proposals route stays generic
+[1A[2K[31/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 390x844
+[1A[2K[32/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 768x1024
+[1A[2K[33/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1024x768
+[1A[2K[34/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1440x900
+[1A[2K[35/61] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:83:7 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ browser back from invalid portal does not expose protected identifiers
+[1A[2K[36/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:20:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ portal login page loads without staff chrome
+[1A[2K[37/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:30:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invalid magic token does not enumerate customers
+[1A[2K[38/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:41:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invalid QR access stays generic
+[1A[2K[39/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:49:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invalid invitation stays generic without tenant identifiers
+[1A[2K[40/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:68:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invitation page fits 390x844
+[1A[2K[41/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:68:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invitation page fits 768x1024
+[1A[2K[42/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:68:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invitation page fits 1024x768
+[1A[2K[43/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:68:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invitation page fits 1440x900
+[1A[2K[44/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:86:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ portal session API rejects empty body
+[1A[2K[45/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:97:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ staff /app is not accessible via portal cookie alone
+[1A[2K[46/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:113:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ keyboard focus reaches login controls
+[1A[2K[47/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:128:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ no horizontal overflow at 320x568
+[1A[2K[48/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:128:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ no horizontal overflow at 390x844
+[1A[2K[49/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:128:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ no horizontal overflow at 768x1024
+[1A[2K[50/61] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:128:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ no horizontal overflow at 1280x800
+[1A[2K[51/61] [chromium] ΓÇ║ e2e\smoke.spec.ts:4:7 ΓÇ║ production smoke ΓÇ║ home page loads
+[1A[2K[52/61] [chromium] ΓÇ║ e2e\smoke.spec.ts:11:7 ΓÇ║ production smoke ΓÇ║ pricing page loads
+[1A[2K[53/61] [chromium] ΓÇ║ e2e\smoke.spec.ts:17:7 ΓÇ║ production smoke ΓÇ║ legal pages are published
+[1A[2K[54/61] [chromium] ΓÇ║ e2e\smoke.spec.ts:25:7 ΓÇ║ production smoke ΓÇ║ sign-in is reachable
+[1A[2K[55/61] [chromium] ΓÇ║ e2e\smoke.spec.ts:32:7 ΓÇ║ production smoke ΓÇ║ unauthenticated /app redirects to sign-in
+[1A[2K[56/61] [chromium] ΓÇ║ e2e\smoke.spec.ts:37:7 ΓÇ║ production smoke ΓÇ║ health endpoint reports ok
+[1A[2K(node:37684) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:37684) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[57/61] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:4:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal login is reachable
+[1A[2K(node:13516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:13516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[58/61] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:11:7 ΓÇ║ portal access + mobile shell ΓÇ║ invalid QR access page stays branded without leaking customer data
+[1A[2K[59/61] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:22:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal login has no horizontal overflow at phone width
+[1A[2K[60/61] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:36:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal PWA manifest is published
+[1A[2K[61/61] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:44:7 ΓÇ║ portal access + mobile shell ΓÇ║ login remains usable at 360px width
+[1A[2K  13 skipped
+  48 passed (4.0m)

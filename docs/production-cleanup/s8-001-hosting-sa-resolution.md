@@ -7,9 +7,9 @@
 
 ## Verified accounts (CLI list, no keys)
 
-| Project | Hosting frameworksBackend SA |
-| ------- | ---------------------------- |
-| `yuletide-lighting` | `firebase-adminsdk-fbsvc@yuletide-lighting.iam.gserviceaccount.com` |
+| Project                     | Hosting frameworksBackend SA                                                |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `yuletide-lighting`         | `firebase-adminsdk-fbsvc@yuletide-lighting.iam.gserviceaccount.com`         |
 | `yuletide-lighting-staging` | `firebase-adminsdk-fbsvc@yuletide-lighting-staging.iam.gserviceaccount.com` |
 
 ## Fix

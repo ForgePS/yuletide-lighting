@@ -1,0 +1,92 @@
+{
+  "name": "yuletide-lighting",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run packages/firebase/src packages/types/src/module-presets.test.ts packages/types/src/configuration.test.ts packages/types/src/portal.test.ts",
+    "test:integration": "node scripts/run-integration-tests.mjs",
+    "format:changed": "node scripts/format-changed.mjs",
+    "format:changed:check": "node scripts/format-changed.mjs --check",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:staging": "playwright test --config=playwright.staging.config.ts",
+    "test:firebase-rules": "node scripts/run-firebase-rules-tests.mjs",
+    "test:firestore-rules": "firebase emulators:exec --only firestore,storage --project yuletide-rules-test \"vitest run tests/firebase/firestore.rules.test.ts\"",
+    "test:storage-rules": "firebase emulators:exec --only firestore,storage --project yuletide-rules-test \"vitest run tests/firebase/storage.rules.test.ts\"",
+    "test:routes": "vitest run tests/routes",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\"",
+    "audit:org-modules": "npx tsx scripts/audit-organization-modules.ts",
+    "audit:portal-permissions": "node scripts/audit-portal-permissions.mjs",
+    "audit:portal-sessions": "node scripts/audit-portal-sessions.mjs",
+    "audit:portal-auth-security": "node scripts/audit-portal-auth-security.mjs",
+    "audit:portal-query-scope": "node scripts/audit-portal-query-scope.mjs",
+    "audit:portal-public-dtos": "node scripts/audit-portal-public-dtos.mjs",
+    "audit:portal-routes": "node scripts/audit-portal-routes.mjs",
+    "audit:portal-files": "node scripts/audit-portal-files.mjs",
+    "audit:portal-mutations": "node scripts/audit-portal-mutations.mjs",
+    "audit:portal-idempotency": "node scripts/audit-portal-idempotency.mjs",
+    "migrate:org-modules": "npx tsx scripts/migrate-organization-modules.ts",
+    "migrate:org-modules:dry-run:emulator": "firebase emulators:exec --only firestore --project yuletide-rules-test \"node scripts/run-module-migration-emulator-dry-run.mjs\"",
+    "production:check": "node scripts/production-check.mjs",
+    "production:check:audits": "node scripts/production-check.mjs --audits-only",
+    "production:check:fast": "node scripts/production-check.mjs --skip-build --skip-lint",
+    "deploy:firebase": "node scripts/deploy-firebase.mjs",
+    "deploy:hosting": "node scripts/deploy-firebase.mjs --hosting-only",
+    "deploy:staging": "node scripts/deploy-firebase.mjs --staging",
+    "deploy:rules": "firebase deploy --only firestore:rules,storage",
+    "seed:cms": "npx tsx scripts/seed-website-cms.ts",
+    "provision:staging-verification": "npx tsx scripts/provision-staging-verification.ts",
+    "verify:staging-auth": "npx tsx scripts/verify-staging-auth.ts",
+    "generate:staging-storage-states": "npx tsx scripts/generate-staging-storage-states.ts",
+    "seed:staging-verification": "npx tsx scripts/seed-staging-verification.ts",
+    "cleanup:staging-verification": "npx tsx scripts/cleanup-staging-verification.ts",
+    "shift-payments-2025": "node scripts/shift-2026-payments-to-2025.mjs",
+    "shift-payments-2025:apply": "node scripts/shift-2026-payments-to-2025.mjs --apply"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "firebase-tools": "^13.29.1",
+    "next": "^15.1.3",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
+  },
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": "20"
+  },
+  "overrides": {
+    "react-native": "0.81.5",
+    "expo-notifications": "~0.32.17",
+    "expo-image-picker": "~17.0.11",
+    "expo-location": "~19.0.8",
+    "expo-secure-store": "~15.0.8",
+    "expo-status-bar": "~3.0.9",
+    "expo-constants": "~18.0.13",
+    "@clcrm/web": {
+      "react": "^19.0.0",
+      "react-dom": "^19.0.0"
+    },
+    "@clcrm/mobile": {
+      "react": "19.1.0",
+      "react-dom": "19.1.0",
+      "react-native": "0.81.5",
+      "expo-notifications": "~0.32.17",
+      "expo-image-picker": "~17.0.11",
+      "expo-location": "~19.0.8",
+      "expo-secure-store": "~15.0.8",
+      "expo-status-bar": "~3.0.9",
+      "expo-constants": "~18.0.13"
+    }
+  }
+}

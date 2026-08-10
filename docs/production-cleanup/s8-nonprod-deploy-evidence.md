@@ -9,12 +9,12 @@
 
 ## Deploy summary
 
-| Service | Result |
-| ------- | ------ |
-| Firestore rules + indexes | PASS |
-| Storage rules | PASS (`yuletide-lighting-staging.firebasestorage.app`) |
-| Hosting + SSR frameworksBackend | PASS (`https://yuletide-lighting-staging.web.app`) |
-| Hosting SA at deploy | staging adminsdk (S8-001 rewrite); checked-in `firebase.json` restored to production SA |
+| Service                         | Result                                                                                  |
+| ------------------------------- | --------------------------------------------------------------------------------------- |
+| Firestore rules + indexes       | PASS                                                                                    |
+| Storage rules                   | PASS (`yuletide-lighting-staging.firebasestorage.app`)                                  |
+| Hosting + SSR frameworksBackend | PASS (`https://yuletide-lighting-staging.web.app`)                                      |
+| Hosting SA at deploy            | staging adminsdk (S8-001 rewrite); checked-in `firebase.json` restored to production SA |
 
 ## Auth + tenant
 
@@ -36,10 +36,10 @@ REAL_EMAIL=0
 REAL_SMS=0
 ```
 
-| Check | Result |
-| ----- | ------ |
-| `/api/health`, `/`, `/sign-in` | 200 |
-| Staff `signInWithPassword` (owner) | AUTH_PASS |
+| Check                                                      | Result                                                                              |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `/api/health`, `/`, `/sign-in`                             | 200                                                                                 |
+| Staff `signInWithPassword` (owner)                         | AUTH_PASS                                                                           |
 | Portal `POST /api/portal/session` → cookie → `/portal/app` | PORTAL_PASS (sessionStatus 200, hasSessionCookie true, portalAppPath `/portal/app`) |
 
 Scripts: `scripts/s8-staging-auth-smoke.mjs`, `scripts/s8-staging-portal-smoke.ts`

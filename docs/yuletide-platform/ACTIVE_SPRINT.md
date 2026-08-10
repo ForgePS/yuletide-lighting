@@ -1,11 +1,10 @@
 PROGRAM: YULETIDE-FIREBASE-SAAS
-AUTHORIZED SPRINT: YL-S2
-STATUS: COMPLETE
+AUTHORIZED SPRINT: YL-S3
+STATUS: IN PROGRESS
 PRODUCTION DEPLOY: NO
 PRODUCTION FIRESTORE WRITES: NO
 PRODUCTION STORAGE WRITES: NO
 PRODUCTION AUTH CHANGES: NO
 AUTOMATIC NEXT SPRINT: NO
 
-Domain doc: docs/yuletide-platform/YL-S2-auth-session.md
-Do not start YL-S3 until separately authorized.
+Scope: Centralize RBAC registry/helpers; capability-based admin/office gates.

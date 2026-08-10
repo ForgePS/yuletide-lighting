@@ -16,8 +16,28 @@ service cloud.firestore {
         && (!userDoc().data.keys().hasAny(['status']) || userDoc().data.status == 'active');
     }
 
+    // YL-S4 / BACKLOG-010 — org operating lifecycle (distinct from user.status / subscriptionStatus).
+    // Missing lifecycleStatus ⇒ active (legacy). Explicit inactive|suspended|archived deny client access.
+    function orgPath(orgId) {
+      return /databases/$(database)/documents/organizations/$(orgId);
+    }
+
+    function orgDoc(orgId) {
+      return get(orgPath(orgId));
+    }
+
+    function isOrgLifecycleActive(orgId) {
+      return exists(orgPath(orgId))
+        && (
+          !orgDoc(orgId).data.keys().hasAny(['lifecycleStatus'])
+          || !(orgDoc(orgId).data.lifecycleStatus in ['inactive', 'suspended', 'archived'])
+        );
+    }
+
     function belongsToOrg(orgId) {
-      return isActiveUser() && userDoc().data.organizationId == orgId;
+      return isActiveUser()
+        && userDoc().data.organizationId == orgId
+        && isOrgLifecycleActive(orgId);
     }
 
     function hasRole(orgId, roles) {

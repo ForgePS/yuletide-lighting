@@ -43,6 +43,12 @@ export type SeedUser = {
   status?: string;
 };
 
+export type OrganizationLifecycleStatus =
+  | 'active'
+  | 'inactive'
+  | 'suspended'
+  | 'archived';
+
 export async function seedUsers(
   testEnv: RulesTestEnvironment,
   users: SeedUser[],
@@ -60,6 +66,18 @@ export async function seedUsers(
       }
       await setDoc(doc(db, 'users', user.uid), data);
     }
+  });
+}
+
+/** Seed organizations/{orgId} root doc (required for belongsToOrg lifecycle checks). */
+export async function seedOrg(
+  testEnv: RulesTestEnvironment,
+  orgId: string,
+  data: Record<string, unknown> = { name: orgId, lifecycleStatus: 'active' },
+): Promise<void> {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore() as Firestore;
+    await setDoc(doc(db, 'organizations', orgId), data);
   });
 }
 

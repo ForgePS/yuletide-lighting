@@ -1,5 +1,5 @@
 PROGRAM: YULETIDE-FIREBASE-SAAS
-AUTHORIZED SPRINT: YL-S3
+AUTHORIZED SPRINT: YL-S4
 STATUS: COMPLETE
 PRODUCTION DEPLOY: NO
 PRODUCTION FIRESTORE WRITES: NO
@@ -7,5 +7,5 @@ PRODUCTION STORAGE WRITES: NO
 PRODUCTION AUTH CHANGES: NO
 AUTOMATIC NEXT SPRINT: NO
 
-Scope completed: Centralize RBAC registry/helpers; capability-based admin/office gates.
+Scope completed: Mirror org lifecycleStatus inactive denials in Firestore belongsToOrg (BACKLOG-010).
 Next sprint: NOT AUTHORIZED.

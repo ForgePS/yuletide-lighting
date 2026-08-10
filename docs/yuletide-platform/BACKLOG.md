@@ -81,6 +81,7 @@ Reason Deferred: YL-S1 enforced app-layer only; rules changes belong in YL-S4.
 Suggested Sprint: YL-S4
 Priority: MEDIUM
 Blocking Current Sprint: NO
+**Status: RESOLVED in YL-S4** (2026-08-10) — `belongsToOrg` + rules tests; no production deploy.
 
 ## YL-BACKLOG-011
 Discovered During: YL-S2

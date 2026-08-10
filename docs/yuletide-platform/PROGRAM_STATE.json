@@ -1,7 +1,7 @@
 {
   "program": "YULETIDE-FIREBASE-SAAS",
-  "currentAuthorizedSprint": "YL-S3",
-  "lastCompletedSprint": "YL-S3",
+  "currentAuthorizedSprint": "YL-S4",
+  "lastCompletedSprint": "YL-S4",
   "status": "ACTIVE",
   "automaticSprintAdvance": false,
   "productionAuthorized": false,
@@ -10,12 +10,12 @@
   "baselineEstablished": true,
   "worktree": "C:\\Users\\jerem\\Projects\\christmas-light-crm-s8-go-live",
   "branch": "feat/sneat-theme-tailwind",
-  "lastCommit": "53df606",
+  "lastCommit": "PENDING_YL_S4_COMMIT",
   "verification": {
-    "unit": "PASS 241/241",
-    "integrationAuth": "PASS 11/11",
-    "integrationPermissions": "PASS 9/9",
-    "firestoreRules": "NOT_RUN",
+    "unit": "PASS_PRIOR_S3_241",
+    "integrationAuth": "NOT_RUN",
+    "integrationPermissions": "NOT_RUN",
+    "firestoreRules": "PASS 12/12",
     "lint": "NOT_RUN",
     "typecheck": "NOT_RUN",
     "build": "NOT_RUN"
@@ -31,8 +31,8 @@
     "YL-BACKLOG-007 Dual role/path models",
     "YL-BACKLOG-008 packages/db legacy",
     "YL-BACKLOG-009 Node 20 Functions deprecation",
-    "YL-BACKLOG-010 Org lifecycleStatus in Firestore rules",
     "YL-BACKLOG-011 Staging Auth disabled-user live E2E",
-    "YL-BACKLOG-012 Full permissionProcedure router migration"
+    "YL-BACKLOG-012 Full permissionProcedure router migration",
+    "Storage org lifecycleStatus mirror (optional follow-up from YL-S4)"
   ]
 }

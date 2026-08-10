@@ -5,7 +5,15 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { ORG_A, ORG_B, createRulesTestEnv, seedOrgPath, seedRootDoc, seedUsers } from './helpers';
+import {
+  ORG_A,
+  ORG_B,
+  createRulesTestEnv,
+  seedOrg,
+  seedOrgPath,
+  seedRootDoc,
+  seedUsers,
+} from './helpers';
 
 describe('firestore.rules', () => {
   let testEnv: RulesTestEnvironment;
@@ -33,6 +41,10 @@ describe('firestore.rules', () => {
       { uid: 'nostatusA', organizationId: ORG_A, role: 'office' },
       { uid: 'portalUserA', organizationId: ORG_A, role: 'portal', status: 'active' },
     ]);
+
+    // Org roots required for belongsToOrg lifecycle checks (YL-S4 / BACKLOG-010).
+    await seedOrg(testEnv, ORG_A, { name: 'Org A', lifecycleStatus: 'active' });
+    await seedOrg(testEnv, ORG_B, { name: 'Org B', lifecycleStatus: 'active' });
 
     await seedOrgPath(testEnv, ORG_A, 'customers/custA', { name: 'Customer A' });
     await seedOrgPath(testEnv, ORG_B, 'customers/custB', { name: 'Customer B' });
@@ -131,6 +143,45 @@ describe('firestore.rules', () => {
 
       const noStatusDb = testEnv.authenticatedContext('nostatusA').firestore();
       await assertSucceeds(getDoc(doc(noStatusDb, 'organizations', ORG_A, 'customers', 'custA')));
+    });
+  });
+
+  describe('C2. organization lifecycleStatus (YL-S4 / BACKLOG-010)', () => {
+    it('inactive, suspended, and archived orgs deny member reads; active and missing field allow', async () => {
+      for (const lifecycleStatus of ['inactive', 'suspended', 'archived'] as const) {
+        await seedOrg(testEnv, ORG_A, { name: 'Org A', lifecycleStatus });
+        const db = testEnv.authenticatedContext('adminA').firestore();
+        await assertFails(getDoc(doc(db, 'organizations', ORG_A)));
+        await assertFails(getDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA')));
+        await assertFails(getDoc(doc(db, 'organizations', ORG_A, 'jobs', 'jobA')));
+        await assertFails(
+          setDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA'), { name: 'hack' }),
+        );
+      }
+
+      await seedOrg(testEnv, ORG_A, { name: 'Org A', lifecycleStatus: 'active' });
+      const activeOrgDb = testEnv.authenticatedContext('adminA').firestore();
+      await assertSucceeds(getDoc(doc(activeOrgDb, 'organizations', ORG_A)));
+      await assertSucceeds(
+        getDoc(doc(activeOrgDb, 'organizations', ORG_A, 'customers', 'custA')),
+      );
+
+      // Missing lifecycleStatus ⇒ legacy active
+      await seedOrg(testEnv, ORG_A, { name: 'Org A legacy' });
+      await assertSucceeds(getDoc(doc(activeOrgDb, 'organizations', ORG_A, 'customers', 'custA')));
+    });
+
+    it('org lifecycle denial does not weaken cross-org isolation', async () => {
+      await seedOrg(testEnv, ORG_A, { name: 'Org A', lifecycleStatus: 'inactive' });
+      await seedOrg(testEnv, ORG_B, { name: 'Org B', lifecycleStatus: 'active' });
+
+      const adminA = testEnv.authenticatedContext('adminA').firestore();
+      await assertFails(getDoc(doc(adminA, 'organizations', ORG_A, 'customers', 'custA')));
+      await assertFails(getDoc(doc(adminA, 'organizations', ORG_B, 'customers', 'custB')));
+
+      const adminB = testEnv.authenticatedContext('adminB').firestore();
+      await assertSucceeds(getDoc(doc(adminB, 'organizations', ORG_B, 'customers', 'custB')));
+      await assertFails(getDoc(doc(adminB, 'organizations', ORG_A, 'customers', 'custA')));
     });
   });
 

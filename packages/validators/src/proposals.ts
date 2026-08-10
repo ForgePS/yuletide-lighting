@@ -104,6 +104,8 @@ export const createProposal360Schema = z.object({
   installDate: z.coerce.date().optional().nullable(),
   removalDate: z.coerce.date().optional().nullable(),
   termsAndConditions: z.string().max(20000).optional().or(z.literal('')),
+  /** When true, package pricing drives the proposal total (line items ignored for totals). */
+  preferPackages: z.boolean().default(true),
   packages: z.array(proposalPackageSchema).optional(),
   templateId: z.string().optional(),
 });

@@ -454,7 +454,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="layout-wrapper flex min-h-screen app-canvas">
       <aside
         className={cn(
-          'layout-menu menu-vertical hidden shrink-0 flex-col border-r bg-sidebar lg:flex',
+          'layout-menu menu-vertical sticky top-0 hidden h-screen shrink-0 flex-col border-r bg-sidebar shadow-sneat lg:flex',
           customChrome ? 'border-transparent' : 'border-sidebar-border',
         )}
         style={sidebarStyle}
@@ -465,13 +465,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-[#233446]/45 backdrop-blur-[1px]"
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
           />
           <aside
             className={cn(
-              'layout-menu relative flex h-full max-w-[85vw] flex-col border-r bg-sidebar shadow-2xl',
+              'layout-menu relative flex h-full max-w-[85vw] flex-col border-r bg-sidebar shadow-sneat-lg',
               customChrome ? 'border-transparent' : 'border-sidebar-border',
             )}
             style={sidebarStyle}
@@ -506,7 +506,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           ) : null}
-          <div className="app-topbar hidden items-center justify-between gap-3 px-4 sm:px-6 lg:flex lg:px-6">
+          <nav className="app-topbar layout-navbar sticky top-0 z-20 hidden items-center justify-between gap-3 px-4 sm:px-6 lg:flex lg:px-6">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               {yearFilterVisible ? (
                 <>
@@ -520,10 +520,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-3">
               {yearFilterVisible ? <AnalyticsYearFilter /> : null}
               <div className="hidden items-center gap-2 border-l border-border pl-3 text-sm text-muted-foreground xl:flex">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                  {(user?.email?.[0] ?? 'U').toUpperCase()}
+                </span>
                 <span className="max-w-[180px] truncate">{user?.email}</span>
               </div>
             </div>
-          </div>
+          </nav>
           {yearFilterVisible && (
             <div className="app-topbar flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 lg:hidden sm:px-6">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -533,7 +536,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <AnalyticsYearFilter />
             </div>
           )}
-          <div className="content-wrapper p-4 sm:p-6">
+          <div className="content-wrapper container-p-y mx-auto w-full max-w-[1400px] p-4 sm:p-6">
             {billingError ? (
               <ErrorState
                 title="Could not verify subscription"

@@ -44,8 +44,12 @@ export const proposals360Router = router({
   analytics: officeProcedure.query(({ ctx }) => getProposalAnalytics(ctx.auth.organizationId)),
 
   create: officeProcedure.input(createProposal360Schema).mutation(async ({ ctx, input }) => {
-    const { packages, templateId: _t, ...rest } = input;
-    return createProposal360(ctx.auth.organizationId, { ...rest, packages } as never, ctx.auth.userId);
+  const { packages, templateId: _t, preferPackages, ...rest } = input;
+  return createProposal360(
+    ctx.auth.organizationId,
+    { ...rest, packages, preferPackages } as never,
+    ctx.auth.userId,
+  );
   }),
 
   update: officeProcedure

@@ -339,8 +339,10 @@ export async function createProposal360(
         | 'grossMarginPercent'
       >
     >;
-    /** Manual total. Used when no line items; line items always win. */
+    /** Manual total. Used when no line items and preferPackages is false. */
     subtotalCents?: number;
+    /** When true (default), selected package total wins over line items. */
+    preferPackages?: boolean;
   },
   userId?: string | null,
 ) {
@@ -360,13 +362,17 @@ export async function createProposal360(
   const season = input.season ?? String(seasonSettings.seasonYear);
 
   const pricing = input.pricing ?? DEFAULT_PRICING;
-  const lineItems = (input.lineItems ?? []).map((li) =>
-    stripUndefinedDeep({ ...li, id: li.id ?? nanoid() }),
-  );
+  const preferPackages = input.preferPackages !== false;
+  const lineItems = preferPackages
+    ? []
+    : (input.lineItems ?? []).map((li) =>
+        stripUndefinedDeep({ ...li, id: li.id ?? nanoid() }),
+      );
   const calc = calculatePricingFromComponents(pricing);
-  const hasManualTotal = typeof input.subtotalCents === 'number';
-  const subtotalCents =
-    lineItems.length > 0
+  const hasManualTotal = !preferPackages && typeof input.subtotalCents === 'number';
+  const subtotalCents = preferPackages
+    ? calc.salesPriceCents
+    : lineItems.length > 0
       ? lineItems.reduce((s, i) => s + i.quantity * i.unitPriceCents, 0)
       : hasManualTotal
         ? input.subtotalCents!
@@ -469,9 +475,12 @@ export async function createProposal360(
   const recommended = createdPackages.find((p) => p.isRecommended) ?? createdPackages[1];
   if (recommended) {
     const packagePatch: Record<string, unknown> = { selectedPackageId: recommended.id };
-    // Keep line-item or manually typed totals; only sync package price when neither was set.
-    if (lineItems.length === 0 && !hasManualTotal) {
+    // Packages supersede line items / manual totals whenever preferPackages is on.
+    if (preferPackages || (lineItems.length === 0 && !hasManualTotal)) {
       packagePatch.subtotalCents = recommended.subtotalCents;
+      packagePatch.depositAmountCents = Math.round(
+        recommended.subtotalCents * (depositPercent / 100),
+      );
     }
     await colUpdate(orgId, 'proposals', proposal.id, packagePatch);
   }

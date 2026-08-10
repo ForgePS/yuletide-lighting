@@ -122,8 +122,8 @@ function NavItemLink({
             : 'sidebar-nav-item-idle',
       )}
     >
-      <Icon className={cn('h-4 w-4 shrink-0', active && !customChrome && 'text-primary')} />
-      {item.label}
+      <Icon className={cn('h-[1.375rem] w-[1.375rem] shrink-0', active && !customChrome && 'text-current')} />
+      <span className="truncate">{item.label}</span>
     </Link>
   );
 }
@@ -362,7 +362,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <div
         className={cn(
-          'flex border-b p-4',
+          'app-brand flex min-h-[4.25rem] items-center border-b px-5',
           logoJustify,
           customChrome ? 'border-white/10' : 'border-sidebar-border',
         )}
@@ -375,7 +375,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           imageStyle={{ height: logoSizePx, width: 'auto' }}
         />
       </div>
-      <nav className="flex-1 overflow-y-auto p-3">
+      <nav className="flex-1 overflow-y-auto py-3">
         <SectionedNav
           pathname={pathname}
           items={visibleNav}
@@ -396,7 +396,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href="/creator/website"
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'mb-2 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-wide',
+                'mb-2 flex items-center gap-2 rounded-[var(--radius)] px-3 py-2 text-xs font-semibold uppercase tracking-wide',
                 customChrome
                   ? 'bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
                   : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
@@ -409,7 +409,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href="/creator"
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-wide',
+                'mb-3 flex items-center gap-2 rounded-[var(--radius)] px-3 py-2 text-xs font-semibold uppercase tracking-wide',
                 customChrome
                   ? 'bg-white/10 text-white hover:bg-white/15'
                   : 'bg-muted text-sidebar-foreground hover:bg-muted/80',
@@ -421,7 +421,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
         <div
           className={cn(
-            'rounded-xl p-3',
+            'rounded-[var(--radius)] p-3',
             customChrome ? 'bg-white/5' : 'bg-muted/70',
           )}
         >
@@ -451,10 +451,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-screen app-canvas">
+    <div className="layout-wrapper flex min-h-screen app-canvas">
       <aside
         className={cn(
-          'hidden w-64 shrink-0 flex-col border-r bg-sidebar lg:flex',
+          'layout-menu menu-vertical hidden shrink-0 flex-col border-r bg-sidebar lg:flex',
           customChrome ? 'border-transparent' : 'border-sidebar-border',
         )}
         style={sidebarStyle}
@@ -471,7 +471,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
           <aside
             className={cn(
-              'relative flex h-full w-72 max-w-[85vw] flex-col border-r bg-sidebar shadow-2xl',
+              'layout-menu relative flex h-full max-w-[85vw] flex-col border-r bg-sidebar shadow-2xl',
               customChrome ? 'border-transparent' : 'border-sidebar-border',
             )}
             style={sidebarStyle}
@@ -481,18 +481,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="app-topbar flex items-center gap-3 px-4 py-2.5 lg:hidden">
+      <div className="layout-page flex min-w-0 flex-1 flex-col">
+        <header className="app-topbar flex items-center gap-3 px-4 lg:hidden">
           <button
             onClick={() => setMobileOpen(true)}
-            className="btn-ghost rounded-lg p-2"
+            className="btn-ghost rounded-[var(--radius)] p-2"
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
           <SidebarLogo href="/app" imageClassName="h-9" />
           {mobileOpen && (
-            <button onClick={() => setMobileOpen(false)} className="ml-auto btn-ghost rounded-lg p-2">
+            <button onClick={() => setMobileOpen(false)} className="ml-auto btn-ghost rounded-[var(--radius)] p-2">
               <X className="h-5 w-5" />
             </button>
           )}
@@ -506,7 +506,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           ) : null}
-          <div className="app-topbar hidden items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:flex lg:px-8">
+          <div className="app-topbar hidden items-center justify-between gap-3 px-4 sm:px-6 lg:flex lg:px-6">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               {yearFilterVisible ? (
                 <>
@@ -533,7 +533,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <AnalyticsYearFilter />
             </div>
           )}
-          <div className="p-4 sm:p-6 lg:p-8">
+          <div className="content-wrapper p-4 sm:p-6">
             {billingError ? (
               <ErrorState
                 title="Could not verify subscription"

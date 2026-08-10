@@ -36,8 +36,10 @@ module.exports = {
         '2xl': 'calc(var(--radius) + 8px)',
       },
       boxShadow: {
-        soft: '0 1px 3px rgb(0 0 0 / 0.04), 0 6px 16px -4px rgb(0 0 0 / 0.06)',
+        soft: '0 0.125rem 0.25rem rgba(161, 172, 184, 0.4)',
         glow: '0 0 40px -8px hsl(var(--primary) / 0.35)',
+        sneat: '0 0.125rem 0.25rem rgba(161, 172, 184, 0.4)',
+        'sneat-lg': '0 0.25rem 1rem rgba(161, 172, 184, 0.45)',
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],

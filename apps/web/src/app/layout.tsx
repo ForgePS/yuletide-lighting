@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from 'next';
-import { DM_Sans } from 'next/font/google';
+import { Public_Sans } from 'next/font/google';
 import { FirebaseAuthProvider } from '@/lib/firebase-auth';
 import './globals.css';
 
-const dmSans = DM_Sans({
+const publicSans = Public_Sans({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
+  weight: ['300', '400', '500', '600', '700'],
 });
 
 export const viewport: Viewport = {
@@ -14,7 +15,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: 'cover',
-  themeColor: '#DC2626',
+  themeColor: '#696cff',
 };
 
 export const metadata: Metadata = {
@@ -35,7 +36,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={dmSans.variable} suppressHydrationWarning>
+    <html lang="en" className={publicSans.variable} suppressHydrationWarning>
       <body className="font-sans" suppressHydrationWarning>
         <FirebaseAuthProvider>{children}</FirebaseAuthProvider>
       </body>

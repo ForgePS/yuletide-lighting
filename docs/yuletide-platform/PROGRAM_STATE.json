@@ -1,0 +1,35 @@
+{
+  "program": "YULETIDE-FIREBASE-SAAS",
+  "currentAuthorizedSprint": "YL-S0",
+  "lastCompletedSprint": "YL-S0",
+  "status": "ACTIVE",
+  "automaticSprintAdvance": false,
+  "productionAuthorized": false,
+  "firebaseProductionWritesAuthorized": false,
+  "firebaseProductionDeployAuthorized": false,
+  "baselineEstablished": true,
+  "worktree": "C:\\Users\\jerem\\Projects\\christmas-light-crm-s8-go-live",
+  "branch": "feat/sneat-theme-tailwind",
+  "lastCommit": null,
+  "verification": {
+    "unit": "PASS 224/224",
+    "firestoreRules": "PASS 10/10",
+    "storageRules": "NOT_RUN",
+    "integration": "NOT_RUN",
+    "lint": "NOT_RUN",
+    "typecheck": "NOT_RUN",
+    "build": "NOT_RUN"
+  },
+  "knownBlockers": [],
+  "deferredItems": [
+    "YL-BACKLOG-001 Sneat theme",
+    "YL-BACKLOG-002 Per-proposal package editor hydrate/persist",
+    "YL-BACKLOG-003 Proposal dashboard null statusClass",
+    "YL-BACKLOG-004 Portal HASH_ONLY production cutover",
+    "YL-BACKLOG-005 Production cross-org probe",
+    "YL-BACKLOG-006 Full lifecycle smoke",
+    "YL-BACKLOG-007 Dual role/path models",
+    "YL-BACKLOG-008 packages/db legacy",
+    "YL-BACKLOG-009 Node 20 Functions deprecation"
+  ]
+}

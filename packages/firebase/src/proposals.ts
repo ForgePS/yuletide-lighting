@@ -947,19 +947,54 @@ export async function getProposalAnalytics(orgId: string): Promise<ProposalAnaly
   const countBy = (statuses: ProposalStatus[]) =>
     proposals.filter((p) => statuses.includes(p.status)).length;
 
+  const cents = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const asDate = (value: unknown): Date | null => {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    if (value && typeof value === 'object' && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+      try {
+        const d = (value as { toDate: () => Date }).toDate();
+        return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+      } catch {
+        return null;
+      }
+    }
+    if (typeof value === 'string' || typeof value === 'number') {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (value && typeof value === 'object') {
+      const o = value as { seconds?: number; _seconds?: number };
+      const seconds = typeof o.seconds === 'number' ? o.seconds : typeof o._seconds === 'number' ? o._seconds : null;
+      if (seconds != null) {
+        const d = new Date(seconds * 1000);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+    }
+    return null;
+  };
+
   const approved = proposals.filter((p) =>
     ['approved', 'deposit_paid', 'scheduled'].includes(p.status),
   );
   const rejected = proposals.filter((p) => p.status === 'rejected');
   const sent = proposals.filter((p) => !['draft', 'internal_review'].includes(p.status));
 
-  const revenueWonCents = approved.reduce((s, p) => s + p.subtotalCents, 0);
-  const revenueLostCents = rejected.reduce((s, p) => s + p.subtotalCents, 0);
-  const totalProposalRevenueCents = proposals.reduce((s, p) => s + p.subtotalCents, 0);
+  const revenueWonCents = approved.reduce((s, p) => s + cents(p.subtotalCents), 0);
+  const revenueLostCents = rejected.reduce((s, p) => s + cents(p.subtotalCents), 0);
+  const totalProposalRevenueCents = proposals.reduce((s, p) => s + cents(p.subtotalCents), 0);
 
   const closeTimes = approved
-    .filter((p) => p.sentAt && p.acceptedAt)
-    .map((p) => (new Date(p.acceptedAt!).getTime() - new Date(p.sentAt!).getTime()) / 86400000);
+    .map((p) => {
+      const accepted = asDate(p.acceptedAt);
+      const sentAt = asDate(p.sentAt);
+      if (!accepted || !sentAt) return null;
+      return (accepted.getTime() - sentAt.getTime()) / 86400000;
+    })
+    .filter((n): n is number => n != null && Number.isFinite(n));
   const averageCloseTimeDays = closeTimes.length
     ? Math.round(closeTimes.reduce((a, b) => a + b, 0) / closeTimes.length)
     : 0;
@@ -968,7 +1003,7 @@ export async function getProposalAnalytics(orgId: string): Promise<ProposalAnaly
   for (const p of approved) {
     const name = p.salespersonName ?? 'Unassigned';
     const cur = salesMap.get(name) ?? { won: 0, revenueCents: 0 };
-    salesMap.set(name, { won: cur.won + 1, revenueCents: cur.revenueCents + p.subtotalCents });
+    salesMap.set(name, { won: cur.won + 1, revenueCents: cur.revenueCents + cents(p.subtotalCents) });
   }
   const salespersonPerformance = [...salesMap.entries()]
     .map(([name, v]) => ({ name, ...v }))
@@ -976,10 +1011,11 @@ export async function getProposalAnalytics(orgId: string): Promise<ProposalAnaly
 
   const monthlyMap = new Map<string, { revenueCents: number; count: number }>();
   for (const p of approved) {
-    const d = p.acceptedAt ?? p.createdAt;
+    const d = asDate(p.acceptedAt) ?? asDate(p.createdAt);
+    if (!d) continue;
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const cur = monthlyMap.get(key) ?? { revenueCents: 0, count: 0 };
-    monthlyMap.set(key, { revenueCents: cur.revenueCents + p.subtotalCents, count: cur.count + 1 });
+    monthlyMap.set(key, { revenueCents: cur.revenueCents + cents(p.subtotalCents), count: cur.count + 1 });
   }
 
   const funnel = PROPOSAL_PIPELINE_STATUSES.map((stage) => ({

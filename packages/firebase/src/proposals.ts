@@ -15,7 +15,7 @@ import type {
   ProposalView,
   UpsellSuggestion,
 } from '@clcrm/types';
-import { normalizeProposalStatus, PROPOSAL_PIPELINE_STATUSES } from '@clcrm/types';
+import { normalizeProposalStatus, PROPOSAL_PIPELINE_STATUSES, normalizeProposalPackageDefaults } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData, stripUndefinedDeep } from './firestore-utils';
 import {
@@ -406,43 +406,54 @@ export async function createProposal360(
     upsellPotentialCents: upsells.totalPotentialCents,
   });
 
+  const packageDefaults = normalizeProposalPackageDefaults(proposalSettings.packageDefaults);
   const packages = input.packages?.length
     ? input.packages
     : [
         {
           tier: 'basic' as PackageTier,
-          name: 'Basic',
-          label: 'Package A — Basic',
+          name: packageDefaults.good.label,
+          label: packageDefaults.good.label,
+          description: packageDefaults.good.description,
           isRecommended: false,
           lineItems: [],
-          products: [],
+          products: packageDefaults.good.inclusions,
           decorations: [],
           addOns: [],
           pricing,
         },
         {
           tier: 'recommended' as PackageTier,
-          name: 'Recommended',
-          label: 'Package B — Recommended',
+          name: packageDefaults.better.label,
+          label: packageDefaults.better.label,
+          description: packageDefaults.better.description,
           isRecommended: true,
           lineItems: [],
-          products: [],
-          decorations: [],
-          addOns: [],
-          pricing: { ...pricing, linearFootage: pricing.linearFootage * 1.2 },
-        },
-        {
-          tier: 'premium' as PackageTier,
-          name: 'Premium',
-          label: 'Package C — Premium',
-          isRecommended: false,
-          lineItems: [],
-          products: [],
+          products: packageDefaults.better.inclusions,
           decorations: [],
           addOns: [],
           pricing: {
             ...pricing,
-            linearFootage: pricing.linearFootage * 1.5,
+            linearFootage: Math.round(
+              pricing.linearFootage * (1 + packageDefaults.better.markupPercent / 100),
+            ),
+          },
+        },
+        {
+          tier: 'premium' as PackageTier,
+          name: packageDefaults.best.label,
+          label: packageDefaults.best.label,
+          description: packageDefaults.best.description,
+          isRecommended: false,
+          lineItems: [],
+          products: packageDefaults.best.inclusions,
+          decorations: [],
+          addOns: [],
+          pricing: {
+            ...pricing,
+            linearFootage: Math.round(
+              pricing.linearFootage * (1 + packageDefaults.best.markupPercent / 100),
+            ),
             treeWrapCount: pricing.treeWrapCount + 2,
           },
         },

@@ -352,6 +352,13 @@ export function ProposalPackagesDetail({ packages, selectedPackageId }: { packag
               {pkg.description && (
                 <p className="mt-3 text-sm text-muted-foreground">{pkg.description}</p>
               )}
+              {(pkg.products?.length ?? 0) > 0 && (
+                <ul className="mt-3 list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+                  {pkg.products.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              )}
               {pkg.laborDescription && (
                 <p className="mt-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">Labor:</span> {pkg.laborDescription}</p>
               )}

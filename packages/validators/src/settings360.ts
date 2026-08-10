@@ -141,9 +141,24 @@ export const proposalSettingsSchema = z.object({
   defaultTerms: z.string().max(20000).default(''),
   defaultTemplateId: z.string().optional().nullable(),
   packageDefaults: z.object({
-    good: z.object({ label: z.string(), markupPercent: z.number() }),
-    better: z.object({ label: z.string(), markupPercent: z.number() }),
-    best: z.object({ label: z.string(), markupPercent: z.number() }),
+    good: z.object({
+      label: z.string(),
+      markupPercent: z.number(),
+      description: z.string().max(2000).default(''),
+      inclusions: z.array(z.string().max(200)).max(40).default([]),
+    }),
+    better: z.object({
+      label: z.string(),
+      markupPercent: z.number(),
+      description: z.string().max(2000).default(''),
+      inclusions: z.array(z.string().max(200)).max(40).default([]),
+    }),
+    best: z.object({
+      label: z.string(),
+      markupPercent: z.number(),
+      description: z.string().max(2000).default(''),
+      inclusions: z.array(z.string().max(200)).max(40).default([]),
+    }),
   }).optional(),
   layout: proposalLayoutSchema.optional(),
 });

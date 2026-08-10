@@ -29,6 +29,7 @@ import {
   DEFAULT_INTEGRATIONS,
   DEFAULT_INVOICE_LAYOUT,
   DEFAULT_PROPOSAL_LAYOUT,
+  DEFAULT_PROPOSAL_PACKAGE_DEFAULTS,
   DEFAULT_AGREEMENT_TERMS_BODY,
   DEFAULT_AGREEMENT_TERMS_VERSION,
   DEFAULT_SEASON_SETTINGS,
@@ -37,6 +38,7 @@ import {
   mapLegacyRole,
   SUBSCRIPTION_PRICING,
   normalizeLogoReference,
+  normalizeProposalPackageDefaults,
 } from '@clcrm/types';
 import { getAdminFirestore, getAdminAuth, Timestamp } from './admin';
 import { getOrgSubscriptionState } from './billing';
@@ -787,7 +789,11 @@ export async function getProposalSettings(
 ): Promise<ProposalSettings> {
   const existing = await getSettingsDoc<ProposalSettings>(orgId, 'proposals');
   if (existing) {
-    return { ...existing, layout: { ...DEFAULT_PROPOSAL_LAYOUT, ...existing.layout } };
+    return {
+      ...existing,
+      layout: { ...DEFAULT_PROPOSAL_LAYOUT, ...existing.layout },
+      packageDefaults: normalizeProposalPackageDefaults(existing.packageDefaults),
+    };
   }
   const org = await getOrganization(orgId);
   return saveSettingsDoc(
@@ -800,11 +806,7 @@ export async function getProposalSettings(
       defaultDepositPercent: 50,
       defaultTerms: 'Payment due upon acceptance. Installation scheduled upon deposit receipt.',
       defaultTemplateId: null,
-      packageDefaults: {
-        good: { label: 'Good', markupPercent: 15 },
-        better: { label: 'Better', markupPercent: 25 },
-        best: { label: 'Best', markupPercent: 35 },
-      },
+      packageDefaults: DEFAULT_PROPOSAL_PACKAGE_DEFAULTS,
       layout: DEFAULT_PROPOSAL_LAYOUT,
     },
     userId,

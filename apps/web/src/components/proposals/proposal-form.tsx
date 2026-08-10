@@ -410,7 +410,7 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
 
       <Section title="Pricing inputs">
         <p className="mb-4 text-sm text-muted-foreground">
-          Enter measurements to auto-generate Good / Better / Best packages after saving. Category: {labelInstallType(form.installType)}.
+          Enter measurements so Good / Better / Best packages (from Settings / Package library) can price automatically. Optional line items override package totals. Category: {labelInstallType(form.installType)}.
         </p>
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="space-y-1 text-sm">

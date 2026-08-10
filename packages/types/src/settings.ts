@@ -194,6 +194,84 @@ export const DEFAULT_INVOICE_LAYOUT: InvoiceLayoutSettings = {
   paymentInstructions: 'Pay online via the customer portal or mail a check to the address above.',
 };
 
+export type ProposalPackageDefault = {
+  label: string;
+  markupPercent: number;
+  description: string;
+  inclusions: string[];
+};
+
+export type ProposalPackageDefaults = {
+  good: ProposalPackageDefault;
+  better: ProposalPackageDefault;
+  best: ProposalPackageDefault;
+};
+
+export const DEFAULT_PROPOSAL_PACKAGE_DEFAULTS: ProposalPackageDefaults = {
+  good: {
+    label: 'Good',
+    markupPercent: 15,
+    description: 'Essential roofline lighting with professional install and seasonal takedown.',
+    inclusions: [
+      'Roofline LED installation',
+      'Timer setup',
+      'Seasonal takedown',
+      '1-season workmanship warranty',
+    ],
+  },
+  better: {
+    label: 'Better',
+    markupPercent: 25,
+    description: 'Expanded coverage with trees or accents — our most popular package.',
+    inclusions: [
+      'Everything in Good',
+      'Additional accent lighting',
+      'Tree wraps (as scoped)',
+      'Labeled storage after takedown',
+      '2-season workmanship warranty',
+    ],
+  },
+  best: {
+    label: 'Best',
+    markupPercent: 35,
+    description: 'Full-property premium display with priority scheduling and extras.',
+    inclusions: [
+      'Everything in Better',
+      'Premium product mix',
+      'Garland / wreaths (as scoped)',
+      'Priority install window',
+      'Extended warranty options',
+    ],
+  },
+};
+
+export function normalizeProposalPackageDefaults(
+  input?: Partial<ProposalPackageDefaults> | null,
+): ProposalPackageDefaults {
+  const mergeTier = (
+    tier: keyof ProposalPackageDefaults,
+    value?: Partial<ProposalPackageDefault> | null,
+  ): ProposalPackageDefault => {
+    const fallback = DEFAULT_PROPOSAL_PACKAGE_DEFAULTS[tier];
+    return {
+      label: value?.label?.trim() || fallback.label,
+      markupPercent:
+        typeof value?.markupPercent === 'number' && Number.isFinite(value.markupPercent)
+          ? value.markupPercent
+          : fallback.markupPercent,
+      description: typeof value?.description === 'string' ? value.description : fallback.description,
+      inclusions: Array.isArray(value?.inclusions)
+        ? value!.inclusions.map((s) => String(s).trim()).filter(Boolean)
+        : fallback.inclusions,
+    };
+  };
+  return {
+    good: mergeTier('good', input?.good),
+    better: mergeTier('better', input?.better),
+    best: mergeTier('best', input?.best),
+  };
+}
+
 export type ProposalSettings = SettingsAuditFields & {
   organizationId: string;
   numberFormat: string;
@@ -201,11 +279,7 @@ export type ProposalSettings = SettingsAuditFields & {
   defaultDepositPercent: number;
   defaultTerms: string;
   defaultTemplateId?: string | null;
-  packageDefaults: {
-    good: { label: string; markupPercent: number };
-    better: { label: string; markupPercent: number };
-    best: { label: string; markupPercent: number };
-  };
+  packageDefaults: ProposalPackageDefaults;
   layout: ProposalLayoutSettings;
 };
 

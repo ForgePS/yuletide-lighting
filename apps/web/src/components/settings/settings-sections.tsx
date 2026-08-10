@@ -315,9 +315,9 @@ export function ProposalSettingsPage() {
     defaultTerms: '',
     defaultTemplateId: '',
     packageDefaults: {
-      good: { label: 'Good', markupPercent: 15 },
-      better: { label: 'Better', markupPercent: 25 },
-      best: { label: 'Best', markupPercent: 35 },
+      good: { label: 'Good', markupPercent: 15, description: '', inclusions: [] as string[] },
+      better: { label: 'Better', markupPercent: 25, description: '', inclusions: [] as string[] },
+      best: { label: 'Best', markupPercent: 35, description: '', inclusions: [] as string[] },
     },
     layout: {
       style: 'modern' as 'classic' | 'modern' | 'compact',
@@ -338,7 +338,26 @@ export function ProposalSettingsPage() {
         defaultDepositPercent: data.defaultDepositPercent,
         defaultTerms: data.defaultTerms,
         defaultTemplateId: data.defaultTemplateId ?? '',
-        packageDefaults: data.packageDefaults,
+        packageDefaults: {
+          good: {
+            label: data.packageDefaults.good.label,
+            markupPercent: data.packageDefaults.good.markupPercent,
+            description: data.packageDefaults.good.description ?? '',
+            inclusions: data.packageDefaults.good.inclusions ?? [],
+          },
+          better: {
+            label: data.packageDefaults.better.label,
+            markupPercent: data.packageDefaults.better.markupPercent,
+            description: data.packageDefaults.better.description ?? '',
+            inclusions: data.packageDefaults.better.inclusions ?? [],
+          },
+          best: {
+            label: data.packageDefaults.best.label,
+            markupPercent: data.packageDefaults.best.markupPercent,
+            description: data.packageDefaults.best.description ?? '',
+            inclusions: data.packageDefaults.best.inclusions ?? [],
+          },
+        },
         layout: data.layout,
       });
     }
@@ -363,15 +382,83 @@ export function ProposalSettingsPage() {
         <FormField label="Default terms"><textarea className="input mt-4 w-full" rows={4} value={form.defaultTerms} onChange={(e) => setForm({ ...form, defaultTerms: e.target.value })} /></FormField>
       </SettingsSection>
       <SettingsSection title="Package defaults">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <p className="mb-4 text-sm text-muted-foreground">
+          These Good / Better / Best defaults fill new proposals. Customers pick a package; line items are optional overrides.
+        </p>
+        <div className="grid gap-4 lg:grid-cols-3">
           {(['good', 'better', 'best'] as const).map((tier) => (
-            <div key={tier} className="rounded-lg border p-4 space-y-2">
+            <div key={tier} className="space-y-3 rounded-lg border p-4">
               <p className="font-medium capitalize">{tier}</p>
               <FormField label="Label">
-                <input className="input w-full text-sm" value={form.packageDefaults[tier].label} onChange={(e) => setForm({ ...form, packageDefaults: { ...form.packageDefaults, [tier]: { ...form.packageDefaults[tier], label: e.target.value } } })} />
+                <input
+                  className="input w-full text-sm"
+                  value={form.packageDefaults[tier].label}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      packageDefaults: {
+                        ...form.packageDefaults,
+                        [tier]: { ...form.packageDefaults[tier], label: e.target.value },
+                      },
+                    })
+                  }
+                />
               </FormField>
               <FormField label="Markup %">
-                <input className="input w-full text-sm" type="number" value={form.packageDefaults[tier].markupPercent} onChange={(e) => setForm({ ...form, packageDefaults: { ...form.packageDefaults, [tier]: { ...form.packageDefaults[tier], markupPercent: Number(e.target.value) } } })} />
+                <input
+                  className="input w-full text-sm"
+                  type="number"
+                  value={form.packageDefaults[tier].markupPercent}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      packageDefaults: {
+                        ...form.packageDefaults,
+                        [tier]: { ...form.packageDefaults[tier], markupPercent: Number(e.target.value) },
+                      },
+                    })
+                  }
+                />
+              </FormField>
+              <FormField label="Description">
+                <textarea
+                  className="input w-full text-sm"
+                  rows={3}
+                  value={form.packageDefaults[tier].description}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      packageDefaults: {
+                        ...form.packageDefaults,
+                        [tier]: { ...form.packageDefaults[tier], description: e.target.value },
+                      },
+                    })
+                  }
+                  placeholder="What this package is for the customer"
+                />
+              </FormField>
+              <FormField label="What's included (one per line)">
+                <textarea
+                  className="input w-full text-sm"
+                  rows={5}
+                  value={form.packageDefaults[tier].inclusions.join('\n')}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      packageDefaults: {
+                        ...form.packageDefaults,
+                        [tier]: {
+                          ...form.packageDefaults[tier],
+                          inclusions: e.target.value
+                            .split('\n')
+                            .map((line) => line.trim())
+                            .filter(Boolean),
+                        },
+                      },
+                    })
+                  }
+                  placeholder={'Roofline LED installation\nTimer setup\nSeasonal takedown'}
+                />
               </FormField>
             </div>
           ))}

@@ -122,15 +122,3 @@ export function ProposalTemplatesPage() {
     </div>
   );
 }
-
-export function ProposalPackagesPage() {
-  return (
-    <div className="card p-6">
-      <h2 className="font-semibold">Good / Better / Best packages</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Packages are created automatically per proposal during the creation wizard. Open any proposal to view and compare Package A (Basic), Package B (Recommended), and Package C (Premium).
-      </p>
-      <p className="mt-4 text-sm">Each package includes products, decorations, labor, add-ons, warranty, and margin calculations from the dynamic pricing engine.</p>
-    </div>
-  );
-}

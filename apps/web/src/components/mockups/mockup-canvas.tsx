@@ -35,6 +35,12 @@ export function MockupCanvas({
   const [selectedColor, setSelectedColor] = useState('#FFD700');
   const [drawMode, setDrawMode] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
+  const [visibleLayerTypes, setVisibleLayerTypes] = useState<Record<string, boolean>>({
+    lighting: true,
+    trees: true,
+    decorations: true,
+    commercial: true,
+  });
 
   useEffect(() => {
     const el = containerRef.current;
@@ -67,7 +73,11 @@ export function MockupCanvas({
 
   function renderBulbs(strand: MockupStrand) {
     if (strand.points.length < 2) return null;
+    const layerType = strand.layerType ?? 'lighting';
+    if (!visibleLayerTypes[layerType]) return null;
     const bulbs = [];
+    const glow = layerType === 'commercial' ? 10 : layerType === 'decorations' ? 8 : 6;
+    const radiusBoost = layerType === 'commercial' ? 1.8 : layerType === 'decorations' ? 1.3 : 1;
     for (let i = 0; i < strand.points.length - 1; i++) {
       const p1 = strand.points[i]!;
       const p2 = strand.points[i + 1]!;
@@ -82,9 +92,9 @@ export function MockupCanvas({
             key={`${strand.id}-${i}-${j}`}
             x={p1.x + dx * t}
             y={p1.y + dy * t}
-            radius={strand.bulbSize / 2}
+            radius={(strand.bulbSize / 2) * radiusBoost}
             fill={strand.color}
-            shadowBlur={6}
+            shadowBlur={glow}
             shadowColor={strand.color}
           />,
         );
@@ -92,6 +102,8 @@ export function MockupCanvas({
     }
     return bulbs;
   }
+
+  const visibleStrands = strands.filter((strand) => visibleLayerTypes[strand.layerType ?? 'lighting']);
 
   return (
     <div className="space-y-4">
@@ -108,6 +120,19 @@ export function MockupCanvas({
       />
 
       <div>
+        <p className="mb-2 text-sm font-medium">Layer visibility</p>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {(['lighting', 'trees', 'decorations', 'commercial'] as const).map((layerType) => (
+            <button
+              key={layerType}
+              type="button"
+              className={visibleLayerTypes[layerType] ? 'btn-primary text-xs capitalize' : 'btn-secondary text-xs capitalize'}
+              onClick={() => setVisibleLayerTypes((prev) => ({ ...prev, [layerType]: !prev[layerType] }))}
+            >
+              {layerType}
+            </button>
+          ))}
+        </div>
         <label className="text-sm font-medium">Photo brightness</label>
         <input
           type="range"
@@ -136,10 +161,17 @@ export function MockupCanvas({
           style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
         >
           <Layer>
-            {strands.map((strand) => (
-              <Line key={strand.id} points={strand.points.flatMap((p) => [p.x, p.y])} stroke="transparent" />
+            {visibleStrands.map((strand) => (
+              <Line
+                key={strand.id}
+                points={strand.points.flatMap((p) => [p.x, p.y])}
+                stroke={strand.color}
+                strokeWidth={strand.layerType === 'commercial' ? 3 : strand.layerType === 'decorations' ? 2.5 : 1.5}
+                dash={strand.layerType === 'decorations' ? [6, 4] : undefined}
+                opacity={0.35}
+              />
             ))}
-            {strands.flatMap(renderBulbs)}
+            {visibleStrands.flatMap(renderBulbs)}
             {currentPoints.length === 1 && currentPoints[0] && (
               <Circle x={currentPoints[0].x} y={currentPoints[0].y} radius={4} fill="white" />
             )}

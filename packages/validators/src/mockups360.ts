@@ -20,6 +20,7 @@ export const mockupStrand360Schema = z.object({
   spacing: z.number().default(12),
   brightness: z.number().min(0).max(1).default(1),
   layerId: z.string().optional(),
+  layerType: layerTypeSchema.optional(),
 });
 
 export const createMockup360Schema = z.object({

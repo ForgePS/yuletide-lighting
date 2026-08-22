@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency } from '@/lib/inventory-utils';
+import { formatInventoryLabel } from '@clcrm/types';
 import { LoadingState } from '@/components/ui/states';
 import { BarcodeScannerPanel } from './warehouse-map';
 
@@ -57,7 +58,7 @@ export function InventoryLocationsHub() {
               {data?.map((loc) => (
                 <tr key={loc.locationKey}>
                   <td className="font-medium">{loc.label}</td>
-                  <td className="capitalize text-muted-foreground">{loc.locationType.replace(/_/g, ' ')}</td>
+                  <td className="capitalize text-muted-foreground">{formatInventoryLabel(loc.locationType)}</td>
                   <td>{loc.itemCount}</td>
                   <td>{loc.totalQuantity}</td>
                   <td>{formatCurrency(loc.totalValueCents)}</td>

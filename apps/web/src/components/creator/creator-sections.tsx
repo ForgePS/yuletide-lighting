@@ -5,12 +5,21 @@ import { formatCurrency } from '@clcrm/ui';
 import { trpc } from '@/lib/trpc';
 import { SubscriptionControlPanel } from './subscription-control-panel';
 import { statusBadgeClass } from './creator-ui';
+import { ErrorState } from '@/components/ui/states';
 
 export function CreatorOrganizationDetailPage({ orgId }: { orgId: string }) {
   const router = useRouter();
-  const { data, isLoading, refetch } = trpc.creator360.organizations.get.useQuery({ organizationId: orgId });
+  const { data, isLoading, isError, error, refetch } = trpc.creator360.organizations.get.useQuery({ organizationId: orgId });
 
-  if (isLoading || !data) return <div className="card h-64 animate-pulse bg-muted/50" />;
+  if (isLoading) return <div className="card h-64 animate-pulse bg-muted/50" />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load this organization.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

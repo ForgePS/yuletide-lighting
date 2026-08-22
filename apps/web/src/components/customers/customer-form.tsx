@@ -35,6 +35,7 @@ export type CustomerFormValues = CustomerAddressFormState & {
   mailingCity: string;
   mailingState: string;
   mailingPostalCode: string;
+  customFields: Record<string, string | number | boolean>;
 };
 
 export const emptyCustomerForm: CustomerFormValues = {
@@ -57,6 +58,7 @@ export const emptyCustomerForm: CustomerFormValues = {
   mailingCity: '',
   mailingState: '',
   mailingPostalCode: '',
+  customFields: {},
   ...emptyCustomerAddressForm,
 };
 
@@ -72,6 +74,10 @@ export function CustomerForm({ mode, customerId, initial }: CustomerFormProps) {
   const [form, setForm] = useState<CustomerFormValues>({ ...emptyCustomerForm, ...initial });
   const createMutation = trpc.customer360.create.useMutation();
   const updateMutation = trpc.customer360.update.useMutation();
+  const { data: uiConfig } = trpc.crmUiConfig.get.useQuery();
+  const customFieldDefs = (uiConfig?.customFields ?? []).filter(
+    (f) => f.enabled && f.entity === 'customer',
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -147,6 +153,98 @@ export function CustomerForm({ mode, customerId, initial }: CustomerFormProps) {
 
       <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="input min-h-[100px] resize-y" rows={4} />
 
+      {customFieldDefs.length > 0 ? (
+        <fieldset className="space-y-4">
+          <legend className="text-sm font-semibold">Custom fields</legend>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {customFieldDefs
+              .slice()
+              .sort((a, b) => a.order - b.order)
+              .map((field) => {
+                const value = form.customFields[field.key];
+                if (field.type === 'checkbox') {
+                  return (
+                    <label key={field.id} className="flex items-center gap-2 text-sm sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(value)}
+                        required={field.required}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            customFields: { ...form.customFields, [field.key]: e.target.checked },
+                          })
+                        }
+                      />
+                      {field.label}
+                    </label>
+                  );
+                }
+                if (field.type === 'select') {
+                  return (
+                    <select
+                      key={field.id}
+                      className="input"
+                      required={field.required}
+                      value={String(value ?? '')}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          customFields: { ...form.customFields, [field.key]: e.target.value },
+                        })
+                      }
+                    >
+                      <option value="">{field.label}</option>
+                      {(field.options ?? []).map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                }
+                if (field.type === 'textarea') {
+                  return (
+                    <textarea
+                      key={field.id}
+                      className="input min-h-[80px] sm:col-span-2"
+                      placeholder={field.label}
+                      required={field.required}
+                      value={String(value ?? '')}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          customFields: { ...form.customFields, [field.key]: e.target.value },
+                        })
+                      }
+                    />
+                  );
+                }
+                return (
+                  <input
+                    key={field.id}
+                    className="input"
+                    type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                    placeholder={field.label}
+                    required={field.required}
+                    value={String(value ?? '')}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        customFields: {
+                          ...form.customFields,
+                          [field.key]:
+                            field.type === 'number' ? Number(e.target.value) : e.target.value,
+                        },
+                      })
+                    }
+                  />
+                );
+              })}
+          </div>
+        </fieldset>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         <button type="submit" className="btn-primary" disabled={pending}>
           {pending ? 'Saving...' : mode === 'create' ? 'Create customer' : 'Save changes'}
@@ -193,5 +291,6 @@ export function customerToFormValues(customer: Record<string, unknown>, primary?
     state: String(primary?.state ?? ''),
     postalCode: String(primary?.postalCode ?? ''),
     gateCodesInstructions: String(primary?.installNotes ?? primary?.gateCode ?? primary?.accessInstructions ?? ''),
+    customFields: (customer.customFields as Record<string, string | number | boolean>) ?? {},
   };
 }

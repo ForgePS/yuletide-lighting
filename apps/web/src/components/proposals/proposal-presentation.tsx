@@ -3,12 +3,20 @@
 import { useParams } from 'next/navigation';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, labelProposalStatus } from '@/lib/proposal-utils';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 
 export function ProposalPresentationMode() {
   const proposalId = useParams().proposalId as string;
-  const { data, isLoading } = trpc.proposals360.getById.useQuery({ proposalId });
-  if (isLoading || !data) return <LoadingState message="Loading presentation..." />;
+  const { data, isLoading, isError, error, refetch } = trpc.proposals360.getById.useQuery({ proposalId });
+  if (isLoading) return <LoadingState message="Loading presentation..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load this proposal.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   const recommended = data.packages?.find((p) => p.isRecommended) ?? data.packages?.[0];
 

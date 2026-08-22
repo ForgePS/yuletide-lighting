@@ -1,18 +1,22 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { trpc } from '@/lib/trpc';
+import { canMarkJobInstalled, canReserveJobInventory, canScheduleJob } from '@clcrm/types';
 import { formatCurrency, formatDate, formatStage } from '@clcrm/ui';
 import { LoadingState } from '@/components/ui/states';
 import { MaterialRequirementsPanel } from './material-requirements-panel';
 import { WeatherRiskBadge } from './weather-risk-badge';
+import { ScheduleJobModal } from './schedule-job-modal';
 
 export function JobDetail({ jobId }: { jobId: string }) {
   const { data, isLoading, refetch } = trpc.jobs.getById.useQuery({ jobId });
   const reserveInventory = trpc.jobs.reserveInventory.useMutation({ onSuccess: () => refetch() });
   const completeInstall = trpc.jobs.completeInstall.useMutation({ onSuccess: () => refetch() });
   const markRemoval = trpc.jobs.markRemovalComplete.useMutation({ onSuccess: () => refetch() });
+  const [scheduling, setScheduling] = useState(false);
 
   if (isLoading) return <LoadingState message="Loading job..." />;
   if (!data) return <p className="text-muted-foreground">Job not found.</p>;
@@ -30,12 +34,17 @@ export function JobDetail({ jobId }: { jobId: string }) {
           <p className="text-muted-foreground capitalize">{formatStage(job.stage)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {job.stage === 'accepted_proposal' && (
+          {canReserveJobInventory(job.stage) && (
             <button type="button" className="btn-secondary text-sm" onClick={() => reserveInventory.mutate({ jobId })}>
               Reserve inventory
             </button>
           )}
-          {job.stage === 'scheduled' && (
+          {canScheduleJob(job.stage) && (
+            <button type="button" className="btn-secondary text-sm" onClick={() => setScheduling(true)}>
+              Schedule
+            </button>
+          )}
+          {canMarkJobInstalled(job.stage) && (
             <button type="button" className="btn-primary text-sm" onClick={() => completeInstall.mutate({ jobId })}>
               Mark installed
             </button>
@@ -52,6 +61,15 @@ export function JobDetail({ jobId }: { jobId: string }) {
           )}
         </div>
       </div>
+
+      {scheduling && (
+        <ScheduleJobModal
+          jobId={jobId}
+          jobTitle={job.title}
+          onClose={() => setScheduling(false)}
+          onScheduled={() => refetch()}
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card space-y-3 p-4">
@@ -142,6 +160,61 @@ export function JobDetail({ jobId }: { jobId: string }) {
       )}
 
       <MaterialRequirementsPanel materials={materials} />
+
+      <JobCostingPanel jobId={jobId} />
+    </div>
+  );
+}
+
+function JobCostingPanel({ jobId }: { jobId: string }) {
+  const { data, isLoading, isError } = trpc.jobs.costing.useQuery({ jobId });
+
+  if (isLoading) {
+    return (
+      <div className="card p-4">
+        <h2 className="font-semibold">Job costing</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Loading costing…</p>
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="card p-4">
+        <h2 className="font-semibold">Job costing</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Costing unavailable.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card space-y-3 p-4">
+      <h2 className="font-semibold">Job costing</h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <p className="text-xs text-muted-foreground">Revenue</p>
+          <p className="text-sm font-medium">{formatCurrency(data.revenueCents)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Labor cost</p>
+          <p className="text-sm font-medium">{formatCurrency(data.laborCostCents)}</p>
+          <p className="text-xs text-muted-foreground">{data.actualLaborHours.toFixed(1)} hrs</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Material cost</p>
+          <p className="text-sm font-medium">{formatCurrency(data.materialCostCents)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Gross profit</p>
+          <p className="text-sm font-medium">{formatCurrency(data.grossProfitCents)}</p>
+          <p className="text-xs text-muted-foreground">{data.marginPercent}% margin</p>
+        </div>
+      </div>
+      {data.estimatedLaborCostCents != null && data.estimatedLaborCostCents > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Estimated labor (proposal): {formatCurrency(data.estimatedLaborCostCents)}
+        </p>
+      )}
     </div>
   );
 }

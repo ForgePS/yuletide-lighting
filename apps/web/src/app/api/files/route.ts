@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAuthContext } from '@/lib/auth';
+import { isSafeOrgStoragePath } from '@clcrm/types';
 import { readStorageFile } from '@yuletide/firebase';
 
 export async function GET(req: NextRequest) {
@@ -7,7 +8,7 @@ export async function GET(req: NextRequest) {
   if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const path = req.nextUrl.searchParams.get('path');
-  if (!path || !path.startsWith(`organizations/${ctx.organizationId}/`)) {
+  if (!path || !isSafeOrgStoragePath(ctx.organizationId, path)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

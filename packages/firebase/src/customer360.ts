@@ -16,14 +16,16 @@ import type {
   HealthRating,
   InstallComplexity,
   JobRecord,
+  JobType,
   Property,
   PropertyListEntry,
   PropertyProfileType,
   StorageInventoryItem,
 } from '@clcrm/types';
+import { mapCrmJobStatusToOrgStage, mapOrgJobStageToCrmStatus } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import type { CustomerRecord, PropertyRecord } from './firestore';
-import { getCustomer, updateCustomer } from './firestore';
+import { getCustomer, updateCustomer, colUpdate, colDelete } from './firestore';
 import { mapTimestampsFromData } from './firestore-utils';
 
 function ts() {
@@ -38,13 +40,26 @@ function subPath(orgId: string, customerId: string, sub: string) {
   return `${customerBase(orgId, customerId)}/${sub}`;
 }
 
-async function subList<T>(orgId: string, customerId: string, sub: string, orderField = 'createdAt'): Promise<T[]> {
+async function subList<T>(
+  orgId: string,
+  customerId: string,
+  sub: string,
+  orderField = 'createdAt',
+): Promise<T[]> {
   const db = getAdminFirestore();
-  const snap = await db.collection(subPath(orgId, customerId, sub)).orderBy(orderField, 'desc').get();
+  const snap = await db
+    .collection(subPath(orgId, customerId, sub))
+    .orderBy(orderField, 'desc')
+    .get();
   return snap.docs.map((d) => mapTimestampsFromData({ id: d.id, ...d.data()! }) as T);
 }
 
-async function subGet<T>(orgId: string, customerId: string, sub: string, id: string): Promise<T | null> {
+async function subGet<T>(
+  orgId: string,
+  customerId: string,
+  sub: string,
+  id: string,
+): Promise<T | null> {
   const db = getAdminFirestore();
   const snap = await db.doc(`${subPath(orgId, customerId, sub)}/${id}`).get();
   if (!snap.exists) return null;
@@ -132,15 +147,22 @@ async function getInvoiceRevenueSummaries(
   if (customerIdSet && customerIds!.length > 0) {
     for (let i = 0; i < customerIds!.length; i += 10) {
       const chunk = customerIds!.slice(i, i + 10);
-      const snap = await db.collection(`organizations/${orgId}/invoices`).where('customerId', 'in', chunk).get();
+      const snap = await db
+        .collection(`organizations/${orgId}/invoices`)
+        .where('customerId', 'in', chunk)
+        .get();
       for (const doc of snap.docs) {
-        invoiceDocs.push(mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as Record<string, unknown>);
+        invoiceDocs.push(
+          mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as Record<string, unknown>,
+        );
       }
     }
   } else {
     const snap = await db.collection(`organizations/${orgId}/invoices`).get();
     for (const doc of snap.docs) {
-      invoiceDocs.push(mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as Record<string, unknown>);
+      invoiceDocs.push(
+        mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as Record<string, unknown>,
+      );
     }
   }
 
@@ -222,7 +244,10 @@ function legacyPropertyTo360(p: PropertyRecord): Property {
   };
 }
 
-function property360ToLegacy(p: Property, orgId: string): Omit<PropertyRecord, 'id' | 'createdAt' | 'updatedAt'> {
+function property360ToLegacy(
+  p: Property,
+  orgId: string,
+): Omit<PropertyRecord, 'id' | 'createdAt' | 'updatedAt'> {
   return {
     organizationId: orgId,
     customerId: p.customerId,
@@ -239,7 +264,10 @@ function property360ToLegacy(p: Property, orgId: string): Omit<PropertyRecord, '
   };
 }
 
-export async function listCustomerProperties360(orgId: string, customerId: string): Promise<Property[]> {
+export async function listCustomerProperties360(
+  orgId: string,
+  customerId: string,
+): Promise<Property[]> {
   const subProps = await subList<Property>(orgId, customerId, 'properties');
   if (subProps.length > 0) return subProps.map(normalizeProperty);
 
@@ -249,7 +277,9 @@ export async function listCustomerProperties360(orgId: string, customerId: strin
     .where('customerId', '==', customerId)
     .get();
   return legacy.docs.map((d) =>
-    normalizeProperty(legacyPropertyTo360(mapTimestampsFromData({ id: d.id, ...d.data()! }) as PropertyRecord)),
+    normalizeProperty(
+      legacyPropertyTo360(mapTimestampsFromData({ id: d.id, ...d.data()! }) as PropertyRecord),
+    ),
   );
 }
 
@@ -297,7 +327,10 @@ export async function listAllProperties360(
   const db = getAdminFirestore();
   let customerSnap;
   try {
-    customerSnap = await db.collection(`organizations/${orgId}/customers`).orderBy('createdAt', 'desc').get();
+    customerSnap = await db
+      .collection(`organizations/${orgId}/customers`)
+      .orderBy('createdAt', 'desc')
+      .get();
   } catch {
     customerSnap = await db.collection(`organizations/${orgId}/customers`).get();
   }
@@ -350,29 +383,21 @@ export async function createCustomerProperty360(
   data: Omit<Property, 'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>,
   userId?: string | null,
 ) {
-  const property = await subCreate(
-    orgId,
+  const { emitLegacyPathDeprecation } = await import('./compat-metrics');
+  emitLegacyPathDeprecation('properties', 'createCustomerProperty360→createOrgProperty');
+  const { createOrgProperty } = await import('./record-paths');
+  const created = await createOrgProperty(orgId, {
+    ...(data as unknown as Record<string, unknown>),
     customerId,
-    'properties',
-    {
-      ...data,
-      siteHazards: data.siteHazards ?? [],
-      photos: data.photos ?? {},
-      galleryPhotos: data.galleryPhotos ?? [],
-      ladderRequired: data.ladderRequired ?? false,
-      liftRequired: data.liftRequired ?? false,
-      installComplexity: data.installComplexity ?? 'medium',
-    },
-    userId,
-  );
-
-  const db = getAdminFirestore();
-  const ref = db.collection(`organizations/${orgId}/properties`).doc();
-  const now = ts();
-  await ref.set(property360ToLegacy({ ...property, customerId } as Property, orgId));
-  await ref.update({ createdAt: now, updatedAt: now });
-
-  return property as Property;
+    siteHazards: data.siteHazards ?? [],
+    photos: data.photos ?? {},
+    galleryPhotos: data.galleryPhotos ?? [],
+    ladderRequired: data.ladderRequired ?? false,
+    liftRequired: data.liftRequired ?? false,
+    installComplexity: data.installComplexity ?? 'medium',
+  } as unknown as Parameters<typeof createOrgProperty>[1]);
+  void userId;
+  return normalizeProperty({ ...(created as unknown as Property), customerId });
 }
 
 export async function updateCustomerProperty360(
@@ -382,12 +407,22 @@ export async function updateCustomerProperty360(
   data: Partial<Property>,
   userId?: string | null,
 ) {
-  const updated = await subUpdate(orgId, customerId, 'properties', propertyId, data, userId);
-  return normalizeProperty(updated as Property);
+  const { emitLegacyPathDeprecation } = await import('./compat-metrics');
+  emitLegacyPathDeprecation('properties', 'updateCustomerProperty360→org properties');
+  const updated = await colUpdate(orgId, 'properties', propertyId, { ...data, customerId });
+  void userId;
+  return normalizeProperty(updated as unknown as Property);
 }
 
-export async function deleteCustomerProperty360(orgId: string, customerId: string, propertyId: string) {
-  await subDelete(orgId, customerId, 'properties', propertyId);
+export async function deleteCustomerProperty360(
+  orgId: string,
+  customerId: string,
+  propertyId: string,
+) {
+  const { emitLegacyPathDeprecation } = await import('./compat-metrics');
+  emitLegacyPathDeprecation('properties', 'deleteCustomerProperty360→org properties');
+  await colDelete(orgId, 'properties', propertyId);
+  void customerId;
 }
 
 export async function listActivities(orgId: string, customerId: string) {
@@ -397,7 +432,10 @@ export async function listActivities(orgId: string, customerId: string) {
 export async function createActivity(
   orgId: string,
   customerId: string,
-  data: Omit<CustomerActivity, 'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>,
+  data: Omit<
+    CustomerActivity,
+    'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'
+  >,
   userId?: string | null,
 ) {
   return subCreate(orgId, customerId, 'activities', data, userId) as Promise<CustomerActivity>;
@@ -410,7 +448,10 @@ export async function listDesigns(orgId: string, customerId: string) {
 export async function createDesign(
   orgId: string,
   customerId: string,
-  data: Omit<DesignRecord, 'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>,
+  data: Omit<
+    DesignRecord,
+    'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'
+  >,
   userId?: string | null,
 ) {
   return subCreate(orgId, customerId, 'designs', data, userId) as Promise<DesignRecord>;
@@ -426,17 +467,156 @@ export async function updateDesign(
   return subUpdate(orgId, customerId, 'designs', designId, data, userId) as Promise<DesignRecord>;
 }
 
-export async function listCustomerJobs(orgId: string, customerId: string) {
-  return subList<JobRecord>(orgId, customerId, 'jobs');
+type OrgJobListRow = {
+  id: string;
+  customerId?: string;
+  propertyId?: string | null;
+  propertyName?: string | null;
+  jobType?: string | null;
+  title?: string | null;
+  stage?: string | null;
+  status?: string | null;
+  scheduledStart?: Date | null;
+  scheduledDate?: Date | null;
+  scheduledEnd?: Date | null;
+  completionDate?: Date | null;
+  installedAt?: Date | null;
+  assignedCrewUserId?: string | null;
+  assignedCrewIds?: string[];
+  assignedCrewNames?: string[];
+  laborHours?: number | null;
+  materialsUsed?: string | null;
+  revenueCents?: number | null;
+  subtotalCents?: number | null;
+  crewNotes?: string | null;
+  installNotes?: string | null;
+  beforePhotoUrls?: string[];
+  duringPhotoUrls?: string[];
+  completedPhotoUrls?: string[];
+  createdAt?: Date;
+  updatedAt?: Date;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+};
+
+/** YL-S9 — project org jobs collection rows into CRM Job History shape. */
+export function mapOrgJobToCustomerJobRecord(raw: OrgJobListRow): JobRecord {
+  const crewId = raw.assignedCrewUserId ? [raw.assignedCrewUserId] : [];
+  return {
+    id: raw.id,
+    customerId: raw.customerId ?? '',
+    propertyId: raw.propertyId ?? null,
+    propertyName: raw.propertyName ?? null,
+    jobType: (raw.jobType as JobType) || 'installation',
+    title: raw.title?.trim() || 'Job',
+    scheduledDate: raw.scheduledDate ?? raw.scheduledStart ?? null,
+    completionDate: raw.completionDate ?? raw.installedAt ?? null,
+    assignedCrewIds: raw.assignedCrewIds?.length ? raw.assignedCrewIds : crewId,
+    assignedCrewNames: raw.assignedCrewNames ?? [],
+    laborHours: raw.laborHours ?? null,
+    materialsUsed: raw.materialsUsed ?? null,
+    revenueCents: raw.revenueCents ?? raw.subtotalCents ?? 0,
+    status: (() => {
+      if (raw.stage) return mapOrgJobStageToCrmStatus(raw.stage);
+      const crm = raw.status;
+      if (
+        crm === 'draft' ||
+        crm === 'scheduled' ||
+        crm === 'in_progress' ||
+        crm === 'completed' ||
+        crm === 'cancelled'
+      ) {
+        return crm;
+      }
+      return mapOrgJobStageToCrmStatus(crm);
+    })(),
+    crewNotes: raw.crewNotes ?? raw.installNotes ?? null,
+    beforePhotoUrls: raw.beforePhotoUrls ?? [],
+    duringPhotoUrls: raw.duringPhotoUrls ?? [],
+    completedPhotoUrls: raw.completedPhotoUrls ?? [],
+    createdAt: raw.createdAt ?? new Date(0),
+    updatedAt: raw.updatedAt ?? new Date(0),
+    createdBy: raw.createdBy ?? null,
+    updatedBy: raw.updatedBy ?? null,
+  };
+}
+
+function normalizeLegacyJobRecord(job: JobRecord): JobRecord {
+  return {
+    ...job,
+    jobType: job.jobType || 'installation',
+    assignedCrewIds: job.assignedCrewIds ?? [],
+    assignedCrewNames: job.assignedCrewNames ?? [],
+    revenueCents: job.revenueCents ?? 0,
+    status: job.status ?? 'draft',
+    beforePhotoUrls: job.beforePhotoUrls ?? [],
+    duringPhotoUrls: job.duringPhotoUrls ?? [],
+    completedPhotoUrls: job.completedPhotoUrls ?? [],
+  };
+}
+
+export async function listCustomerJobs(orgId: string, customerId: string): Promise<JobRecord[]> {
+  // YL-S9: creates go to org jobs; nested customers/{id}/jobs is legacy-only.
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(`organizations/${orgId}/jobs`)
+    .where('customerId', '==', customerId)
+    .get();
+  const orgJobs = snap.docs.map((d) =>
+    mapOrgJobToCustomerJobRecord(mapTimestampsFromData({ id: d.id, ...d.data() }) as OrgJobListRow),
+  );
+  const seen = new Set(orgJobs.map((j) => j.id));
+  let nested: JobRecord[] = [];
+  try {
+    nested = await subList<JobRecord>(orgId, customerId, 'jobs');
+  } catch {
+    nested = [];
+  }
+  for (const job of nested) {
+    if (!seen.has(job.id)) {
+      orgJobs.push(normalizeLegacyJobRecord(job));
+      seen.add(job.id);
+    }
+  }
+  return orgJobs.sort((a, b) => {
+    const at = a.scheduledDate?.getTime?.() ?? a.createdAt?.getTime?.() ?? 0;
+    const bt = b.scheduledDate?.getTime?.() ?? b.createdAt?.getTime?.() ?? 0;
+    return bt - at;
+  });
 }
 
 export async function createCustomerJob(
   orgId: string,
   customerId: string,
-  data: Omit<JobRecord, 'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>,
+  data: Omit<
+    JobRecord,
+    'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'
+  >,
   userId?: string | null,
 ) {
-  return subCreate(orgId, customerId, 'jobs', data, userId) as Promise<JobRecord>;
+  const { emitLegacyPathDeprecation } = await import('./compat-metrics');
+  emitLegacyPathDeprecation('jobs', 'createCustomerJob→createOrgJob');
+  const { createOrgJob } = await import('./record-paths');
+  const explicitStage = (data as { stage?: string }).stage;
+  const stage = explicitStage ?? mapCrmJobStatusToOrgStage(data.status);
+  const created = await createOrgJob(orgId, {
+    customerId,
+    title: data.title ?? 'Job',
+    stage,
+    propertyId: data.propertyId,
+    proposalId: (data as { proposalId?: string | null }).proposalId,
+    jobType: data.jobType,
+    subtotalCents: data.revenueCents ?? (data as { subtotalCents?: number | null }).subtotalCents,
+    installNotes: data.crewNotes ?? (data as { installNotes?: string | null }).installNotes,
+    internalNotes: (data as { internalNotes?: string | null }).internalNotes,
+    assignedCrewUserId:
+      data.assignedCrewIds?.[0] ?? (data as { assignedCrewUserId?: string | null }).assignedCrewUserId,
+    scheduledStart:
+      data.scheduledDate ?? (data as { scheduledStart?: Date | null }).scheduledStart ?? null,
+    scheduledEnd: (data as { scheduledEnd?: Date | null }).scheduledEnd ?? null,
+  });
+  void userId;
+  return mapOrgJobToCustomerJobRecord(created as OrgJobListRow);
 }
 
 export async function updateCustomerJob(
@@ -446,11 +626,28 @@ export async function updateCustomerJob(
   data: Partial<JobRecord>,
   userId?: string | null,
 ) {
-  return subUpdate(orgId, customerId, 'jobs', jobId, data, userId) as Promise<JobRecord>;
+  const { emitLegacyPathDeprecation } = await import('./compat-metrics');
+  emitLegacyPathDeprecation('jobs', 'updateCustomerJob→org jobs');
+  void userId;
+  const patch: Record<string, unknown> = { ...data, customerId };
+  if (data.status != null && (data as { stage?: string }).stage == null) {
+    patch.stage = mapCrmJobStatusToOrgStage(data.status);
+  }
+  if (data.scheduledDate !== undefined && (data as { scheduledStart?: Date | null }).scheduledStart == null) {
+    patch.scheduledStart = data.scheduledDate;
+  }
+  if (data.revenueCents !== undefined && (data as { subtotalCents?: number | null }).subtotalCents == null) {
+    patch.subtotalCents = data.revenueCents;
+  }
+  const updated = await colUpdate(orgId, 'jobs', jobId, patch);
+  return mapOrgJobToCustomerJobRecord(updated as OrgJobListRow);
 }
 
 export async function deleteCustomerJob360(orgId: string, customerId: string, jobId: string) {
-  await subDelete(orgId, customerId, 'jobs', jobId);
+  const { emitLegacyPathDeprecation } = await import('./compat-metrics');
+  emitLegacyPathDeprecation('jobs', 'deleteCustomerJob360→org jobs');
+  await colDelete(orgId, 'jobs', jobId);
+  void customerId;
 }
 
 export async function listStorageItems(orgId: string, customerId: string) {
@@ -460,7 +657,10 @@ export async function listStorageItems(orgId: string, customerId: string) {
 export async function createStorageItem(
   orgId: string,
   customerId: string,
-  data: Omit<StorageInventoryItem, 'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>,
+  data: Omit<
+    StorageInventoryItem,
+    'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'
+  >,
   userId?: string | null,
 ) {
   return subCreate(orgId, customerId, 'storage', data, userId) as Promise<StorageInventoryItem>;
@@ -473,7 +673,14 @@ export async function updateStorageItem(
   data: Partial<StorageInventoryItem>,
   userId?: string | null,
 ) {
-  return subUpdate(orgId, customerId, 'storage', itemId, data, userId) as Promise<StorageInventoryItem>;
+  return subUpdate(
+    orgId,
+    customerId,
+    'storage',
+    itemId,
+    data,
+    userId,
+  ) as Promise<StorageInventoryItem>;
 }
 
 export async function listCommunications(orgId: string, customerId: string) {
@@ -483,10 +690,19 @@ export async function listCommunications(orgId: string, customerId: string) {
 export async function createCommunication(
   orgId: string,
   customerId: string,
-  data: Omit<CommunicationRecord, 'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>,
+  data: Omit<
+    CommunicationRecord,
+    'id' | 'customerId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'
+  >,
   userId?: string | null,
 ) {
-  return subCreate(orgId, customerId, 'communications', data, userId) as Promise<CommunicationRecord>;
+  return subCreate(
+    orgId,
+    customerId,
+    'communications',
+    data,
+    userId,
+  ) as Promise<CommunicationRecord>;
 }
 
 export async function listFollowUpRules(orgId: string): Promise<FollowUpRule[]> {
@@ -499,17 +715,99 @@ export async function ensureFollowUpRules(orgId: string): Promise<FollowUpRule[]
   const existing = await listFollowUpRules(orgId);
   if (existing.length > 0) return existing;
 
-  const defaults: Array<Omit<FollowUpRule, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>> = [
-    { organizationId: orgId, trigger: 'estimate_sent', name: 'Estimate Sent Follow-Up', enabled: true, messageTemplate: 'Thanks for reviewing your estimate!', deliveryMethod: 'email', status: 'active' },
-    { organizationId: orgId, trigger: 'estimate_not_accepted_3d', name: '3-Day Estimate Reminder', enabled: true, messageTemplate: 'Just checking in on your holiday lighting estimate.', deliveryMethod: 'email', status: 'active' },
-    { organizationId: orgId, trigger: 'estimate_not_accepted_7d', name: '7-Day Estimate Reminder', enabled: true, messageTemplate: 'We still have availability — would you like to schedule?', deliveryMethod: 'sms', status: 'active' },
-    { organizationId: orgId, trigger: 'estimate_not_accepted_14d', name: '14-Day Estimate Reminder', enabled: false, messageTemplate: 'Final reminder for this season.', deliveryMethod: 'email', status: 'inactive' },
-    { organizationId: orgId, trigger: 'installation_completed', name: 'Post-Install Thank You', enabled: true, messageTemplate: 'Your installation is complete — thank you!', deliveryMethod: 'email', status: 'active' },
-    { organizationId: orgId, trigger: 'review_request', name: 'Review Request', enabled: true, messageTemplate: 'We would love your feedback!', deliveryMethod: 'email', status: 'active' },
-    { organizationId: orgId, trigger: 'august_early_booking', name: 'August Early Booking', enabled: true, messageTemplate: 'Book early for the best schedule slots.', deliveryMethod: 'email', status: 'active' },
-    { organizationId: orgId, trigger: 'september_design_review', name: 'September Design Review', enabled: true, messageTemplate: 'Time to review your design for this season.', deliveryMethod: 'email', status: 'active' },
-    { organizationId: orgId, trigger: 'october_final_scheduling', name: 'October Final Scheduling', enabled: true, messageTemplate: 'Let us finalize your install date.', deliveryMethod: 'sms', status: 'active' },
-    { organizationId: orgId, trigger: 'january_storage_renewal', name: 'January Storage Renewal', enabled: true, messageTemplate: 'Renew your storage plan for next season.', deliveryMethod: 'email', status: 'active' },
+  const defaults: Array<
+    Omit<FollowUpRule, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>
+  > = [
+    {
+      organizationId: orgId,
+      trigger: 'estimate_sent',
+      name: 'Estimate Sent Follow-Up',
+      enabled: true,
+      messageTemplate: 'Thanks for reviewing your estimate!',
+      deliveryMethod: 'email',
+      status: 'active',
+    },
+    {
+      organizationId: orgId,
+      trigger: 'estimate_not_accepted_3d',
+      name: '3-Day Estimate Reminder',
+      enabled: true,
+      messageTemplate: 'Just checking in on your holiday lighting estimate.',
+      deliveryMethod: 'email',
+      status: 'active',
+    },
+    {
+      organizationId: orgId,
+      trigger: 'estimate_not_accepted_7d',
+      name: '7-Day Estimate Reminder',
+      enabled: true,
+      messageTemplate: 'We still have availability — would you like to schedule?',
+      deliveryMethod: 'sms',
+      status: 'active',
+    },
+    {
+      organizationId: orgId,
+      trigger: 'estimate_not_accepted_14d',
+      name: '14-Day Estimate Reminder',
+      enabled: false,
+      messageTemplate: 'Final reminder for this season.',
+      deliveryMethod: 'email',
+      status: 'inactive',
+    },
+    {
+      organizationId: orgId,
+      trigger: 'installation_completed',
+      name: 'Post-Install Thank You',
+      enabled: true,
+      messageTemplate: 'Your installation is complete — thank you!',
+      deliveryMethod: 'email',
+      status: 'active',
+    },
+    {
+      organizationId: orgId,
+      trigger: 'review_request',
+      name: 'Review Request',
+      enabled: true,
+      messageTemplate: 'We would love your feedback!',
+      deliveryMethod: 'email',
+      status: 'active',
+    },
+    {
+      organizationId: orgId,
+      trigger: 'august_early_booking',
+      name: 'August Early Booking',
+      enabled: true,
+      messageTemplate: 'Book early for the best schedule slots.',
+      deliveryMethod: 'email',
+      status: 'active',
+    },
+    {
+      organizationId: orgId,
+      trigger: 'september_design_review',
+      name: 'September Design Review',
+      enabled: true,
+      messageTemplate: 'Time to review your design for this season.',
+      deliveryMethod: 'email',
+      status: 'active',
+    },
+    {
+      organizationId: orgId,
+      trigger: 'october_final_scheduling',
+      name: 'October Final Scheduling',
+      enabled: true,
+      messageTemplate: 'Let us finalize your install date.',
+      deliveryMethod: 'sms',
+      status: 'active',
+    },
+    {
+      organizationId: orgId,
+      trigger: 'january_storage_renewal',
+      name: 'January Storage Renewal',
+      enabled: true,
+      messageTemplate: 'Renew your storage plan for next season.',
+      deliveryMethod: 'email',
+      status: 'active',
+    },
   ];
 
   const db = getAdminFirestore();
@@ -562,9 +860,18 @@ export function calculateHealthScore(input: {
   const commScore = Math.min(input.communicationCount * 2, 15);
   const completionRate = input.totalJobs > 0 ? input.completedJobs / input.totalJobs : 0.5;
   const completionScore = Math.round(completionRate * 20);
-  const balancePenalty = input.outstandingBalanceCents > 0 ? Math.min(15, Math.round(input.outstandingBalanceCents / 10000)) : 0;
-  const healthScore = Math.max(0, Math.min(100, paymentScore + renewalScore + commScore + completionScore + 15 - balancePenalty));
-  const renewalProbability = Math.max(0, Math.min(100, Math.round(healthScore * 0.85 + renewalScore)));
+  const balancePenalty =
+    input.outstandingBalanceCents > 0
+      ? Math.min(15, Math.round(input.outstandingBalanceCents / 10000))
+      : 0;
+  const healthScore = Math.max(
+    0,
+    Math.min(100, paymentScore + renewalScore + commScore + completionScore + 15 - balancePenalty),
+  );
+  const renewalProbability = Math.max(
+    0,
+    Math.min(100, Math.round(healthScore * 0.85 + renewalScore)),
+  );
   return { healthScore, healthRating: healthRatingFromScore(healthScore), renewalProbability };
 }
 
@@ -592,14 +899,17 @@ export function calculateCustomerInsights(
 
   let recommendedNextAction = 'Schedule a check-in call';
   if (customer.status === 'lead') recommendedNextAction = 'Send estimate and schedule consultation';
-  else if (stats.outstandingBalanceCents > 0) recommendedNextAction = 'Follow up on outstanding balance';
+  else if (stats.outstandingBalanceCents > 0)
+    recommendedNextAction = 'Follow up on outstanding balance';
   else if (stats.renewalProbability >= 80) recommendedNextAction = 'Send early renewal offer';
 
   return {
     renewalProbability: stats.renewalProbability,
     churnRisk,
     suggestedUpsells: upsells.slice(0, 4),
-    revenueForecastCents: Math.round(stats.averageAnnualSpendCents * (stats.renewalProbability / 100)),
+    revenueForecastCents: Math.round(
+      stats.averageAnnualSpendCents * (stats.renewalProbability / 100),
+    ),
     recommendedNextAction,
     healthScore: stats.healthScore,
     healthRating: stats.healthRating,
@@ -619,21 +929,25 @@ export async function getCustomerOverviewStats(
   ]);
 
   const yearFilter = revenueYear ?? null;
-  const scopedJobs = yearFilter != null
-    ? jobs.filter((j) => {
-        const d = j.completionDate ?? j.scheduledDate ?? j.createdAt;
-        return d && new Date(d).getFullYear() === yearFilter;
-      })
-    : jobs;
+  const scopedJobs =
+    yearFilter != null
+      ? jobs.filter((j) => {
+          const d = j.completionDate ?? j.scheduledDate ?? j.createdAt;
+          return d && new Date(d).getFullYear() === yearFilter;
+        })
+      : jobs;
 
   const jobLifetimeRevenueCents = scopedJobs.reduce((sum, j) => sum + (j.revenueCents ?? 0), 0);
   const currentYear = yearFilter ?? new Date().getFullYear();
   const jobCurrentSeasonRevenueCents = scopedJobs
     .filter((j) => j.completionDate && new Date(j.completionDate).getFullYear() === currentYear)
     .reduce((sum, j) => sum + (j.revenueCents ?? 0), 0);
-  const invoiceRevenue = (await getInvoiceRevenueSummaries(orgId, [customerId], yearFilter)).get(customerId) ?? emptyRevenueSummary();
+  const invoiceRevenue =
+    (await getInvoiceRevenueSummaries(orgId, [customerId], yearFilter)).get(customerId) ??
+    emptyRevenueSummary();
   const lifetimeRevenueCents = invoiceRevenue.lifetimeRevenueCents || jobLifetimeRevenueCents;
-  const currentSeasonRevenueCents = invoiceRevenue.currentSeasonRevenueCents || jobCurrentSeasonRevenueCents;
+  const currentSeasonRevenueCents =
+    invoiceRevenue.currentSeasonRevenueCents || jobCurrentSeasonRevenueCents;
 
   const completedJobs = jobs.filter((j) => j.status === 'completed');
   const installs = jobs.filter((j) => j.jobType === 'installation');
@@ -651,9 +965,12 @@ export async function getCustomerOverviewStats(
   const yearsActive = Math.max(1, new Date().getFullYear() - customer.createdAt.getFullYear() + 1);
   const averageAnnualSpendCents = Math.round(lifetimeRevenueCents / yearsActive);
 
-  const paidRatio = invoiceRevenue.invoicedCents > 0
-    ? Math.min(1, invoiceRevenue.lifetimeRevenueCents / invoiceRevenue.invoicedCents)
-    : (lifetimeRevenueCents > 0 ? 1 : 1);
+  const paidRatio =
+    invoiceRevenue.invoicedCents > 0
+      ? Math.min(1, invoiceRevenue.lifetimeRevenueCents / invoiceRevenue.invoicedCents)
+      : lifetimeRevenueCents > 0
+        ? 1
+        : 1;
   const { healthScore, healthRating, renewalProbability } = calculateHealthScore({
     paidRatio,
     renewalCount: Math.min(installs.length, 3),
@@ -684,12 +1001,14 @@ export async function getCustomerOverviewStats(
 export function getCustomerPortalAccess(customer: CustomerRecord): CustomerPortalAccess {
   const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app';
   const root = base.replace(/\/$/, '');
-  const accessUrl = customer.portalToken ? `${root}/portal/${customer.portalToken}` : null;
+  // P2-S7A: never reconstruct /portal/{rawToken} from stored plaintext — raw is not recoverable.
   return {
     enabled: customer.portalEnabled ?? false,
+    status: customer.portalEnabled ? 'active' : 'not_invited',
     inviteSentAt: customer.portalInviteSentAt ?? null,
     lastLoginAt: customer.portalLastLoginAt ?? null,
-    accessLinkPlaceholder: accessUrl ?? `${root}/portal/login`,
+    accessUrl: null,
+    accessLinkPlaceholder: `${root}/portal/login`,
   };
 }
 
@@ -698,7 +1017,10 @@ function normalizeCustomerListBase(customer: CustomerRecord) {
     ...customer,
     customerType: (customer.customerType ?? 'residential') as CustomerType,
     status: (customer.status ?? 'lead') as CustomerStatus,
-    preferredContactMethod: (customer.preferredContactMethod ?? 'email') as 'phone' | 'email' | 'sms',
+    preferredContactMethod: (customer.preferredContactMethod ?? 'email') as
+      | 'phone'
+      | 'email'
+      | 'sms',
     mailingSameAsBilling: customer.mailingSameAsBilling ?? true,
   };
 }
@@ -725,33 +1047,43 @@ function customerListItemMatchesSearch(customer: CustomerListItem, search: strin
 }
 
 /** Batch-load one primary property per customer (avoids N+1 subcollection reads). */
-async function batchLoadPrimaryProperties(orgId: string, customerIds: string[]): Promise<Map<string, Property>> {
+async function batchLoadPrimaryProperties(
+  orgId: string,
+  customerIds: string[],
+): Promise<Map<string, Property>> {
   const result = new Map<string, Property>();
   if (customerIds.length === 0) return result;
 
   const db = getAdminFirestore();
   for (let i = 0; i < customerIds.length; i += 10) {
     const chunk = customerIds.slice(i, i + 10);
-    const snap = await db.collection(`organizations/${orgId}/properties`).where('customerId', 'in', chunk).get();
+    const snap = await db
+      .collection(`organizations/${orgId}/properties`)
+      .where('customerId', 'in', chunk)
+      .get();
     for (const doc of snap.docs) {
-      const p = legacyPropertyTo360(mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as PropertyRecord);
+      const p = legacyPropertyTo360(
+        mapTimestampsFromData({ id: doc.id, ...doc.data()! }) as PropertyRecord,
+      );
       if (!result.has(p.customerId)) result.set(p.customerId, p);
     }
   }
 
   const missing = customerIds.filter((id) => !result.has(id));
   if (missing.length > 0) {
-    await Promise.all(missing.map(async (customerId) => {
-      const snap = await db
-        .collection(subPath(orgId, customerId, 'properties'))
-        .orderBy('createdAt', 'desc')
-        .limit(1)
-        .get();
-      const doc = snap.docs[0];
-      if (!doc) return;
-      const p = mapTimestampsFromData({ id: doc.id, customerId, ...doc.data()! }) as Property;
-      result.set(customerId, p);
-    }));
+    await Promise.all(
+      missing.map(async (customerId) => {
+        const snap = await db
+          .collection(subPath(orgId, customerId, 'properties'))
+          .orderBy('createdAt', 'desc')
+          .limit(1)
+          .get();
+        const doc = snap.docs[0];
+        if (!doc) return;
+        const p = mapTimestampsFromData({ id: doc.id, customerId, ...doc.data()! }) as Property;
+        result.set(customerId, p);
+      }),
+    );
   }
 
   return result;
@@ -782,11 +1114,9 @@ async function enrichCustomersBatch(
     batchLoadPrimaryProperties(orgId, ids),
     getInvoiceRevenueSummaries(orgId, ids, revenueYear),
   ]);
-  return customers.map((c) => toCustomerListItem(
-    c,
-    propertiesByCustomer.get(c.id) ?? null,
-    revenueByCustomer.get(c.id),
-  ));
+  return customers.map((c) =>
+    toCustomerListItem(c, propertiesByCustomer.get(c.id) ?? null, revenueByCustomer.get(c.id)),
+  );
 }
 
 export async function listCustomers360(
@@ -809,16 +1139,23 @@ export async function listCustomers360(
     const db = getAdminFirestore();
     let snap;
     try {
-      snap = await db.collection(`organizations/${orgId}/customers`).orderBy('createdAt', 'desc').get();
+      snap = await db
+        .collection(`organizations/${orgId}/customers`)
+        .orderBy('createdAt', 'desc')
+        .get();
     } catch {
       snap = await db.collection(`organizations/${orgId}/customers`).get();
     }
 
-    let items = snap.docs.map((d) => mapTimestampsFromData({ id: d.id, ...d.data()! }) as CustomerRecord);
+    let items = snap.docs.map(
+      (d) => mapTimestampsFromData({ id: d.id, ...d.data()! }) as CustomerRecord,
+    );
     items.sort((a, b) => (b.createdAt?.getTime?.() ?? 0) - (a.createdAt?.getTime?.() ?? 0));
 
     if (opts.customerTypes?.length) {
-      items = items.filter((c) => opts.customerTypes!.includes((c.customerType ?? 'residential') as CustomerType));
+      items = items.filter((c) =>
+        opts.customerTypes!.includes((c.customerType ?? 'residential') as CustomerType),
+      );
     }
     if (opts.statuses?.length) {
       items = items.filter((c) => opts.statuses!.includes((c.status ?? 'lead') as CustomerStatus));
@@ -827,9 +1164,7 @@ export async function listCustomers360(
     const search = opts.search?.trim().toLowerCase();
 
     if (enrich === 'none') {
-      const filtered = search
-        ? items.filter((c) => customerFieldsMatchSearch(c, search))
-        : items;
+      const filtered = search ? items.filter((c) => customerFieldsMatchSearch(c, search)) : items;
       const total = filtered.length;
       const start = (page - 1) * pageSize;
       const pageItems = filtered.slice(start, start + pageSize);
@@ -864,11 +1199,18 @@ export async function listCustomers360(
 
 export const PIPELINE_STAGE_ORDER: CustomerStage[] = [
   'new_lead',
+  'attempting_contact',
   'contacted',
+  'qualified',
+  'consultation_scheduled',
+  'consultation_completed',
+  'design_in_progress',
   'needs_estimate',
   'mockup_needed',
+  'proposal_draft',
   'proposal_sent',
   'proposal_viewed',
+  'follow_up_required',
   'approved',
   'deposit_paid',
   'scheduled',
@@ -879,6 +1221,7 @@ export const PIPELINE_STAGE_ORDER: CustomerStage[] = [
   'removed',
   'stored',
   'rebook_next_season',
+  'deferred',
   'lost',
 ];
 
@@ -914,8 +1257,7 @@ function toPipelineItem(
   lifetimeRevenueCents: number,
 ): CustomerPipelineItem {
   const stage = resolveCustomerPipelineStage(customer);
-  const estimatedValueCents =
-    customer.pipelineEstimatedValueCents ?? lifetimeRevenueCents ?? 0;
+  const estimatedValueCents = customer.pipelineEstimatedValueCents ?? lifetimeRevenueCents ?? 0;
   return {
     id: customer.id,
     customerId: customer.id,
@@ -952,13 +1294,20 @@ export async function getCustomerPipeline(
   const db = getAdminFirestore();
   let snap;
   try {
-    snap = await db.collection(`organizations/${orgId}/customers`).orderBy('createdAt', 'desc').get();
+    snap = await db
+      .collection(`organizations/${orgId}/customers`)
+      .orderBy('createdAt', 'desc')
+      .get();
   } catch {
     snap = await db.collection(`organizations/${orgId}/customers`).get();
   }
 
-  let customers = snap.docs.map((d) => mapTimestampsFromData({ id: d.id, ...d.data()! }) as CustomerRecord);
-  customers = customers.filter((c) => c.status !== 'archived' || resolveCustomerPipelineStage(c) === 'lost');
+  let customers = snap.docs.map(
+    (d) => mapTimestampsFromData({ id: d.id, ...d.data()! }) as CustomerRecord,
+  );
+  customers = customers.filter(
+    (c) => c.status !== 'archived' || resolveCustomerPipelineStage(c) === 'lost',
+  );
 
   const ids = customers.map((c) => c.id);
   const [propertiesByCustomer, revenueByCustomer] = await Promise.all([
@@ -1237,54 +1586,76 @@ export async function seedCustomer360Demo(orgId: string, userId?: string | null)
     userId,
   );
 
-  await logCustomerActivity(orgId, demo.id, 'lead_created', 'Demo customer created', userId, 'System');
-  await createDesign(orgId, demo.id, {
-    designName: '2025 Roofline Design',
-    propertyId: null,
-    propertyName: 'Main Residence',
-    versionNumber: 1,
-    designerId: null,
-    designerName: 'Design Team',
-    status: 'approved',
-    revisionNotes: 'Warm white C9, 12" spacing',
-    originalPhotoUrl: null,
-    mockupImageUrl: null,
-    installedResultPhotoUrl: null,
-  }, userId);
+  await logCustomerActivity(
+    orgId,
+    demo.id,
+    'lead_created',
+    'Demo customer created',
+    userId,
+    'System',
+  );
+  await createDesign(
+    orgId,
+    demo.id,
+    {
+      designName: '2025 Roofline Design',
+      propertyId: null,
+      propertyName: 'Main Residence',
+      versionNumber: 1,
+      designerId: null,
+      designerName: 'Design Team',
+      status: 'approved',
+      revisionNotes: 'Warm white C9, 12" spacing',
+      originalPhotoUrl: null,
+      mockupImageUrl: null,
+      installedResultPhotoUrl: null,
+    },
+    userId,
+  );
 
-  await createCustomerJob(orgId, demo.id, {
-    jobType: 'installation',
-    title: '2025 Holiday Install',
-    propertyId: null,
-    propertyName: 'Main Residence',
-    scheduledDate: new Date(now.getFullYear(), 10, 15),
-    completionDate: new Date(now.getFullYear(), 10, 15),
-    assignedCrewIds: [],
-    assignedCrewNames: ['Crew A'],
-    laborHours: 6,
-    materialsUsed: 'C9 warm white, clips, extension cords',
-    revenueCents: 245000,
-    status: 'completed',
-    crewNotes: 'Smooth install',
-    beforePhotoUrls: [],
-    duringPhotoUrls: [],
-    completedPhotoUrls: [],
-  }, userId);
+  await createCustomerJob(
+    orgId,
+    demo.id,
+    {
+      jobType: 'installation',
+      title: '2025 Holiday Install',
+      propertyId: null,
+      propertyName: 'Main Residence',
+      scheduledDate: new Date(now.getFullYear(), 10, 15),
+      completionDate: new Date(now.getFullYear(), 10, 15),
+      assignedCrewIds: [],
+      assignedCrewNames: ['Crew A'],
+      laborHours: 6,
+      materialsUsed: 'C9 warm white, clips, extension cords',
+      revenueCents: 245000,
+      status: 'completed',
+      crewNotes: 'Smooth install',
+      beforePhotoUrls: [],
+      duringPhotoUrls: [],
+      completedPhotoUrls: [],
+    },
+    userId,
+  );
 
-  await createCommunication(orgId, demo.id, {
-    type: 'email',
-    direction: 'outbound',
-    subject: 'Your 2025 estimate',
-    body: 'Attached is your holiday lighting estimate.',
-    employeeId: null,
-    employeeName: 'Mike Thompson',
-    occurredAt: now,
-    followUpRequired: false,
-    followUpDate: null,
-    relatedPropertyId: null,
-    relatedJobId: null,
-    relatedQuoteId: null,
-  }, userId);
+  await createCommunication(
+    orgId,
+    demo.id,
+    {
+      type: 'email',
+      direction: 'outbound',
+      subject: 'Your 2025 estimate',
+      body: 'Attached is your holiday lighting estimate.',
+      employeeId: null,
+      employeeName: 'Mike Thompson',
+      occurredAt: now,
+      followUpRequired: false,
+      followUpDate: null,
+      relatedPropertyId: null,
+      relatedJobId: null,
+      relatedQuoteId: null,
+    },
+    userId,
+  );
 
   await ensureFollowUpRules(orgId);
   return { seeded: true, customerId: demo.id };

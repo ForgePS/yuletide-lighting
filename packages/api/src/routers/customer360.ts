@@ -34,11 +34,18 @@ import {
   getCustomerPortalAccess,
   getCustomerPipeline,
   updateCustomerPipelineStage,
-  updateCustomerNextAction,
   updateCustomerPipelineDetails,
+  updateCustomerNextAction,
   bulkUpdateCustomers360,
   logCustomerActivity,
   seedCustomer360Demo,
+  listConsultations360,
+  createConsultation360,
+  completeConsultation360,
+  getCustomerTimeline,
+  listCustomerDocuments360,
+  createCustomerDocument360,
+  deleteCustomerDocument360,
 } from '@yuletide/firebase';
 import {
   customerListFiltersSchema,
@@ -63,7 +70,7 @@ import {
   bulkUpdateCustomers360Schema,
   propertyListFiltersSchema,
 } from '@clcrm/validators';
-import { router, officeProcedure, adminProcedure } from '../trpc';
+import { router, permissionProcedure, officeProcedure } from '../trpc';
 
 function emptyToNull(value?: string | null) {
   return value?.trim() ? value.trim() : null;
@@ -139,7 +146,7 @@ async function requireCustomer(orgId: string, customerId: string) {
 }
 
 export const customer360Router = router({
-  list: officeProcedure.input(customerListFiltersSchema).query(({ ctx, input }) =>
+  list: permissionProcedure('customers', 'view').input(customerListFiltersSchema).query(({ ctx, input }) =>
     listCustomers360(ctx.auth.organizationId, {
       search: input.search,
       page: input.page,
@@ -151,16 +158,17 @@ export const customer360Router = router({
     }),
   ),
 
-  pipeline: officeProcedure.input(customerPipelineFiltersSchema.optional()).query(({ ctx, input }) =>
-    getCustomerPipeline(ctx.auth.organizationId, {
-      search: input?.search,
-      stages: input?.stages,
-      overdueOnly: input?.overdueOnly,
-      assignedTo: input?.assignedTo,
-    }),
-  ),
+  pipeline: permissionProcedure('customers', 'view')
+    .input(customerPipelineFiltersSchema.optional())
+    .query(({ ctx, input }) =>
+      getCustomerPipeline(ctx.auth.organizationId, {
+        search: input?.search,
+        stages: input?.stages,
+        overdueOnly: input?.overdueOnly,
+      }),
+    ),
 
-  updatePipelineStage: officeProcedure
+  updatePipelineStage: permissionProcedure('customers', 'edit')
     .input(updateCustomerPipelineStageSchema)
     .mutation(({ ctx, input }) =>
       updateCustomerPipelineStage(
@@ -169,20 +177,6 @@ export const customer360Router = router({
         input.stage,
         ctx.auth.userId,
         ctx.auth.email ?? 'Office',
-      ),
-    ),
-
-  updateNextAction: officeProcedure
-    .input(updateCustomerNextActionSchema)
-    .mutation(({ ctx, input }) =>
-      updateCustomerNextAction(
-        ctx.auth.organizationId,
-        input.customerId,
-        {
-          nextAction: emptyToNull(input.nextAction),
-          nextActionDue: input.nextActionDue ?? null,
-        },
-        ctx.auth.userId,
       ),
     ),
 
@@ -210,28 +204,51 @@ export const customer360Router = router({
     return bulkUpdateCustomers360(ctx.auth.organizationId, customerIds, patch, ctx.auth.userId);
   }),
 
-  getBasic: officeProcedure.input(z.object({ customerId: z.string() })).query(async ({ ctx, input }) => {
-    const customer = await requireCustomer(ctx.auth.organizationId, input.customerId);
-    return {
-      id: customer.id,
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-      businessName: customer.businessName ?? null,
-      email: customer.email ?? null,
-      phone: customer.phone ?? null,
-    };
-  }),
+  updateNextAction: permissionProcedure('customers', 'edit')
+    .input(updateCustomerNextActionSchema)
+    .mutation(({ ctx, input }) =>
+      updateCustomerNextAction(
+        ctx.auth.organizationId,
+        input.customerId,
+        {
+          nextAction: emptyToNull(input.nextAction),
+          nextActionDue: input.nextActionDue ?? null,
+        },
+        ctx.auth.userId,
+      ),
+    ),
 
-  getById: officeProcedure.input(z.object({ customerId: z.string(), year: z.number().int().optional().nullable() })).query(async ({ ctx, input }) => {
-    const customer = await requireCustomer(ctx.auth.organizationId, input.customerId);
-    const properties = await listCustomerProperties360(ctx.auth.organizationId, input.customerId);
-    const stats = await getCustomerOverviewStats(ctx.auth.organizationId, input.customerId, customer, input.year);
-    const insights = calculateCustomerInsights(stats, customer);
-    const portal = getCustomerPortalAccess(customer);
-    return { ...customer, properties, stats, insights, portal };
-  }),
+  getBasic: permissionProcedure('customers', 'view')
+    .input(z.object({ customerId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const customer = await requireCustomer(ctx.auth.organizationId, input.customerId);
+      return {
+        id: customer.id,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        businessName: customer.businessName ?? null,
+        email: customer.email ?? null,
+        phone: customer.phone ?? null,
+      };
+    }),
 
-  create: officeProcedure.input(createCustomer360Schema).mutation(async ({ ctx, input }) => {
+  getById: permissionProcedure('customers', 'view')
+    .input(z.object({ customerId: z.string(), year: z.number().int().optional().nullable() }))
+    .query(async ({ ctx, input }) => {
+      const customer = await requireCustomer(ctx.auth.organizationId, input.customerId);
+      const properties = await listCustomerProperties360(ctx.auth.organizationId, input.customerId);
+      const stats = await getCustomerOverviewStats(
+        ctx.auth.organizationId,
+        input.customerId,
+        customer,
+        input.year,
+      );
+      const insights = calculateCustomerInsights(stats, customer);
+      const portal = getCustomerPortalAccess(customer);
+      return { ...customer, properties, stats, insights, portal };
+    }),
+
+  create: permissionProcedure('customers', 'create').input(createCustomer360Schema).mutation(async ({ ctx, input }) => {
     const orgId = ctx.auth.organizationId;
     const userId = ctx.auth.userId;
     const {
@@ -344,7 +361,7 @@ export const customer360Router = router({
     return customer;
   }),
 
-  update: officeProcedure
+  update: permissionProcedure('customers', 'edit')
     .input(z.object({ customerId: z.string(), data: updateCustomer360Schema }))
     .mutation(async ({ ctx, input }) => {
       const orgId = ctx.auth.organizationId;
@@ -374,13 +391,17 @@ export const customer360Router = router({
       } = input.data;
 
       const patch: Record<string, unknown> = { ...customerInput };
-      if (customerInput.businessName !== undefined) patch.businessName = emptyToNull(customerInput.businessName);
+      if (customerInput.businessName !== undefined)
+        patch.businessName = emptyToNull(customerInput.businessName);
       if (customerInput.email !== undefined) patch.email = emptyToNull(customerInput.email);
-      if (customerInput.secondaryEmail !== undefined) patch.secondaryEmail = emptyToNull(customerInput.secondaryEmail);
+      if (customerInput.secondaryEmail !== undefined)
+        patch.secondaryEmail = emptyToNull(customerInput.secondaryEmail);
       if (customerInput.phone !== undefined) patch.phone = emptyToNull(customerInput.phone);
-      if (customerInput.mobilePhone !== undefined) patch.mobilePhone = emptyToNull(customerInput.mobilePhone);
+      if (customerInput.mobilePhone !== undefined)
+        patch.mobilePhone = emptyToNull(customerInput.mobilePhone);
       if (customerInput.notes !== undefined) patch.notes = emptyToNull(customerInput.notes);
-      if (customerInput.referralSource !== undefined) patch.referralSource = emptyToNull(customerInput.referralSource);
+      if (customerInput.referralSource !== undefined)
+        patch.referralSource = emptyToNull(customerInput.referralSource);
       if (customerInput.assignedSalespersonName !== undefined) {
         patch.assignedSalespersonName = emptyToNull(customerInput.assignedSalespersonName);
       }
@@ -434,9 +455,18 @@ export const customer360Router = router({
               city,
               state,
               postalCode,
-              gateCode: gateCodesInstructions !== undefined ? emptyToNull(gateCodesInstructions) : undefined,
-              installNotes: gateCodesInstructions !== undefined ? emptyToNull(gateCodesInstructions) : undefined,
-              accessInstructions: gateCodesInstructions !== undefined ? emptyToNull(gateCodesInstructions) : undefined,
+              gateCode:
+                gateCodesInstructions !== undefined
+                  ? emptyToNull(gateCodesInstructions)
+                  : undefined,
+              installNotes:
+                gateCodesInstructions !== undefined
+                  ? emptyToNull(gateCodesInstructions)
+                  : undefined,
+              accessInstructions:
+                gateCodesInstructions !== undefined
+                  ? emptyToNull(gateCodesInstructions)
+                  : undefined,
             },
             userId,
           );
@@ -446,29 +476,31 @@ export const customer360Router = router({
       return customer;
     }),
 
-  archive: officeProcedure.input(z.object({ customerId: z.string() })).mutation(async ({ ctx, input }) => {
-    const orgId = ctx.auth.organizationId;
-    await requireCustomer(orgId, input.customerId);
-    const customer = await updateCustomer(orgId, input.customerId, {
-      status: 'archived',
-      archivedAt: new Date(),
-    });
-    await logCustomerActivity(
-      orgId,
-      input.customerId,
-      'note_added',
-      'Customer archived',
-      ctx.auth.userId,
-      ctx.auth.email ?? 'Office',
-    );
-    return customer;
-  }),
+  archive: permissionProcedure('customers', 'archive')
+    .input(z.object({ customerId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const orgId = ctx.auth.organizationId;
+      await requireCustomer(orgId, input.customerId);
+      const customer = await updateCustomer(orgId, input.customerId, {
+        status: 'archived',
+        archivedAt: new Date(),
+      });
+      await logCustomerActivity(
+        orgId,
+        input.customerId,
+        'note_added',
+        'Customer archived',
+        ctx.auth.userId,
+        ctx.auth.email ?? 'Office',
+      );
+      return customer;
+    }),
 
-  delete: adminProcedure.input(z.object({ customerId: z.string() })).mutation(({ ctx, input }) =>
-    deleteCustomer(ctx.auth.organizationId, input.customerId),
-  ),
+  delete: permissionProcedure('customers', 'delete')
+    .input(z.object({ customerId: z.string() }))
+    .mutation(({ ctx, input }) => deleteCustomer(ctx.auth.organizationId, input.customerId)),
 
-  addNote: officeProcedure.input(addCustomerNoteSchema).mutation(async ({ ctx, input }) => {
+  addNote: permissionProcedure('customers', 'edit').input(addCustomerNoteSchema).mutation(async ({ ctx, input }) => {
     const orgId = ctx.auth.organizationId;
     const customer = await requireCustomer(orgId, input.customerId);
     const notes = [customer.notes, input.note].filter(Boolean).join('\n\n');
@@ -484,22 +516,24 @@ export const customer360Router = router({
     return { success: true };
   }),
 
-  seedDemo: officeProcedure.mutation(({ ctx }) =>
+  seedDemo: permissionProcedure('customers', 'create').mutation(({ ctx }) =>
     seedCustomer360Demo(ctx.auth.organizationId, ctx.auth.userId),
   ),
 
   properties: router({
-    list: officeProcedure.input(z.object({ customerId: z.string() })).query(({ ctx, input }) =>
-      listCustomerProperties360(ctx.auth.organizationId, input.customerId),
-    ),
-    listAll: officeProcedure.input(propertyListFiltersSchema.optional()).query(({ ctx, input }) =>
+    list: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string() }))
+      .query(({ ctx, input }) =>
+        listCustomerProperties360(ctx.auth.organizationId, input.customerId),
+      ),
+    listAll: permissionProcedure('customers', 'view').input(propertyListFiltersSchema.optional()).query(({ ctx, input }) =>
       listAllProperties360(ctx.auth.organizationId, {
         search: input?.search,
         propertyProfileType: input?.propertyProfileType,
         installComplexity: input?.installComplexity,
       }),
     ),
-    getById: officeProcedure
+    getById: permissionProcedure('customers', 'view')
       .input(z.object({ customerId: z.string(), propertyId: z.string() }))
       .query(async ({ ctx, input }) => {
         const property = await getCustomerProperty360(
@@ -512,7 +546,7 @@ export const customer360Router = router({
         }
         return property;
       }),
-    create: officeProcedure
+    create: permissionProcedure('customers', 'create')
       .input(z.object({ customerId: z.string(), data: customerProperty360Schema }))
       .mutation(async ({ ctx, input }) => {
         await requireCustomer(ctx.auth.organizationId, input.customerId);
@@ -545,7 +579,7 @@ export const customer360Router = router({
           ctx.auth.userId,
         );
       }),
-    update: officeProcedure
+    update: permissionProcedure('customers', 'edit')
       .input(
         z.object({
           customerId: z.string(),
@@ -562,7 +596,7 @@ export const customer360Router = router({
           ctx.auth.userId,
         ),
       ),
-    delete: officeProcedure
+    delete: permissionProcedure('customers', 'delete')
       .input(z.object({ customerId: z.string(), propertyId: z.string() }))
       .mutation(({ ctx, input }) =>
         deleteCustomerProperty360(ctx.auth.organizationId, input.customerId, input.propertyId),
@@ -570,10 +604,40 @@ export const customer360Router = router({
   }),
 
   activities: router({
-    list: officeProcedure.input(z.object({ customerId: z.string() })).query(({ ctx, input }) =>
-      listActivities(ctx.auth.organizationId, input.customerId),
-    ),
-    create: officeProcedure
+    list: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string() }))
+      .query(({ ctx, input }) => listActivities(ctx.auth.organizationId, input.customerId)),
+    /** Unified timeline: CRM activities + messaging events */
+    unified: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const [activities, messageEvents] = await Promise.all([
+          listActivities(ctx.auth.organizationId, input.customerId),
+          getCustomerTimeline(ctx.auth.organizationId, input.customerId).catch(() => []),
+        ]);
+        const fromActivities = activities.map((a) => ({
+          id: a.id,
+          source: 'activity' as const,
+          occurredAt: a.occurredAt,
+          title: a.activityType,
+          description: a.description,
+          userName: a.userName ?? null,
+          relatedRecordLabel: a.relatedRecordLabel ?? null,
+        }));
+        const fromMessages = messageEvents.map((e) => ({
+          id: e.id,
+          source: 'message' as const,
+          occurredAt: e.occurredAt,
+          title: e.title ?? e.type ?? 'message',
+          description: e.description ?? '',
+          userName: null as string | null,
+          relatedRecordLabel: null as string | null,
+        }));
+        return [...fromActivities, ...fromMessages].sort(
+          (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
+        );
+      }),
+    create: permissionProcedure('customers', 'create')
       .input(z.object({ customerId: z.string(), data: createActivitySchema }))
       .mutation(async ({ ctx, input }) => {
         await requireCustomer(ctx.auth.organizationId, input.customerId);
@@ -594,11 +658,80 @@ export const customer360Router = router({
       }),
   }),
 
+  consultations: router({
+    list: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string().optional() }).optional())
+      .query(({ ctx, input }) => listConsultations360(ctx.auth.organizationId, input?.customerId)),
+    create: permissionProcedure('customers', 'create')
+      .input(
+        z.object({
+          customerId: z.string().min(1),
+          propertyId: z.string().nullable().optional(),
+          consultationType: z.enum([
+            'phone',
+            'virtual',
+            'on_site',
+            'returning_customer',
+            'commercial_site_survey',
+          ]),
+          scheduledAt: z.coerce.date().nullable().optional(),
+          assignedUserName: z.string().nullable().optional(),
+          customerGoals: z.string().nullable().optional(),
+          budgetRange: z.string().nullable().optional(),
+          preferredColors: z.string().nullable().optional(),
+          preferredLightStyle: z.string().nullable().optional(),
+          powerAvailability: z.string().nullable().optional(),
+          accessRequirements: z.string().nullable().optional(),
+          safetyConcerns: z.string().nullable().optional(),
+          measurementsNotes: z.string().nullable().optional(),
+          followUpAction: z.string().nullable().optional(),
+          notes: z.string().nullable().optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) =>
+        createConsultation360(
+          ctx.auth.organizationId,
+          {
+            ...input,
+            assignedUserId: ctx.auth.userId,
+            assignedUserName: input.assignedUserName ?? ctx.auth.email,
+          },
+          ctx.auth.userId,
+        ),
+      ),
+    complete: permissionProcedure('customers', 'edit')
+      .input(
+        z.object({
+          consultationId: z.string().min(1),
+          propertyId: z.string().nullable().optional(),
+          notes: z.string().nullable().optional(),
+          measurementsNotes: z.string().nullable().optional(),
+          followUpAction: z.string().nullable().optional(),
+          customerGoals: z.string().nullable().optional(),
+          budgetRange: z.string().nullable().optional(),
+          preferredColors: z.string().nullable().optional(),
+          preferredLightStyle: z.string().nullable().optional(),
+          powerAvailability: z.string().nullable().optional(),
+          accessRequirements: z.string().nullable().optional(),
+          safetyConcerns: z.string().nullable().optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) => {
+        const { consultationId, ...fields } = input;
+        return completeConsultation360(
+          ctx.auth.organizationId,
+          consultationId,
+          fields,
+          ctx.auth.userId,
+        );
+      }),
+  }),
+
   designs: router({
-    list: officeProcedure.input(z.object({ customerId: z.string() })).query(({ ctx, input }) =>
-      listDesigns(ctx.auth.organizationId, input.customerId),
-    ),
-    create: officeProcedure
+    list: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string() }))
+      .query(({ ctx, input }) => listDesigns(ctx.auth.organizationId, input.customerId)),
+    create: permissionProcedure('customers', 'create')
       .input(z.object({ customerId: z.string(), data: createDesignSchema }))
       .mutation(async ({ ctx, input }) => {
         await requireCustomer(ctx.auth.organizationId, input.customerId);
@@ -625,22 +758,32 @@ export const customer360Router = router({
           `Design "${design.designName}" v${design.versionNumber} created`,
           ctx.auth.userId,
           ctx.auth.email ?? 'Office',
-          { relatedRecordType: 'design', relatedRecordId: design.id, relatedRecordLabel: design.designName },
+          {
+            relatedRecordType: 'design',
+            relatedRecordId: design.id,
+            relatedRecordLabel: design.designName,
+          },
         );
         return design;
       }),
-    update: officeProcedure
+    update: permissionProcedure('customers', 'edit')
       .input(z.object({ customerId: z.string(), designId: z.string(), data: updateDesignSchema }))
       .mutation(({ ctx, input }) =>
-        updateDesign(ctx.auth.organizationId, input.customerId, input.designId, input.data, ctx.auth.userId),
+        updateDesign(
+          ctx.auth.organizationId,
+          input.customerId,
+          input.designId,
+          input.data,
+          ctx.auth.userId,
+        ),
       ),
   }),
 
   jobs: router({
-    list: officeProcedure.input(z.object({ customerId: z.string() })).query(({ ctx, input }) =>
-      listCustomerJobs(ctx.auth.organizationId, input.customerId),
-    ),
-    create: officeProcedure
+    list: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string() }))
+      .query(({ ctx, input }) => listCustomerJobs(ctx.auth.organizationId, input.customerId)),
+    create: permissionProcedure('customers', 'create')
       .input(z.object({ customerId: z.string(), data: createCustomerJobSchema }))
       .mutation(async ({ ctx, input }) => {
         await requireCustomer(ctx.auth.organizationId, input.customerId);
@@ -674,21 +817,29 @@ export const customer360Router = router({
         );
         return job;
       }),
-    update: officeProcedure
+    update: permissionProcedure('customers', 'edit')
       .input(z.object({ customerId: z.string(), jobId: z.string(), data: updateCustomerJobSchema }))
       .mutation(({ ctx, input }) =>
-        updateCustomerJob(ctx.auth.organizationId, input.customerId, input.jobId, input.data, ctx.auth.userId),
+        updateCustomerJob(
+          ctx.auth.organizationId,
+          input.customerId,
+          input.jobId,
+          input.data,
+          ctx.auth.userId,
+        ),
       ),
-    delete: adminProcedure
+    delete: permissionProcedure('customers', 'delete')
       .input(z.object({ customerId: z.string(), jobId: z.string() }))
-      .mutation(({ ctx, input }) => deleteCustomerJob360(ctx.auth.organizationId, input.customerId, input.jobId)),
+      .mutation(({ ctx, input }) =>
+        deleteCustomerJob360(ctx.auth.organizationId, input.customerId, input.jobId),
+      ),
   }),
 
   storage: router({
-    list: officeProcedure.input(z.object({ customerId: z.string() })).query(({ ctx, input }) =>
-      listStorageItems(ctx.auth.organizationId, input.customerId),
-    ),
-    create: officeProcedure
+    list: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string() }))
+      .query(({ ctx, input }) => listStorageItems(ctx.auth.organizationId, input.customerId)),
+    create: permissionProcedure('customers', 'create')
       .input(z.object({ customerId: z.string(), data: createStorageItemSchema }))
       .mutation(async ({ ctx, input }) => {
         await requireCustomer(ctx.auth.organizationId, input.customerId);
@@ -707,22 +858,30 @@ export const customer360Router = router({
           ctx.auth.userId,
         );
       }),
-    update: officeProcedure
-      .input(z.object({ customerId: z.string(), itemId: z.string(), data: updateStorageItemSchema }))
+    update: permissionProcedure('customers', 'edit')
+      .input(
+        z.object({ customerId: z.string(), itemId: z.string(), data: updateStorageItemSchema }),
+      )
       .mutation(({ ctx, input }) =>
-        updateStorageItem(ctx.auth.organizationId, input.customerId, input.itemId, input.data, ctx.auth.userId),
+        updateStorageItem(
+          ctx.auth.organizationId,
+          input.customerId,
+          input.itemId,
+          input.data,
+          ctx.auth.userId,
+        ),
       ),
   }),
 
   communications: router({
-    list: officeProcedure
+    list: permissionProcedure('customers', 'view')
       .input(z.object({ customerId: z.string(), type: z.string().optional() }))
       .query(async ({ ctx, input }) => {
         const items = await listCommunications(ctx.auth.organizationId, input.customerId);
         if (!input.type) return items;
         return items.filter((c) => c.type === input.type);
       }),
-    create: officeProcedure
+    create: permissionProcedure('customers', 'create')
       .input(z.object({ customerId: z.string(), data: createCommunicationSchema }))
       .mutation(async ({ ctx, input }) => {
         await requireCustomer(ctx.auth.organizationId, input.customerId);
@@ -763,11 +922,79 @@ export const customer360Router = router({
   }),
 
   followUpRules: router({
-    list: officeProcedure.query(async ({ ctx }) => ensureFollowUpRules(ctx.auth.organizationId)),
-    update: officeProcedure
+    list: permissionProcedure('customers', 'view').query(async ({ ctx }) => {
+      const { isFollowUpAutomationEnabled } = await import('@yuletide/firebase');
+      if (!(await isFollowUpAutomationEnabled(ctx.auth.organizationId))) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'FOLLOW_UP_AUTOMATION_DISABLED',
+        });
+      }
+      return ensureFollowUpRules(ctx.auth.organizationId);
+    }),
+    update: permissionProcedure('customers', 'edit')
       .input(z.object({ ruleId: z.string(), data: updateFollowUpRuleSchema }))
+      .mutation(async ({ ctx, input }) => {
+        const { isFollowUpAutomationEnabled } = await import('@yuletide/firebase');
+        if (!(await isFollowUpAutomationEnabled(ctx.auth.organizationId))) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'FOLLOW_UP_AUTOMATION_DISABLED',
+          });
+        }
+        return updateFollowUpRule(
+          ctx.auth.organizationId,
+          input.ruleId,
+          input.data,
+          ctx.auth.userId,
+        );
+      }),
+  }),
+
+  documents: router({
+    list: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string() }))
+      .query(({ ctx, input }) =>
+        listCustomerDocuments360(ctx.auth.organizationId, input.customerId),
+      ),
+    create: permissionProcedure('customers', 'create')
+      .input(
+        z.object({
+          customerId: z.string().min(1),
+          title: z.string().min(1),
+          category: z
+            .enum(['proposal', 'agreement', 'invoice', 'photo', 'permit', 'other'])
+            .optional(),
+          url: z.string().nullable().optional(),
+          notes: z.string().nullable().optional(),
+          relatedRecordType: z.string().nullable().optional(),
+          relatedRecordId: z.string().nullable().optional(),
+          visibility: z
+            .enum(['customer_visible', 'staff_only', 'internal', 'system'])
+            .optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        await requireCustomer(ctx.auth.organizationId, input.customerId);
+        return createCustomerDocument360(
+          ctx.auth.organizationId,
+          {
+            customerId: input.customerId,
+            title: input.title,
+            category: input.category,
+            url: emptyToNull(input.url),
+            notes: emptyToNull(input.notes),
+            relatedRecordType: emptyToNull(input.relatedRecordType),
+            relatedRecordId: emptyToNull(input.relatedRecordId),
+            visibility: input.visibility,
+          },
+          ctx.auth.userId,
+        );
+      }),
+    delete: permissionProcedure('customers', 'delete')
+      .input(z.object({ documentId: z.string().min(1) }))
       .mutation(({ ctx, input }) =>
-        updateFollowUpRule(ctx.auth.organizationId, input.ruleId, input.data, ctx.auth.userId),
+        deleteCustomerDocument360(ctx.auth.organizationId, input.documentId),
       ),
   }),
 });

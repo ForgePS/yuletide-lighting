@@ -32,11 +32,20 @@ export const sendBulkSms360Schema = z.object({
 });
 
 export const receiveSms360Schema = z.object({
-  organizationId: z.string().optional(),
+  /** Required for public Twilio webhook; ignored when org comes from auth context. */
+  toPhone: z.string().min(5).max(40).optional(),
   customerId: z.string().optional(),
   fromPhone: z.string().max(40).optional(),
   body: z.string().min(1).max(5000),
   providerMessageId: z.string().max(200).optional(),
+});
+
+export const receiveSmsPublicSchema = receiveSms360Schema.extend({
+  toPhone: z.string().min(5).max(40),
+  /** Twilio X-Twilio-Signature header value. */
+  twilioSignature: z.string().min(1).max(200).optional(),
+  /** Absolute webhook URL Twilio posted to (required for signature verify). */
+  webhookUrl: z.string().url().max(2000).optional(),
 });
 
 export const updateConversationSchema = z.object({
@@ -108,14 +117,16 @@ export const portalTokenMessageSchema = z.object({
 });
 
 export const updateTemplate360Schema = createTemplate360Schema.partial().extend({
-  templateId: z.string().min(1),
   isActive: z.boolean().optional(),
 });
 
 export const deleteTemplate360Schema = z.object({ templateId: z.string().min(1) });
 
-export const updateAutomation360Schema = createAutomationSchema.partial().extend({
-  automationId: z.string().min(1),
+export const updateAutomation360Schema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  subject: z.string().max(500).optional().nullable(),
+  body: z.string().min(1).max(10000).optional(),
+  delayDays: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
 });
 

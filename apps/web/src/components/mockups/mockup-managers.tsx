@@ -133,8 +133,8 @@ export function AIStudioPage() {
   const { toast } = useToast();
   const { data: mockups } = trpc.mockups360.list.useQuery();
   const design = trpc.mockups360.ai.design.useMutation({
-    onSuccess: (r) => toast(`Generated: ${r.designName}`, 'success'),
-    onError: (e) => toast(e.message, 'error'),
+    onSuccess: () => toast('AI design generated', 'success'),
+    onError: (e) => toast(e.message.includes('AI_') ? 'AI provider not configured' : e.message, 'error'),
   });
 
   const presets = ['Warm white classic design', 'Premium design', 'HOA design', 'Commercial design'];
@@ -143,28 +143,39 @@ export function AIStudioPage() {
     <div className="space-y-6">
       <div className="card space-y-4 p-6">
         <h2 className="font-semibold">AI Design Assistant</h2>
+        <p className="text-sm text-muted-foreground">
+          Requires an approved AI provider and entitlements. Mocked designs are not shown in production.
+        </p>
         <select className="input" value={mockupId} onChange={(e) => setMockupId(e.target.value)}>
           <option value="">New design (preview only)</option>
-          {mockups?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          {mockups?.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
         </select>
         <div className="flex flex-wrap gap-2">
           {presets.map((p) => (
-            <button key={p} type="button" className="btn-secondary text-xs" onClick={() => setStyle(p)}>{p}</button>
+            <button key={p} type="button" className="btn-secondary text-xs" onClick={() => setStyle(p)}>
+              {p}
+            </button>
           ))}
         </div>
         <textarea className="input" rows={2} value={style} onChange={(e) => setStyle(e.target.value)} />
-        <button type="button" className="btn-primary" disabled={design.isPending} onClick={() => design.mutate({ style, mockupId: mockupId || undefined })}>Generate design</button>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={design.isPending}
+          onClick={() => design.mutate({ style, mockupId: mockupId || undefined })}
+        >
+          Generate design
+        </button>
+        {design.isError ? (
+          <p className="text-sm text-amber-800" role="status">
+            AI provider not configured — no fabricated analysis will be shown.
+          </p>
+        ) : null}
       </div>
-      {design.data && (
-        <div className="card space-y-3 p-6 text-sm">
-          <h3 className="font-semibold">{design.data.designName}</h3>
-          <p>{design.data.description}</p>
-          <p className="text-muted-foreground">~{design.data.estimatedLinearFeet} linear feet</p>
-          <div><p className="font-medium">Upsells</p><ul>{design.data.upsells.map((u) => <li key={u}>• {u}</li>)}</ul></div>
-          <div><p className="font-medium">Color packages</p><ul>{design.data.colorPackages.map((c) => <li key={c}>• {c}</li>)}</ul></div>
-          {mockupId && <Link href={`/app/mockups/${mockupId}`} className="text-primary hover:underline">Open in studio →</Link>}
-        </div>
-      )}
     </div>
   );
 }

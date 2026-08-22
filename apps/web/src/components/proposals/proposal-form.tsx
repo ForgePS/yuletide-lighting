@@ -16,7 +16,23 @@ import {
 import { buildScopeFromProperty, labelInstallComplexity } from '@/lib/property-profile-utils';
 import { ProposalLineItemsEditor } from './proposal-line-items-editor';
 import type { ProposalLineItem, Property } from '@clcrm/types';
+import {
+  buildPackageEditorDraftsFromProposalPackages,
+  proposalPackagesAreFilled,
+} from '@clcrm/types';
 import { LoadingState } from '@/components/ui/states';
+
+type PricingMode = 'packages' | 'line_items';
+
+type PackageDraft = {
+  key: 'good' | 'better' | 'best';
+  tier: 'basic' | 'recommended' | 'premium';
+  label: string;
+  description: string;
+  inclusions: string[];
+  markupPercent: number;
+  isRecommended: boolean;
+};
 
 type FormState = {
   customerId: string;
@@ -35,18 +51,91 @@ type FormState = {
   depositPercent: number;
   notes: string;
   lineItems: ProposalLineItem[];
+  /** Typeable proposal total in dollars (only used when packages are not filled). */
+  proposalPriceDollars: string;
   installDate: string;
   removalDate: string;
   termsAndConditions: string;
+  pricingMode: PricingMode;
+  packages: PackageDraft[];
 };
+
+function pricingForPackageTier(
+  base: {
+    linearFootage: number;
+    treeWrapCount: number;
+    garlandLengthFt: number;
+    wreathCount: number;
+    specialtyDecorCount: number;
+    laborHours: number;
+    equipmentChargeCents: number;
+    travelChargeCents: number;
+    materialCostCents: number;
+    laborCostCents: number;
+  },
+  pkg: PackageDraft,
+) {
+  if (pkg.key === 'good') return base;
+  const priced = {
+    ...base,
+    linearFootage: Math.round(base.linearFootage * (1 + pkg.markupPercent / 100)),
+  };
+  if (pkg.key === 'best') {
+    return { ...priced, treeWrapCount: base.treeWrapCount + 2 };
+  }
+  return priced;
+}
 
 function dateInputValue(d: unknown): string {
   if (!d) return '';
-  const date = d instanceof Date ? d : new Date(String(d));
+  if (d instanceof Date) {
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
+  if (typeof d === 'object') {
+    const o = d as { toDate?: () => Date; seconds?: number; _seconds?: number };
+    if (typeof o.toDate === 'function') {
+      try {
+        const date = o.toDate();
+        return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : '';
+      } catch {
+        return '';
+      }
+    }
+    const seconds = typeof o.seconds === 'number' ? o.seconds : typeof o._seconds === 'number' ? o._seconds : null;
+    if (seconds != null) {
+      const date = new Date(seconds * 1000);
+      return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+    }
+  }
+  const date = new Date(typeof d === 'number' || typeof d === 'string' ? d : String(d));
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 }
 
+function dollarsFromCents(cents: unknown): string {
+  const n = Number(cents);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return (n / 100).toFixed(2);
+}
+
 function defaultForm(initial?: Record<string, unknown>, prefillCustomerId?: string): FormState {
+  const packagesRaw = initial?.packages as
+    | Array<{
+        tier: 'basic' | 'recommended' | 'premium';
+        label?: string;
+        name?: string;
+        description?: string | null;
+        products?: string[];
+        isRecommended?: boolean;
+        pricing?: { linearFootage?: number };
+      }>
+    | undefined;
+  const pricing = initial?.pricing as { linearFootage?: number } | undefined;
+  const drafts = buildPackageEditorDraftsFromProposalPackages(
+    packagesRaw as Parameters<typeof buildPackageEditorDraftsFromProposalPackages>[0],
+    pricing?.linearFootage != null ? { linearFootage: pricing.linearFootage } : undefined,
+  );
+  const filled = proposalPackagesAreFilled(drafts);
+  const lineItems = (initial?.lineItems as ProposalLineItem[]) ?? [];
   return {
     customerId: prefillCustomerId || String(initial?.customerId ?? ''),
     propertyId: String(initial?.propertyId ?? ''),
@@ -63,10 +152,13 @@ function defaultForm(initial?: Record<string, unknown>, prefillCustomerId?: stri
     financingOption: String(initial?.financingOption ?? 'deposit_50'),
     depositPercent: Number(initial?.depositPercent ?? 50),
     notes: String(initial?.notes ?? ''),
-    lineItems: (initial?.lineItems as ProposalLineItem[]) ?? [],
+    lineItems,
+    proposalPriceDollars: dollarsFromCents(initial?.subtotalCents),
     installDate: dateInputValue(initial?.installDate),
     removalDate: dateInputValue(initial?.removalDate),
     termsAndConditions: String(initial?.termsAndConditions ?? DEFAULT_PROPOSAL_TERMS),
+    pricingMode: filled || lineItems.length === 0 ? 'packages' : 'line_items',
+    packages: drafts,
   };
 }
 
@@ -87,10 +179,52 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
   const { year } = useAnalyticsYear();
   const [form, setForm] = useState<FormState>(() => defaultForm(initial, prefillCustomerId));
   const [customerSearch, setCustomerSearch] = useState('');
+  const { data: proposalSettings } = trpc.settings360.proposals.useQuery(undefined, {
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     if (initial) setForm(defaultForm(initial, prefillCustomerId));
   }, [initial, prefillCustomerId]);
+
+  useEffect(() => {
+    // New proposals only: seed editable drafts from org Settings / Package library.
+    if (!proposalSettings?.packageDefaults || proposalId) return;
+    const d = proposalSettings.packageDefaults;
+    setForm((prev) => ({
+      ...prev,
+      pricingMode: 'packages',
+      packages: [
+        {
+          key: 'good',
+          tier: 'basic',
+          label: d.good.label,
+          description: d.good.description ?? '',
+          inclusions: d.good.inclusions ?? [],
+          markupPercent: d.good.markupPercent,
+          isRecommended: false,
+        },
+        {
+          key: 'better',
+          tier: 'recommended',
+          label: d.better.label,
+          description: d.better.description ?? '',
+          inclusions: d.better.inclusions ?? [],
+          markupPercent: d.better.markupPercent,
+          isRecommended: true,
+        },
+        {
+          key: 'best',
+          tier: 'premium',
+          label: d.best.label,
+          description: d.best.description ?? '',
+          inclusions: d.best.inclusions ?? [],
+          markupPercent: d.best.markupPercent,
+          isRecommended: false,
+        },
+      ],
+    }));
+  }, [proposalSettings, proposalId]);
 
   const { data: customers, isLoading: customersLoading, isError: customersError } = trpc.customer360.list.useQuery(
     { page: 1, pageSize: 100, search: customerSearch || undefined, enrich: 'none' },
@@ -131,6 +265,24 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
       materialCostCents: 0,
       laborCostCents: 0,
     };
+    const typedCents = Math.round(parseFloat(form.proposalPriceDollars || '0') * 100);
+    const filledPackages = proposalPackagesAreFilled(form.packages);
+    // Filled Good/Better/Best deals always win over line items / manual totals.
+    const preferPackages = form.pricingMode === 'packages' || filledPackages;
+    const packagesPayload = preferPackages
+      ? form.packages.map((pkg) => ({
+          tier: pkg.tier,
+          name: pkg.label.trim() || pkg.key,
+          label: pkg.label.trim() || pkg.key,
+          description: pkg.description,
+          lineItems: [] as never[],
+          products: pkg.inclusions,
+          decorations: [] as string[],
+          addOns: [] as string[],
+          pricing: pricingForPackageTier(pricing, pkg),
+          isRecommended: pkg.isRecommended,
+        }))
+      : [];
     const payload = {
       customerId: form.customerId,
       propertyId: form.propertyId,
@@ -146,11 +298,25 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
       financingOption: form.financingOption as never,
       depositPercent: form.depositPercent,
       notes: form.notes || undefined,
-      lineItems: form.lineItems.map((item) => ({
-        ...item,
-        inventoryItemId: item.inventoryItemId ?? undefined,
-        agreementCode: item.agreementCode ?? undefined,
-      })),
+      preferPackages,
+      packages: packagesPayload,
+      lineItems: preferPackages
+        ? []
+        : form.lineItems.map((item) => ({
+            id: item.id,
+            description: item.description,
+            quantity: item.quantity,
+            unitPriceCents: item.unitPriceCents,
+            ...(item.category ? { category: item.category } : {}),
+            ...(item.inventoryItemId ? { inventoryItemId: item.inventoryItemId } : {}),
+            ...(item.agreementCode ? { agreementCode: item.agreementCode } : {}),
+          })),
+      ...(!preferPackages &&
+      Number.isFinite(typedCents) &&
+      typedCents >= 0 &&
+      form.proposalPriceDollars.trim() !== ''
+        ? { subtotalCents: typedCents }
+        : {}),
       installDate: form.installDate ? new Date(form.installDate) : null,
       removalDate: form.removalDate ? new Date(form.removalDate) : null,
       termsAndConditions: form.termsAndConditions || undefined,
@@ -165,8 +331,9 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
         toast('Proposal created', 'success');
         router.push(`/app/proposals/${result?.id}`);
       }
-    } catch {
-      toast('Could not save proposal', 'error');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not save proposal';
+      toast(message, 'error');
     }
   }
 
@@ -285,7 +452,7 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">Season / year</span>
-            <input className="input w-full" value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })} placeholder="2025" />
+            <input className="input w-full" value={form.season} onChange={(e) => setForm({ ...form, season: e.target.value })} placeholder={String(new Date().getFullYear())} />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">Salesperson</span>
@@ -306,6 +473,177 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
         </div>
       </Section>
 
+      <Section title="Package deals — Good / Better / Best">
+        <p className="mb-4 text-sm text-muted-foreground">
+          Always fillable on this proposal. Prefills from{' '}
+          <Link href="/app/proposals/packages" className="text-primary hover:underline">
+            Package library / Settings
+          </Link>
+          {' '}when those defaults are set. Filled packages set the total and take precedence over line items.
+          Mark one as Recommended — that becomes the selected price.
+        </p>
+        <div className="mb-5 grid gap-4 sm:grid-cols-3">
+          <label className="space-y-1 text-sm">
+            Linear footage
+            <input
+              type="number"
+              min={0}
+              className="input mt-1 w-full"
+              value={form.linearFootage}
+              onChange={(e) => setForm({ ...form, linearFootage: Number(e.target.value), pricingMode: 'packages' })}
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            Tree wraps
+            <input
+              type="number"
+              min={0}
+              className="input mt-1 w-full"
+              value={form.treeWrapCount}
+              onChange={(e) => setForm({ ...form, treeWrapCount: Number(e.target.value), pricingMode: 'packages' })}
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            Labor hours
+            <input
+              type="number"
+              min={0}
+              className="input mt-1 w-full"
+              value={form.laborHours}
+              onChange={(e) => setForm({ ...form, laborHours: Number(e.target.value), pricingMode: 'packages' })}
+            />
+          </label>
+        </div>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Measurements feed package pricing · {labelInstallType(form.installType)}
+        </p>
+        <div className="grid gap-4 lg:grid-cols-3">
+          {form.packages.map((pkg, index) => (
+            <div
+              key={pkg.key}
+              className={`space-y-3 rounded-[var(--radius)] border p-4 ${
+                pkg.isRecommended ? 'border-primary bg-primary/5' : 'border-border'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold capitalize">{pkg.key}</p>
+                <label className="flex items-center gap-1.5 text-xs font-medium">
+                  <input
+                    type="radio"
+                    name="recommendedPackage"
+                    checked={pkg.isRecommended}
+                    onChange={() =>
+                      setForm({
+                        ...form,
+                        pricingMode: 'packages',
+                        packages: form.packages.map((p, i) => ({
+                          ...p,
+                          isRecommended: i === index,
+                        })),
+                      })
+                    }
+                  />
+                  Recommended
+                </label>
+              </div>
+              <label className="block space-y-1 text-sm">
+                <span className="text-xs font-medium text-muted-foreground">Label</span>
+                <input
+                  className="input w-full"
+                  value={pkg.label}
+                  onChange={(e) => {
+                    const packages = [...form.packages];
+                    packages[index] = { ...pkg, label: e.target.value };
+                    setForm({ ...form, pricingMode: 'packages', packages });
+                  }}
+                />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="text-xs font-medium text-muted-foreground">Markup %</span>
+                <input
+                  type="number"
+                  min={0}
+                  className="input w-full"
+                  value={pkg.markupPercent}
+                  onChange={(e) => {
+                    const packages = [...form.packages];
+                    packages[index] = { ...pkg, markupPercent: Number(e.target.value) };
+                    setForm({ ...form, pricingMode: 'packages', packages });
+                  }}
+                />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="text-xs font-medium text-muted-foreground">Description</span>
+                <textarea
+                  className="input min-h-[80px] w-full"
+                  value={pkg.description}
+                  onChange={(e) => {
+                    const packages = [...form.packages];
+                    packages[index] = { ...pkg, description: e.target.value };
+                    setForm({ ...form, pricingMode: 'packages', packages });
+                  }}
+                />
+              </label>
+              <label className="block space-y-1 text-sm">
+                <span className="text-xs font-medium text-muted-foreground">What&apos;s included (one per line)</span>
+                <textarea
+                  className="input min-h-[120px] w-full"
+                  value={pkg.inclusions.join('\n')}
+                  onChange={(e) => {
+                    const packages = [...form.packages];
+                    packages[index] = {
+                      ...pkg,
+                      inclusions: e.target.value
+                        .split('\n')
+                        .map((line) => line.trim())
+                        .filter(Boolean),
+                    };
+                    setForm({ ...form, pricingMode: 'packages', packages });
+                  }}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+        <label className="mt-5 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={form.pricingMode === 'line_items'}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                pricingMode: e.target.checked ? 'line_items' : 'packages',
+              })
+            }
+          />
+          Use line items only instead (overrides package pricing)
+        </label>
+      </Section>
+
+      {form.pricingMode === 'line_items' && (
+        <Section title="Line item pricing">
+          <p className="mb-4 text-sm text-muted-foreground">
+            Line items only apply when the checkbox above is on. Otherwise package deals win.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">Proposal price ($)</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                className="input w-full"
+                placeholder="0.00"
+                value={form.proposalPriceDollars}
+                onChange={(e) => setForm({ ...form, proposalPriceDollars: e.target.value })}
+              />
+            </label>
+          </div>
+          <div className="mt-4">
+            <ProposalLineItemsEditor value={form.lineItems} onChange={(lineItems) => setForm({ ...form, lineItems })} />
+          </div>
+        </Section>
+      )}
+
       <Section title="Scope of work">
         <textarea
           className="input min-h-[160px] w-full"
@@ -323,13 +661,6 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
         >
           Insert sample scope
         </button>
-      </Section>
-
-      <Section title="Line items">
-        <p className="mb-3 text-sm text-muted-foreground">
-          Optional itemized pricing. When line items are added, they override auto-calculated package pricing.
-        </p>
-        <ProposalLineItemsEditor value={form.lineItems} onChange={(lineItems) => setForm({ ...form, lineItems })} />
       </Section>
 
       <Section title="Schedule & terms">
@@ -351,26 +682,6 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
             onChange={(e) => setForm({ ...form, termsAndConditions: e.target.value })}
           />
         </label>
-      </Section>
-
-      <Section title="Pricing inputs">
-        <p className="mb-4 text-sm text-muted-foreground">
-          Enter measurements to auto-generate Good / Better / Best packages after saving. Category: {labelInstallType(form.installType)}.
-        </p>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <label className="space-y-1 text-sm">
-            Linear footage
-            <input type="number" min={0} className="input mt-1 w-full" value={form.linearFootage} onChange={(e) => setForm({ ...form, linearFootage: Number(e.target.value) })} />
-          </label>
-          <label className="space-y-1 text-sm">
-            Tree wraps
-            <input type="number" min={0} className="input mt-1 w-full" value={form.treeWrapCount} onChange={(e) => setForm({ ...form, treeWrapCount: Number(e.target.value) })} />
-          </label>
-          <label className="space-y-1 text-sm">
-            Labor hours
-            <input type="number" min={0} className="input mt-1 w-full" value={form.laborHours} onChange={(e) => setForm({ ...form, laborHours: Number(e.target.value) })} />
-          </label>
-        </div>
       </Section>
 
       <Section title="Design & files">

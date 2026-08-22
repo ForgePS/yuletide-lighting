@@ -35,7 +35,7 @@ export function DashboardWidgets() {
         <div className="card p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="font-semibold">Revenue by service</h3>
+              <h3 className="text-base font-semibold tracking-tight text-foreground">Revenue by service</h3>
               <p className="mt-1 text-sm text-muted-foreground">{yearLabel}</p>
             </div>
             <Link href="/app/reports/sales" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
@@ -55,8 +55,8 @@ export function DashboardWidgets() {
         <div className="card p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="font-semibold">Balance due</h3>
-              <p className="mt-1 text-2xl font-bold">{formatCurrency(outstanding)}</p>
+              <h3 className="text-base font-semibold tracking-tight text-foreground">Balance due</h3>
+              <p className="mt-1 text-2xl font-bold tracking-tight">{formatCurrency(outstanding)}</p>
               <p className="mt-1 text-sm text-muted-foreground">Outstanding across open invoices</p>
             </div>
             <Link href="/app/invoices/collections" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">

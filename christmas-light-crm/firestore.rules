@@ -1,0 +1,423 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isActiveUser() {
+      return isSignedIn()
+        && userDoc().data.keys().hasAll(['organizationId', 'role'])
+        && (!userDoc().data.keys().hasAny(['status']) || userDoc().data.status == 'active');
+    }
+
+    // YL-S4 / BACKLOG-010 — org operating lifecycle (distinct from user.status / subscriptionStatus).
+    // Missing lifecycleStatus ⇒ active (legacy). Explicit inactive|suspended|archived deny client access.
+    function orgPath(orgId) {
+      return /databases/$(database)/documents/organizations/$(orgId);
+    }
+
+    function orgDoc(orgId) {
+      return get(orgPath(orgId));
+    }
+
+    function isOrgLifecycleActive(orgId) {
+      return exists(orgPath(orgId))
+        && (
+          !orgDoc(orgId).data.keys().hasAny(['lifecycleStatus'])
+          || !(orgDoc(orgId).data.lifecycleStatus in ['inactive', 'suspended', 'archived'])
+        );
+    }
+
+    function belongsToOrg(orgId) {
+      return isActiveUser()
+        && userDoc().data.organizationId == orgId
+        && isOrgLifecycleActive(orgId);
+    }
+
+    // YL-S6 / BACKLOG-007 — prefer settingsRole mapped to legacy buckets; fall back to users.role.
+    // Keep in sync with packages/types mapSettingsRoleToLegacyRole / resolveLegacyRoleForRules.
+    function effectiveLegacyRole() {
+      return userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole == 'owner' ? 'owner'
+        : userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole == 'administrator' ? 'admin'
+        : userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole in ['sales_manager', 'sales_rep', 'operations_manager', 'dispatcher', 'office_staff'] ? 'office'
+        : userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole in ['crew_leader', 'installer', 'warehouse_staff'] ? 'crew'
+        : userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole == 'read_only' ? 'read_only'
+        : userDoc().data.role;
+    }
+
+    function hasRole(orgId, roles) {
+      return belongsToOrg(orgId) && effectiveLegacyRole() in roles;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      // Users may update profile fields only — never organizationId, role, or settingsRole
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.firebaseUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.role == resource.data.role
+        && (!('settingsRole' in request.resource.data)
+          || request.resource.data.settingsRole == resource.data.settingsRole)
+        && (!('status' in request.resource.data)
+          || request.resource.data.status == resource.data.status);
+      allow delete: if false;
+    }
+
+    match /organizations/{orgId} {
+      allow read: if belongsToOrg(orgId);
+      // Organization create is Admin-SDK only (sign-up / provisioning)
+      allow create: if false;
+      allow update: if hasRole(orgId, ['owner', 'admin']);
+      allow delete: if false;
+      match /customers/{customerId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+
+        match /properties/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /activities/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /designs/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /jobs/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /storage/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /communications/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+      }
+      match /followUpRules/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /properties/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /inventoryItems/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /inventoryCategories/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /warehouses/{warehouseId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        match /locations/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+      }
+      match /inventoryTransfers/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /purchaseOrders/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /vendors/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /inventoryAudits/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /truckInventory/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /customerInventory/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /jobMaterialAllocations/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /proposals/{proposalId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        match /packages/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /views/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /approvals/{docId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+      }
+      match /proposalTemplates/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /jobs/{docId} {
+        allow read: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+        allow write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /invoices/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+
+        match /payments/{paymentId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /activity/{activityId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /reminders/{reminderId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /disputes/{disputeId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+      }
+      match /payments/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /reminderTemplates/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /customerStatements/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /collectionsQueue/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /cashFlowForecasts/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /messages/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /messageThreads/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /conversations/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        match /messages/{messageId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+      }
+      match /templates/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /messageTemplates/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /campaigns/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /automations/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /notifications/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /reviewRequests/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /internalChannels/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+        match /messages/{messageId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+        }
+      }
+      match /mockups/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        match /layers/{layerId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /measurements/{measurementId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /versions/{versionId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+        match /exports/{exportId} {
+          allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+        }
+      }
+      match /designTemplates/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /decorationLibrary/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /routes/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /calendarEvents/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /schedules/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /crewSchedules/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /vehicleSchedules/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /dispatchBoard/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /scheduleTemplates/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /resourceReservations/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /availabilityRules/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /scheduleBlocks/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /reports/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /dashboards/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /dashboardWidgets/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /forecasts/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /scheduledReports/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /reportTemplates/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /analyticsSnapshots/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /kpiDefinitions/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /settings/{section} {
+        allow read: if hasRole(orgId, ['owner', 'admin', 'office']);
+        allow write: if hasRole(orgId, ['owner', 'admin']);
+      }
+      match /roles/{roleId} {
+        allow read: if hasRole(orgId, ['owner', 'admin', 'office']);
+        allow write: if hasRole(orgId, ['owner', 'admin']);
+      }
+      match /permissions/{permissionId} {
+        allow read: if hasRole(orgId, ['owner', 'admin', 'office']);
+        allow write: if hasRole(orgId, ['owner', 'admin']);
+      }
+      match /auditLogs/{logId} {
+        allow read: if hasRole(orgId, ['owner', 'admin']);
+        allow create: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /featureFlags/{flagId} {
+        allow read: if hasRole(orgId, ['owner', 'admin', 'office']);
+        allow write: if hasRole(orgId, ['owner', 'admin']);
+      }
+      match /backups/{backupId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin']);
+      }
+      match /userInvites/{inviteId} {
+        allow read: if hasRole(orgId, ['owner', 'admin', 'office']);
+        allow write: if hasRole(orgId, ['owner', 'admin']);
+      }
+      match /subscriptionPayments/{paymentId} {
+        allow read: if hasRole(orgId, ['owner', 'admin']);
+        allow write: if false;
+      }
+      match /signLocations/{docId} {
+        allow read: if belongsToOrg(orgId);
+        allow create, update: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+        allow delete: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /signTrackerSettings/{docId} {
+        allow read: if belongsToOrg(orgId);
+        allow write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+
+      match /portalAccounts/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalUsers/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalTimelineEvents/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalNotifications/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalQrCodes/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalQrScans/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalQrVerifications/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /portalQrAuditEvents/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+
+      // Phase 0: collections used by Admin SDK / future client — org-scoped deny-by-default catch-all
+      match /serviceIssues/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /consultations/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /contacts/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /projectPrepItems/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /timeEntries/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office', 'crew']);
+      }
+      match /storageRecords/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /commercialAccounts/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /multiYearAgreements/{docId} {
+        allow read, write: if hasRole(orgId, ['owner', 'admin', 'office']);
+      }
+      match /crmUiConfig/{docId} {
+        allow read: if belongsToOrg(orgId);
+        allow write: if hasRole(orgId, ['owner', 'admin']);
+      }
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    // Public token mirrors — Admin SDK serves public pages; client SDK must not open-read.
+    // YL-S22: secrecy is enforced in getByPublicToken / publicAccessTokenSchema (len+charset).
+    match /publicProposals/{token} {
+      allow read, write: if false;
+    }
+    match /publicInvoices/{token} {
+      allow read, write: if false;
+    }
+
+    match /platform/{docId} {
+      allow read, write: if false;
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /platformAuditLogs/{logId} {
+      allow read, write: if false;
+    }
+  }
+}

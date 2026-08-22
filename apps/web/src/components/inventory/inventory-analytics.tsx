@@ -3,14 +3,22 @@
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency } from '@/lib/inventory-utils';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 
 export function InventoryAnalyticsPage() {
-  const { data, isLoading } = trpc.inventory360.analytics.useQuery();
+  const { data, isLoading, isError, error, refetch } = trpc.inventory360.analytics.useQuery();
   const [question, setQuestion] = useState('Show items below reorder level');
   const { data: aiResult, refetch: askAi } = trpc.inventory360.aiQuery.useQuery({ question }, { enabled: false });
 
-  if (isLoading || !data) return <LoadingState />;
+  if (isLoading) return <LoadingState />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load inventory analytics.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   return (
     <div className="space-y-8">

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publicAccessTokenSchema } from './public-token';
 
 export const proposalStatusSchema = z.enum([
   'draft',
@@ -12,6 +13,7 @@ export const proposalStatusSchema = z.enum([
   'scheduled',
   'rejected',
   'expired',
+  'superseded',
   'accepted',
   'declined',
 ]);
@@ -60,8 +62,8 @@ export const proposalLineItemSchema = z.object({
   quantity: z.number().positive(),
   unitPriceCents: z.number().int().min(0),
   category: z.string().max(100).optional(),
-  inventoryItemId: z.string().optional(),
-  agreementCode: z.string().optional(),
+  inventoryItemId: z.string().optional().nullable(),
+  agreementCode: z.string().optional().nullable(),
 });
 
 export const proposalPackageSchema = z.object({
@@ -93,14 +95,18 @@ export const createProposal360Schema = z.object({
   notes: z.string().max(5000).optional().or(z.literal('')),
   validUntil: z.coerce.date().optional().nullable(),
   designId: z.string().optional().or(z.literal('')),
-  propertyPhotoUrl: z.string().url().optional().or(z.literal('')),
+  propertyPhotoUrl: z.string().max(2000).optional().or(z.literal('')),
   mockupIds: z.array(z.string()).default([]),
   pricing: pricingComponentsSchema.optional(),
+  /** Manual proposal total override (cents). Ignored when preferPackages / filled packages win. */
+  subtotalCents: z.number().int().min(0).optional(),
   financingOption: financingOptionSchema.default('deposit_50'),
   depositPercent: z.number().min(0).max(100).default(50),
   installDate: z.coerce.date().optional().nullable(),
   removalDate: z.coerce.date().optional().nullable(),
   termsAndConditions: z.string().max(20000).optional().or(z.literal('')),
+  /** When true (default), filled Good/Better/Best packages drive the total and wipe line items. */
+  preferPackages: z.boolean().default(true),
   packages: z.array(proposalPackageSchema).optional(),
   templateId: z.string().optional(),
 });
@@ -118,7 +124,7 @@ export const updateProposalStatusSchema = z.object({
 });
 
 export const publicApprovalSchema = z.object({
-  token: z.string().min(1),
+  token: publicAccessTokenSchema,
   action: approvalActionSchema,
   customerName: z.string().min(1).max(200),
   signatureData: z.string().max(50000).optional().or(z.literal('')),
@@ -143,7 +149,7 @@ export const deleteProposalTemplateSchema = z.object({
 });
 
 export const recordProposalViewSchema = z.object({
-  token: z.string().min(1),
+  token: publicAccessTokenSchema,
   durationSeconds: z.number().optional(),
   device: z.string().optional(),
   userAgent: z.string().optional(),

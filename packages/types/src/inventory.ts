@@ -310,6 +310,51 @@ export function computeItemValue(item: Pick<InventoryItemRecord, 'quantityOnHand
   return item.quantityOnHand * item.unitCostCents;
 }
 
+/** YL-S16 — null-safe inventory status / type / category labels. */
+export function formatInventoryLabel(value: string | null | undefined): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return 'Unknown';
+  return text
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+/**
+ * YL-S16 — damage is a carve-out from available (do not also reduce onHand).
+ * `computeAvailable` already subtracts quantityDamaged.
+ */
+export function applyDamageQuantityUpdate(
+  item: Pick<InventoryItemRecord, 'quantityDamaged' | 'quantityOnHand'>,
+  quantity: number,
+): { quantityDamaged: number } {
+  const qty = Math.max(0, Math.floor(quantity));
+  return { quantityDamaged: item.quantityDamaged + qty };
+}
+
+/**
+ * YL-S16 — truck/customer transfer bumps assigned without reducing onHand
+ * (onHand remains physical stock; assigned is a carve-out).
+ */
+export function applyAssignmentTransferUpdate(
+  item: Pick<InventoryItemRecord, 'quantityAssigned'>,
+  quantity: number,
+): { quantityAssigned: number } {
+  const qty = Math.max(0, Math.floor(quantity));
+  return { quantityAssigned: item.quantityAssigned + qty };
+}
+
+/** True when available stock covers a requested quantity. */
+export function hasAvailableQuantity(
+  item: Pick<
+    InventoryItemRecord,
+    'quantityOnHand' | 'quantityReserved' | 'quantityAssigned' | 'quantityDamaged' | 'quantityLost'
+  >,
+  quantity: number,
+): boolean {
+  return computeAvailable(item) >= Math.max(0, quantity);
+}
+
 export type LowStockItem = {
   id: string;
   sku: string;

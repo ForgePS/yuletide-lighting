@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
+import { formatScheduleLabel } from '@clcrm/types';
 import { DISPATCH_STATUS_COLORS, formatCurrency } from '@/lib/schedule-utils';
 import { formatDate } from '@clcrm/ui';
 import { useToast } from '@/lib/toast';
 import { LoadingState, EmptyState } from '@/components/ui/states';
-import { CrewManager } from './crew-manager';
+import { RouteMap } from './route-map';
 
 export function DispatchBoard() {
   const { toast } = useToast();
@@ -26,7 +27,7 @@ export function DispatchBoard() {
         <div key={entry.id} className="card p-4">
           <div className="flex items-start justify-between">
             <h3 className="font-semibold">{entry.crewName}</h3>
-            <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${DISPATCH_STATUS_COLORS[entry.status] ?? ''}`}>{entry.status.replace(/_/g, ' ')}</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${DISPATCH_STATUS_COLORS[entry.status] ?? ''}`}>{formatScheduleLabel(entry.status)}</span>
           </div>
           <div className="mt-3 space-y-2 text-sm">
             <p><span className="text-muted-foreground">Current:</span> {entry.currentJobTitle ?? '—'}</p>
@@ -38,7 +39,7 @@ export function DispatchBoard() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {(['en_route', 'arrived', 'working', 'completed'] as const).map((s) => (
-              <button key={s} type="button" className="btn-secondary text-xs capitalize" onClick={() => update.mutate({ dispatchId: entry.id, status: s })}>{s.replace(/_/g, ' ')}</button>
+              <button key={s} type="button" className="btn-secondary text-xs capitalize" onClick={() => update.mutate({ dispatchId: entry.id, status: s })}>{formatScheduleLabel(s)}</button>
             ))}
           </div>
         </div>
@@ -48,7 +49,68 @@ export function DispatchBoard() {
 }
 
 export function CrewScheduler() {
-  return <CrewManager />;
+  const { toast } = useToast();
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.schedule360.crews.list.useQuery();
+  const { data: users } = trpc.settings360.users.useQuery(undefined, { retry: false });
+  const updateAssigned = trpc.schedule360.crews.updateAssignedUser.useMutation({
+    onSuccess: () => {
+      toast('Crew user linked', 'success');
+      utils.schedule360.crews.list.invalidate();
+    },
+    onError: (e) => toast(e.message, 'error'),
+  });
+
+  if (isLoading) return <LoadingState />;
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {data?.map((crew) => (
+        <div key={crew.id} className="card p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">{crew.name}</h3>
+            <span className="text-xs capitalize text-muted-foreground">{formatScheduleLabel(crew.availabilityStatus)}</span>
+          </div>
+          <p className="text-sm text-muted-foreground">{crew.position} · {crew.skillLevel}</p>
+          <label className="mt-3 block text-xs">
+            <span className="font-medium text-muted-foreground">Field user</span>
+            <select
+              className="input mt-1 w-full text-sm"
+              value={crew.assignedUserId ?? ''}
+              disabled={updateAssigned.isPending}
+              onChange={(e) =>
+                updateAssigned.mutate({
+                  crewId: crew.id,
+                  assignedUserId: e.target.value || null,
+                })
+              }
+            >
+              <option value="">Unassigned</option>
+              {(users ?? [])
+                .filter((u) => u.status !== 'pending' && u.firebaseUid)
+                .map((u) => (
+                <option key={u.id} value={u.firebaseUid || u.id}>
+                  {u.firstName || u.lastName
+                    ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim()
+                    : u.email || u.id}
+                  {u.email ? ` (${u.email})` : ''}
+                </option>
+              ))}
+              {crew.assignedUserId &&
+                !(users ?? []).some((u) => (u.firebaseUid || u.id) === crew.assignedUserId) && (
+                <option value={crew.assignedUserId}>{crew.assignedUserId}</option>
+              )}
+            </select>
+          </label>
+          <div className="mt-3">
+            <div className="flex justify-between text-xs"><span>Utilization</span><span>{crew.utilizationPercent}%</span></div>
+            <div className="mt-1 h-2 rounded-full bg-muted"><div className={`h-2 rounded-full ${crew.utilizationPercent > 90 ? 'bg-red-500' : 'bg-primary'}`} style={{ width: `${crew.utilizationPercent}%` }} /></div>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">{crew.scheduledHoursWeek}h scheduled / {crew.availableHoursWeek}h available</p>
+          {crew.utilizationPercent > 90 && <p className="mt-1 text-xs text-red-600">Overtime risk</p>}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function RoutePlanner() {
@@ -75,13 +137,38 @@ export function RoutePlanner() {
               <h3 className="font-semibold">{route.crewName ?? 'Route'} — {formatDate(route.routeDate)}</h3>
               <span className="text-sm">Efficiency: {route.efficiencyScore}% · {route.totalDistanceMiles} mi · {route.totalTravelMinutes} min travel</span>
             </div>
+            <div className="mt-4 overflow-hidden rounded-xl border">
+              <RouteMap stops={route.stops} />
+            </div>
             <ol className="mt-4 space-y-2 text-sm">
               {route.stops.map((stop) => (
                 <li key={stop.id} className="flex gap-3 border-b py-2">
                   <span className="font-medium text-muted-foreground">{stop.order}.</span>
                   <div>
                     <p>{stop.customerName ?? 'Stop'}</p>
-                    <p className="text-muted-foreground">{stop.address ?? '—'} · {stop.travelMinutes} min travel</p>
+                    <p className="text-muted-foreground">
+                      {stop.address ?? '—'} · {stop.travelMinutes} min travel
+                    </p>
+                    {stop.address ? (
+                      <p className="mt-1 flex flex-wrap gap-3 text-xs">
+                        <a
+                          className="text-primary hover:underline"
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(stop.address)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open in Google Maps
+                        </a>
+                        <a
+                          className="text-primary hover:underline"
+                          href={`http://maps.apple.com/?daddr=${encodeURIComponent(stop.address)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open in Apple Maps
+                        </a>
+                      </p>
+                    ) : null}
                   </div>
                 </li>
               ))}
@@ -113,7 +200,7 @@ export function ResourceScheduler() {
           {vehicles?.map((v) => (
             <div key={v.id} className={`card p-4 ${v.isAvailable ? '' : 'opacity-60'}`}>
               <p className="font-medium">{v.name}</p>
-              <p className="text-xs capitalize text-muted-foreground">{v.vehicleType.replace(/_/g, ' ')}</p>
+              <p className="text-xs capitalize text-muted-foreground">{formatScheduleLabel(v.vehicleType)}</p>
             </div>
           ))}
         </div>

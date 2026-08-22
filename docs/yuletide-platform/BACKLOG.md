@@ -1,0 +1,108 @@
+# Yuletide Platform Backlog
+
+Items discovered outside the active authorized sprint. Do not implement until authorized.
+
+## YL-BACKLOG-001
+Discovered During: YL-S0 (prior chat context)
+Description: Integrate Sneat Theme from local zip `sneat-1.0.0.zip` into staff/app UI (scope TBD).
+Reason Deferred: YL-S0 is documentation-only; framework/theme migration needs separate authorization (directive §12). Branch has Sneat-inspired tokens only; full zip still absent after YL-S18 (shell harden only).
+Suggested Sprint: dedicated theme sprint (not YL-S18)
+Priority: MEDIUM
+Blocking Current Sprint: NO
+**Status: PARTIAL (2026-08-19)** — Sneat v3.0.0 zip tokens applied to staff shell + Creator Console (Tailwind mapping); see `apps/web/vendor/SNEAT.md`. Full Bootstrap/Django asset embed not used.
+
+## YL-BACKLOG-002
+Discovered During: YL-S0 (prior chat context)
+Description: Per-proposal package editor must hydrate/persist proposal-scoped Good/Better/Best packages on edit; org `packageDefaults` remain system seed only under Settings / `/app/proposals/packages`.
+Reason Deferred: Feature work; belongs under Estimates (YL-S7), not S0.
+Suggested Sprint: YL-S7
+Priority: HIGH
+Blocking Current Sprint: NO
+**Status: RESOLVED in YL-S7** (2026-08-10) — hydrate from packages subcollection + replace-on-update persist.
+
+## YL-BACKLOG-003
+Discovered During: YL-S0 (prior chat context)
+Description: Proposal Dashboard can throw if `statusClass(p.status)` receives null/undefined (`status.includes`).
+Reason Deferred: Bug fix not in S0 scope.
+Suggested Sprint: YL-S7 or hotfix authorization
+Priority: HIGH
+Blocking Current Sprint: NO
+**Status: RESOLVED in YL-S7** (2026-08-10) — null-safe `statusClass` in proposal dashboard.
+
+## YL-BACKLOG-004
+Discovered During: prior go-live / YL-S0
+Description: Production portal magic-token migration → `PORTAL_MAGIC_TOKEN_MODE=HASH_ONLY`.
+Reason Deferred: Production data migration requires explicit production authorization.
+Suggested Sprint: after YL-S12 + separate prod auth
+Priority: HIGH
+Blocking Current Sprint: NO
+
+## YL-BACKLOG-005
+Discovered During: prior go-live / YL-S0
+Description: Live production cross-org access probe (emulator isolation passed; prod verification still open).
+Reason Deferred: Production reads need explicit authorization.
+Suggested Sprint: YL-S4 / YL-S22
+Priority: HIGH
+Blocking Current Sprint: NO
+
+## YL-BACKLOG-006
+Discovered During: prior go-live / YL-S0
+Description: Full lifecycle smoke (lead → proposal → pay → job → removal → renewal) on staging then production.
+Reason Deferred: Ops/UAT; not S0.
+Suggested Sprint: YL-S23
+Priority: HIGH
+Blocking Current Sprint: NO
+**Status: PARTIAL in YL-S23** (2026-08-13) — in-repo pure-helper Vitest chain shipped; staging/prod live UAT still deferred (needs secrets + explicit prod auth).
+
+## YL-BACKLOG-007
+Discovered During: YL-S0 baseline
+Description: Dual role systems (legacy 4 roles in rules vs settings 11 roles / permissions) and dual property/job path models need consolidation plan.
+Reason Deferred: Architectural; map first in YL-S1/S3.
+Suggested Sprint: YL-S1 / YL-S3
+Priority: MEDIUM
+Blocking Current Sprint: NO
+**Status: PARTIAL in YL-S6** (2026-08-10) — consolidation plan + Firestore `settingsRole`→legacy bridge shipped; path cutover + full rules matrix + Storage parity remain.
+
+## YL-BACKLOG-008
+Discovered During: YL-S0 baseline
+Description: `packages/db` Postgres/Drizzle + Clerk remnants — confirm retire vs retain.
+Reason Deferred: Inventory only in S0.
+Suggested Sprint: YL-S1 documentation follow-up
+Priority: LOW
+Blocking Current Sprint: NO
+
+## YL-BACKLOG-009
+Discovered During: YL-S0 baseline
+Description: Node 20 Firebase Functions runtime deprecation (decommission 2026-10-30) — upgrade planning.
+Reason Deferred: Infra; no deploy in S0.
+Suggested Sprint: YL-S24
+Priority: MEDIUM
+Blocking Current Sprint: NO
+**Status: PARTIAL in YL-S24** (2026-08-13) — engines/CI/deploy policy pinned to Node 22 (`nodejs22`); live Hosting/SSR redeploy still required to apply runtime in GCP (no prod deploy in S24).
+**Status: RESOLVED runtime on prod Hosting SSR** (2026-08-13 deploy) — `ssryuletidelighting` updated as Node.js 22 (2nd Gen); `/api/health` reports `node":"v22.23.1"`. See `docs/production-cleanup/s8-production-deploy-2026-08-13.md`.
+
+## YL-BACKLOG-010
+Discovered During: YL-S1
+Description: Mirror `organizations.lifecycleStatus` inactive denials in Firestore security rules (`belongsToOrg`).
+Reason Deferred: YL-S1 enforced app-layer only; rules changes belong in YL-S4.
+Suggested Sprint: YL-S4
+Priority: MEDIUM
+Blocking Current Sprint: NO
+**Status: RESOLVED in YL-S4** (2026-08-10) — `belongsToOrg` + rules tests; no production deploy.
+
+## YL-BACKLOG-011
+Discovered During: YL-S2
+Description: Staging/production live E2E for Firebase Auth disabled-user denial (`verifyStaffIdToken` path).
+Reason Deferred: Needs Auth emulator or staging credentials; unit classification covered in S2.
+Suggested Sprint: YL-S23 or staging auth smoke extension
+Priority: MEDIUM
+Blocking Current Sprint: NO
+
+## YL-BACKLOG-012
+Discovered During: YL-S3
+Description: Migrate CRM routers from broad `officeProcedure` to resource-scoped `permissionProcedure` / `assertAuthCan` (customers.view, proposals.edit, etc.).
+Reason Deferred: YL-S3 centralized registry + admin/office capability gates only; full router cutover is larger and riskier.
+Suggested Sprint: YL-S5 or dedicated RBAC cutover sprint
+Priority: MEDIUM
+Blocking Current Sprint: NO
+**Status: RESOLVED in YL-S5** (2026-08-10) — routers use `permissionProcedure` / `assertAuthCan`; `office_staff` desk matrix expanded; no production deploy.

@@ -1,7 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@clcrm/ui';
-import { CRM_LOGO_SRC } from '@/lib/brand-assets';
 
 type LogoProps = {
   href?: string;
@@ -15,15 +14,15 @@ type LogoProps = {
 };
 
 const sizes = {
-  full: { width: 280, height: 186, markHeight: 56 },
-  mark: { width: 56, height: 56, markHeight: 56 },
+  full: { width: 240, height: 120, markHeight: 48 },
+  mark: { width: 48, height: 48, markHeight: 48 },
 };
 
 export function Logo({
   href = '/',
   className,
   imageClassName,
-  src = CRM_LOGO_SRC,
+  src = '/logo.png',
   variant = 'full',
   priority = false,
   onClick,
@@ -38,7 +37,7 @@ export function Logo({
       width={width}
       height={imgHeight}
       priority={priority}
-      className={cn('h-auto w-auto bg-transparent object-contain object-left', imageClassName)}
+      className={cn('h-auto w-auto object-contain object-left', imageClassName)}
       style={{ height: imgHeight, width: 'auto', maxWidth: width }}
     />
   );

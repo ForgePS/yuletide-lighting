@@ -1,0 +1,19 @@
+{
+  "name": "Yuletide Customer Portal",
+  "short_name": "Portal",
+  "description": "View proposals, pay invoices, track installs, and request service from your phone.",
+  "start_url": "/portal/login",
+  "scope": "/portal",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FAFAF9",
+  "theme_color": "#B91C1C",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

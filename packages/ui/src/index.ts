@@ -1,1 +1,1 @@
-export { cn, formatCurrency, formatDate, formatStage } from './lib/utils';
+export { cn, formatCurrency, formatDate, formatStage, toValidDate } from './lib/utils';

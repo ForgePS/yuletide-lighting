@@ -12,3 +12,4 @@ export {
   AISchedulingAssistant,
   AvailabilityView,
 } from './schedule-managers';
+export { RouteMap } from './route-map';

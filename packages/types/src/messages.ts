@@ -11,7 +11,16 @@ export type MessageChannel = 'sms' | 'email' | 'portal' | 'internal';
 
 export type MessageDirection = 'inbound' | 'outbound';
 
-export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read' | 'opened' | 'clicked' | 'failed' | 'replied';
+export type MessageDeliveryStatus =
+  | 'queued'
+  | 'recorded'
+  | 'sent'
+  | 'delivered'
+  | 'read'
+  | 'opened'
+  | 'clicked'
+  | 'failed'
+  | 'replied';
 
 export type ConversationStatus = 'open' | 'waiting_on_customer' | 'waiting_on_staff' | 'closed';
 
@@ -322,12 +331,74 @@ export const DEFAULT_INTERNAL_CHANNELS: Array<{ name: string; channelType: Inter
   { name: 'Dispatch', channelType: 'dispatch' },
 ];
 
-export function renderMessageTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '');
+/** YL-S14 — null-safe status / category / trigger / channel labels. */
+export function formatMessageLabel(value: string | null | undefined): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return 'Unknown';
+  return text
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
 }
 
-export function classifyMessage(body: string): AiInboxClassification {
-  const lower = body.toLowerCase();
+export type MessageDeliveryMode = 'record_only' | 'provider';
+
+/**
+ * YL-S14 — delivery contract. Provider send only when REAL_* is explicitly enabled
+ * and credentials exist. messages360 remains record-first until a live adapter ships.
+ */
+export function resolveMessageDeliveryMode(
+  channel: MessageChannel,
+  env: Record<string, string | undefined> = typeof process !== 'undefined' ? process.env : {},
+): MessageDeliveryMode {
+  if (channel === 'sms') {
+    return env.REAL_SMS === '1' && Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN)
+      ? 'provider'
+      : 'record_only';
+  }
+  if (channel === 'email') {
+    return env.REAL_EMAIL === '1' && Boolean(env.RESEND_API_KEY) ? 'provider' : 'record_only';
+  }
+  return 'record_only';
+}
+
+export function isMessageProviderSendEnabled(
+  channel: MessageChannel,
+  env: Record<string, string | undefined> = typeof process !== 'undefined' ? process.env : {},
+): boolean {
+  return resolveMessageDeliveryMode(channel, env) === 'provider';
+}
+
+/** Honest outbound status when no provider adapter has confirmed delivery. */
+export function resolveOutboundMessageStatus(input: {
+  channel: MessageChannel;
+  scheduledAt?: Date | null;
+  now?: Date;
+  /** When false (default), never claim provider delivery — record/queue only. */
+  providerAdapterActive?: boolean;
+  env?: Record<string, string | undefined>;
+}): MessageDeliveryStatus {
+  const now = input.now ?? new Date();
+  if (input.scheduledAt && input.scheduledAt > now) return 'queued';
+  if (
+    input.providerAdapterActive &&
+    isMessageProviderSendEnabled(input.channel, input.env)
+  ) {
+    return 'sent';
+  }
+  return 'recorded';
+}
+
+export function renderMessageTemplate(
+  template: string | null | undefined,
+  vars: Record<string, string>,
+): string {
+  const text = typeof template === 'string' ? template : '';
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '');
+}
+
+export function classifyMessage(body: string | null | undefined): AiInboxClassification {
+  const lower = (typeof body === 'string' ? body : '').toLowerCase();
   if (/pay|invoice|deposit|balance|bill/.test(lower)) {
     return { category: 'payment_question', priority: 'high', summary: 'Payment-related inquiry' };
   }
@@ -346,8 +417,8 @@ export function classifyMessage(body: string): AiInboxClassification {
   return { category: 'general', priority: 'low', summary: 'General message' };
 }
 
-export function aiGenerateMessage(prompt: string): AiCommunicationResult {
-  const lower = prompt.toLowerCase();
+export function aiGenerateMessage(prompt: string | null | undefined): AiCommunicationResult {
+  const lower = (typeof prompt === 'string' ? prompt : '').toLowerCase();
   if (lower.includes('proposal follow')) {
     return {
       generatedText: 'Hi {{customerName}},\n\nI hope you had a chance to review the holiday lighting proposal for {{propertyName}}. I\'m happy to answer any questions or adjust the design. Would you like to schedule a quick call?\n\nBest regards',

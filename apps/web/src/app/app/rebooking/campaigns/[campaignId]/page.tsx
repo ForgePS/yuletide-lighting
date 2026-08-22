@@ -4,11 +4,18 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency } from '@clcrm/ui';
+import { formatRebookingLabel, hasPermission } from '@clcrm/types';
+import { useAuth } from '@/lib/firebase-auth';
 import { RebookingCustomerTable } from '@/components/rebooking';
 import { LoadingState } from '@/components/ui/states';
 
 export default function RebookingCampaignPage() {
   const campaignId = useParams().campaignId as string;
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = Boolean(idToken) && !authLoading;
+  const { data: myPermissions } = trpc.settings360.myPermissions.useQuery(undefined, { enabled: ready });
+  const canEdit = myPermissions ? hasPermission(myPermissions, 'customers', 'edit') : false;
+
   const utils = trpc.useUtils();
   const { data: campaign, isLoading } = trpc.rebooking360.campaigns.getById.useQuery({ campaignId });
   const populate = trpc.rebooking360.campaigns.populate.useMutation({
@@ -27,8 +34,10 @@ export default function RebookingCampaignPage() {
     <div className="space-y-6">
       <div>
         <Link href="/app/rebooking" className="text-sm text-primary hover:underline">← Rebooking</Link>
-        <h1 className="mt-2 text-2xl font-bold">{campaign.name}</h1>
-        <p className="text-muted-foreground capitalize">{campaign.status} · {campaign.seasonYear} season</p>
+        <h1 className="mt-2 text-2xl font-bold">{campaign.name || formatRebookingLabel(null, 'Untitled campaign')}</h1>
+        <p className="text-muted-foreground">
+          {formatRebookingLabel(campaign.status)} · {campaign.seasonYear} season
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -53,14 +62,16 @@ export default function RebookingCampaignPage() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn-secondary text-sm" disabled={populate.isPending} onClick={() => populate.mutate({ campaignId })}>
-          Import prior season customers
-        </button>
-        {campaign.status === 'draft' && (
+        {canEdit ? (
+          <button type="button" className="btn-secondary text-sm" disabled={populate.isPending} onClick={() => populate.mutate({ campaignId })}>
+            Import prior season customers
+          </button>
+        ) : null}
+        {canEdit && campaign.status === 'draft' ? (
           <button type="button" className="btn-primary text-sm" onClick={() => update.mutate({ campaignId, status: 'active' })}>
             Activate campaign
           </button>
-        )}
+        ) : null}
       </div>
 
       <div className="card p-6">

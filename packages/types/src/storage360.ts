@@ -78,3 +78,17 @@ export type StoragePullSheet = {
   };
   lines: StoragePullSheetLine[];
 };
+
+/** YL-S15 — null-safe storage status / type / condition labels. */
+export function formatStorageLabel(value: string | null | undefined): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return 'Unknown';
+  return text
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+export const formatStorageStatusLabel = formatStorageLabel;
+export const formatStorageTypeLabel = formatStorageLabel;
+export const formatStoredItemConditionLabel = formatStorageLabel;

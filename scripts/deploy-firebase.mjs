@@ -6,16 +6,76 @@ import { fileURLToPath } from 'url';
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const webRoot = path.join(repoRoot, 'apps/web');
 const rootEnvPath = path.join(repoRoot, '.env');
+const stagingEnvPath = path.join(repoRoot, '.env.staging');
 const webEnvPath = path.join(webRoot, '.env');
 const webEnvBackupPath = path.join(webRoot, '.env.deploy-backup');
-const only = process.argv.includes('--hosting-only')
-  ? '--only hosting,firestore:indexes'
-  : '';
+const firebaseJsonPath = path.join(repoRoot, 'firebase.json');
+const firebaseJsonBackupPath = path.join(repoRoot, 'firebase.json.deploy-backup');
+const only = process.argv.includes('--hosting-only') ? '--only hosting' : '';
+const force =
+  process.argv.includes('--force') || !process.argv.includes('--hosting-only') ? '--force' : '';
+
+const projectArgIdx = process.argv.findIndex((a) => a === '--project');
+const projectFromFlag = projectArgIdx >= 0 ? process.argv[projectArgIdx + 1] : null;
+const projectAlias =
+  process.env.FIREBASE_DEPLOY_PROJECT ||
+  projectFromFlag ||
+  (process.argv.includes('--staging') ? 'staging' : null) ||
+  'production';
+
+const PROJECT_BY_ALIAS = {
+  production: 'yuletide-lighting',
+  staging: 'yuletide-lighting-staging',
+  default: 'yuletide-lighting',
+};
+
+/** Hosting frameworksBackend SA must live in the target project (S8-001). */
+const SERVICE_ACCOUNT_BY_PROJECT = {
+  'yuletide-lighting': 'firebase-adminsdk-fbsvc@yuletide-lighting.iam.gserviceaccount.com',
+  'yuletide-lighting-staging':
+    'firebase-adminsdk-fbsvc@yuletide-lighting-staging.iam.gserviceaccount.com',
+};
+
+const firebaseProject = PROJECT_BY_ALIAS[projectAlias] || projectAlias || 'yuletide-lighting';
+
+const expectedServiceAccount = SERVICE_ACCOUNT_BY_PROJECT[firebaseProject];
+if (!expectedServiceAccount) {
+  throw new Error(
+    `HARD FAIL: unknown Firebase deploy project "${firebaseProject}". ` +
+      `Allowed: ${Object.keys(SERVICE_ACCOUNT_BY_PROJECT).join(', ')}`,
+  );
+}
+
+const isStaging = firebaseProject === 'yuletide-lighting-staging';
+if (firebaseProject === 'yuletide-lighting' && process.argv.includes('--staging')) {
+  throw new Error('HARD FAIL: --staging resolved to production project');
+}
+
+const publicAppUrl = isStaging
+  ? process.env.STAGING_APP_URL || 'https://yuletide-lighting-staging.web.app'
+  : 'https://yuletide-lighting.web.app';
+const envSourcePath = isStaging && fs.existsSync(stagingEnvPath) ? stagingEnvPath : rootEnvPath;
+
+if (isStaging && !fs.existsSync(stagingEnvPath)) {
+  throw new Error(
+    'HARD FAIL: staging deploy requires .env.staging (gitignored). ' +
+      'Copy .env.staging.example and fill NEXT_PUBLIC_FIREBASE_* from the staging web app.',
+  );
+}
+
+if (!isStaging && !fs.existsSync(rootEnvPath)) {
+  throw new Error(
+    'HARD FAIL: production deploy requires .env (gitignored) with NEXT_PUBLIC_FIREBASE_* ' +
+      'and PLATFORM_CREATOR_EMAILS (empty allowlist denies all /creator access in production).',
+  );
+}
 
 const RESERVED_ENV_PREFIXES = ['X_GOOGLE_', 'FIREBASE_', 'EXT_'];
 
 function isAllowedDeployEnvKey(key) {
   if (key.startsWith('NEXT_PUBLIC_')) return true;
+  // Must ship with Hosting SSR — production denies /creator when both lists are empty.
+  if (key === 'PLATFORM_CREATOR_EMAILS' || key === 'PLATFORM_CREATOR_UIDS') return true;
   return !RESERVED_ENV_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
@@ -27,81 +87,70 @@ function parseEnvValue(lines, key) {
 }
 
 function prepareEnv() {
-  if (!fs.existsSync(rootEnvPath)) return;
+  if (!fs.existsSync(envSourcePath)) {
+    console.warn(`No env file at ${envSourcePath}; continuing without copied secrets.`);
+    return;
+  }
   if (fs.existsSync(webEnvPath) && !fs.existsSync(webEnvBackupPath)) {
     fs.copyFileSync(webEnvPath, webEnvBackupPath);
   }
-  const lines = fs.readFileSync(rootEnvPath, 'utf8').split(/\r?\n/);
+  const lines = fs.readFileSync(envSourcePath, 'utf8').split(/\r?\n/);
+  const droppedReserved = [];
   const kept = lines.filter((line) => {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) return true;
     const key = trimmed.split('=')[0]?.trim();
-    return key ? isAllowedDeployEnvKey(key) : true;
+    if (!key) return true;
+    if (!isAllowedDeployEnvKey(key)) {
+      droppedReserved.push(key);
+      return false;
+    }
+    return true;
   });
-  const adminKey = parseEnvValue(lines, 'CLCRM_FIREBASE_ADMIN_KEY') ?? parseEnvValue(lines, 'FIREBASE_SERVICE_ACCOUNT_KEY');
+  if (droppedReserved.length) {
+    console.warn(
+      `Stripped reserved Hosting env keys (${droppedReserved.length}): ${droppedReserved.join(', ')}`,
+    );
+  }
+  const adminKey =
+    parseEnvValue(lines, 'CLCRM_FIREBASE_ADMIN_KEY') ??
+    parseEnvValue(lines, 'FIREBASE_SERVICE_ACCOUNT_KEY');
   if (adminKey) {
     kept.push(`CLCRM_FIREBASE_ADMIN_KEY=${adminKey}`);
   }
-  const mapboxToken =
-    parseEnvValue(lines, 'MAPBOX_TOKEN') ?? parseEnvValue(lines, 'NEXT_PUBLIC_MAPBOX_TOKEN');
-  if (mapboxToken) {
-    kept.push(`MAPBOX_TOKEN=${mapboxToken}`);
-  }
   let env = kept.join('\n');
   if (!/^NEXT_PUBLIC_APP_URL=/m.test(env)) {
-    env += '\nNEXT_PUBLIC_APP_URL=https://yuletide-lighting.web.app\n';
+    env += `\nNEXT_PUBLIC_APP_URL=${publicAppUrl}\n`;
   } else {
+    env = env.replace(/^NEXT_PUBLIC_APP_URL=.*/m, `NEXT_PUBLIC_APP_URL=${publicAppUrl}`);
+  }
+  if (isStaging) {
     env = env.replace(
-      /^NEXT_PUBLIC_APP_URL=.*/m,
-      'NEXT_PUBLIC_APP_URL=https://yuletide-lighting.web.app',
+      /^NEXT_PUBLIC_FIREBASE_PROJECT_ID=.*/m,
+      'NEXT_PUBLIC_FIREBASE_PROJECT_ID=yuletide-lighting-staging',
     );
-  }
-  fs.writeFileSync(webEnvPath, env.endsWith('\n') ? env : `${env}\n`);
-  console.log('Copied root .env to apps/web for Firebase build (server secrets filtered).');
-}
-
-function isValidTinaCredentials(lines) {
-  const clientId = parseEnvValue(lines, 'NEXT_PUBLIC_TINA_CLIENT_ID');
-  const token = parseEnvValue(lines, 'TINA_TOKEN');
-  return Boolean(
-    clientId &&
-      token &&
-      clientId !== 'local' &&
-      token !== 'local' &&
-      !clientId.startsWith('your_') &&
-      !token.startsWith('your_'),
-  );
-}
-
-function buildTinaAdmin() {
-  if (!fs.existsSync(rootEnvPath)) return;
-  const lines = fs.readFileSync(rootEnvPath, 'utf8').split(/\r?\n/);
-  if (!isValidTinaCredentials(lines)) {
-    console.log('Skipping Tina admin build — set NEXT_PUBLIC_TINA_CLIENT_ID and TINA_TOKEN in .env');
-    return;
-  }
-  const tinaEnv = Object.fromEntries(
-    ['NEXT_PUBLIC_TINA_CLIENT_ID', 'TINA_TOKEN', 'NEXT_PUBLIC_TINA_BRANCH', 'GITHUB_BRANCH']
-      .map((key) => [key, parseEnvValue(lines, key)])
-      .filter(([, value]) => value),
-  );
-  console.log('Building Tina CMS admin for production...');
-  execSync('npx tinacms build --skip-cloud-checks --datalayer-port 9001', {
-    cwd: webRoot,
-    stdio: 'inherit',
-    env: { ...process.env, ...tinaEnv },
-  });
-  const adminDir = path.join(webRoot, 'public/admin/assets');
-  const assets = fs.existsSync(adminDir)
-    ? fs.readdirSync(adminDir).filter((name) => name.endsWith('.js'))
-    : [];
-  for (const file of assets) {
-    const js = fs.readFileSync(path.join(adminDir, file), 'utf8');
-    if (js.includes('clientId:"local"') || js.includes("clientId:'local'")) {
-      throw new Error(`Tina admin bundle ${file} still uses clientId=local. Check .env credentials.`);
+    if (!/^NEXT_PUBLIC_FIREBASE_PROJECT_ID=/m.test(env)) {
+      env += '\nNEXT_PUBLIC_FIREBASE_PROJECT_ID=yuletide-lighting-staging\n';
     }
   }
-  console.log('Tina admin verified — Cloud client ID embedded.');
+
+  const creatorEmails = parseEnvValue(lines, 'PLATFORM_CREATOR_EMAILS');
+  const creatorUids = parseEnvValue(lines, 'PLATFORM_CREATOR_UIDS');
+  if (
+    !isStaging &&
+    !(creatorEmails && creatorEmails.trim()) &&
+    !(creatorUids && creatorUids.trim())
+  ) {
+    throw new Error(
+      'HARD FAIL: production Hosting deploy requires PLATFORM_CREATOR_EMAILS or PLATFORM_CREATOR_UIDS. ' +
+        'Empty allowlist denies all Creator Console access in production.',
+    );
+  }
+
+  fs.writeFileSync(webEnvPath, env.endsWith('\n') ? env : `${env}\n`);
+  console.log(
+    `Copied ${path.basename(envSourcePath)} to apps/web for Firebase build (project=${firebaseProject}).`,
+  );
 }
 
 function restoreEnv() {
@@ -113,78 +162,71 @@ function restoreEnv() {
   }
 }
 
-function configureFirebaseAuth() {
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    console.log('Using GOOGLE_APPLICATION_CREDENTIALS for Firebase deploy.');
-    return;
+function applyHostingServiceAccount() {
+  if (!fs.existsSync(firebaseJsonBackupPath)) {
+    fs.copyFileSync(firebaseJsonPath, firebaseJsonBackupPath);
+  }
+  const config = JSON.parse(fs.readFileSync(firebaseJsonPath, 'utf8'));
+  if (!config.hosting) config.hosting = {};
+  if (!config.hosting.frameworksBackend) config.hosting.frameworksBackend = {};
+  config.hosting.frameworksBackend.serviceAccount = expectedServiceAccount;
+
+  const applied = config.hosting.frameworksBackend.serviceAccount;
+  if (applied !== expectedServiceAccount) {
+    throw new Error(
+      `HARD FAIL: frameworksBackend.serviceAccount mismatch (got ${applied}, want ${expectedServiceAccount})`,
+    );
+  }
+  if (isStaging && applied.includes('@yuletide-lighting.iam.gserviceaccount.com')) {
+    throw new Error(
+      'HARD FAIL: staging Hosting deploy would bind production service account (S8-001)',
+    );
   }
 
-  const serviceAccountJson =
-    process.env.FIREBASE_SERVICE_ACCOUNT_YULETIDE_LIGHTING ??
-    process.env.FIREBASE_SERVICE_ACCOUNT ??
-    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-
-  if (serviceAccountJson?.trim()) {
-    const credPath = path.join(repoRoot, '.firebase-deploy-sa.json');
-    fs.writeFileSync(credPath, serviceAccountJson.trim());
-    process.env.GOOGLE_APPLICATION_CREDENTIALS = credPath;
-    console.log('Using service account JSON for Firebase deploy (no FIREBASE_TOKEN needed).');
-    return;
-  }
-
-  if (process.env.FIREBASE_TOKEN) {
-    console.log('Using FIREBASE_TOKEN for Firebase deploy.');
-    return;
-  }
-
-  throw new Error(
-    'No Firebase deploy credentials found.\n' +
-      'Option A (recommended): run `firebase login` then `firebase init hosting:github` — Firebase uploads the GitHub secret for you.\n' +
-      'Option B (local only): run `firebase login` then `npm run deploy:hosting`.\n' +
-      'Option C: add FIREBASE_TOKEN or FIREBASE_SERVICE_ACCOUNT_YULETIDE_LIGHTING to GitHub secrets.',
-  );
+  fs.writeFileSync(firebaseJsonPath, `${JSON.stringify(config, null, 2)}\n`);
+  console.log(`frameworksBackend.serviceAccount → ${applied} (project=${firebaseProject})`);
 }
 
-function cleanupFirebaseAuth() {
-  const credPath = path.join(repoRoot, '.firebase-deploy-sa.json');
-  if (fs.existsSync(credPath)) fs.rmSync(credPath);
-}
-
-function ensureWebFrameworksExperiment() {
-  console.log('Enabling Firebase webframeworks experiment (required for Next.js hosting)...');
-  try {
-    execSync('npx firebase-tools experiments:enable webframeworks --project yuletide-lighting', {
-      cwd: repoRoot,
-      stdio: 'inherit',
-      env: process.env,
-    });
-  } catch {
-    console.log('webframeworks experiment already enabled or enable skipped.');
+function restoreFirebaseJson() {
+  if (fs.existsSync(firebaseJsonBackupPath)) {
+    fs.copyFileSync(firebaseJsonBackupPath, firebaseJsonPath);
+    fs.rmSync(firebaseJsonBackupPath);
   }
 }
 
 const nodeMajor = Number(process.version.slice(1).split('.')[0]);
-if (nodeMajor > 20) {
+// YL-S24 — keep in sync with packages/types/src/runtime-policy.ts (FIREBASE_NODE_ENGINE_MAJOR).
+const FIREBASE_NODE_ENGINE_MAJOR = 22;
+if (nodeMajor !== FIREBASE_NODE_ENGINE_MAJOR) {
   console.warn(
-    `\n⚠️  Node ${process.version} detected. Firebase recommends Node 20 for deploy.\n` +
-      `   On Windows without nvm: winget install OpenJS.NodeJS.20\n` +
-      `   Or: winget install CoreyButler.NVMforWindows  then  nvm install 20 && nvm use 20\n`,
+    `\n⚠️  Node ${process.version} detected. Yuletide Firebase Hosting SSR expects Node ${FIREBASE_NODE_ENGINE_MAJOR} ` +
+      `(engines "22", runtime nodejs22; nodejs20 decommissions 2026-10-30).\n` +
+      `   On Windows: winget install OpenJS.NodeJS.22\n` +
+      `   Or: nvm install 22 && nvm use 22\n`,
   );
 }
 
 try {
+  console.log(
+    `Deploy target project=${firebaseProject} identity-check SA=${expectedServiceAccount}`,
+  );
+  // Next.js frameworks Hosting loads Cloud Functions source; cold analysis often exceeds 10s.
+  if (!process.env.FUNCTIONS_DISCOVERY_TIMEOUT) {
+    process.env.FUNCTIONS_DISCOVERY_TIMEOUT = '120';
+  }
+  applyHostingServiceAccount();
   prepareEnv();
-  buildTinaAdmin();
-  configureFirebaseAuth();
-  ensureWebFrameworksExperiment();
   execSync('node scripts/prepare-firebase-deps.mjs', { cwd: webRoot, stdio: 'inherit' });
-  execSync(`npx firebase-tools deploy ${only} --project yuletide-lighting`.trim(), {
-    cwd: repoRoot,
-    stdio: 'inherit',
-    env: process.env,
-  });
+  execSync(
+    `firebase deploy ${only} ${force} --project ${firebaseProject}`.replace(/\s+/g, ' ').trim(),
+    {
+      cwd: repoRoot,
+      stdio: 'inherit',
+      env: process.env,
+    },
+  );
 } finally {
   execSync('node scripts/prepare-firebase-deps.mjs --restore', { cwd: webRoot, stdio: 'inherit' });
-  cleanupFirebaseAuth();
   restoreEnv();
+  restoreFirebaseJson();
 }

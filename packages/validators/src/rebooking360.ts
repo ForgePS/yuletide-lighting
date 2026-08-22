@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publicAccessTokenSchema } from './public-token';
 
 export const rebookingCampaignStatusSchema = z.enum(['draft', 'active', 'paused', 'completed']);
 export const rebookingRecordStatusSchema = z.enum([
@@ -36,7 +37,7 @@ export const processRebookSchema = z.object({
 });
 
 export const portalOneClickRebookSchema = z.object({
-  token: z.string().min(8),
+  token: publicAccessTokenSchema,
   sameDesign: z.boolean().default(true),
   upgradeRequested: z.boolean().default(false),
   preferredMonth: z.string().max(40).optional(),

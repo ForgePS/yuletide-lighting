@@ -1,21 +1,7 @@
-'use client';
+import { requireAppSession } from '@/lib/auth';
+import { AppClientShell } from './app-client-shell';
 
-import { FirebaseAuthProvider } from '@/lib/firebase-auth';
-import { TRPCProvider } from '@/lib/trpc';
-import { ToastProvider } from '@/lib/toast';
-import { AppLayoutShell } from '@/components/app-layout-shell';
-import { AnalyticsYearProvider } from '@/lib/analytics-year-context';
-
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <FirebaseAuthProvider>
-      <TRPCProvider>
-        <ToastProvider>
-          <AnalyticsYearProvider>
-            <AppLayoutShell>{children}</AppLayoutShell>
-          </AnalyticsYearProvider>
-        </ToastProvider>
-      </TRPCProvider>
-    </FirebaseAuthProvider>
-  );
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  await requireAppSession({ allowLockedSubscription: true });
+  return <AppClientShell>{children}</AppClientShell>;
 }

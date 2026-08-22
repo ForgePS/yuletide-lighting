@@ -31,16 +31,20 @@ import {
   signTrackerSettingsSchema,
   createSignFromJobSchema,
 } from '@clcrm/validators';
-import { router, protectedProcedure, officeProcedure } from '../trpc';
+import { router, requireModule, requirePermission, protectedProcedure } from '../trpc';
 
-function canManageSigns(role: string) {
-  return ['owner', 'admin', 'office'].includes(role);
-}
-
-const crewOrOfficeProcedure = protectedProcedure.use(({ ctx, next }) => next({ ctx }));
+const signModule = requireModule('sign_tracker');
+const signView = protectedProcedure.use(signModule).use(requirePermission('sign_tracker', 'view'));
+const signCreate = protectedProcedure.use(signModule).use(requirePermission('sign_tracker', 'create'));
+const signEdit = protectedProcedure.use(signModule).use(requirePermission('sign_tracker', 'edit'));
+const signDelete = protectedProcedure.use(signModule).use(requirePermission('sign_tracker', 'delete'));
+const signExport = protectedProcedure.use(signModule).use(requirePermission('sign_tracker', 'export'));
+const signManage = protectedProcedure.use(signModule).use(requirePermission('sign_tracker', 'manage'));
+const signArchive = protectedProcedure.use(signModule).use(requirePermission('sign_tracker', 'archive'));
+const signRestore = protectedProcedure.use(signModule).use(requirePermission('sign_tracker', 'restore'));
 
 export const signTracker360Router = router({
-  pageData: protectedProcedure.input(signLocationFilterSchema.optional()).query(({ ctx, input }) =>
+  pageData: signView.input(signLocationFilterSchema.optional()).query(({ ctx, input }) =>
     getSignTrackerPageData(ctx.auth.organizationId, {
       seasonYear: input?.seasonYear,
       city: input?.city,
@@ -52,15 +56,15 @@ export const signTracker360Router = router({
     }),
   ),
 
-  dashboard: protectedProcedure
+  dashboard: signView
     .input(z.object({ seasonYear: z.number().int().optional() }).optional())
     .query(({ ctx, input }) => getSignTrackerDashboard(ctx.auth.organizationId, input?.seasonYear)),
 
-  cities: protectedProcedure
+  cities: signView
     .input(z.object({ seasonYear: z.number().int().optional() }).optional())
     .query(({ ctx, input }) => getSignCityBreakdown(ctx.auth.organizationId, input?.seasonYear)),
 
-  list: protectedProcedure.input(signLocationFilterSchema.optional()).query(({ ctx, input }) =>
+  list: signView.input(signLocationFilterSchema.optional()).query(({ ctx, input }) =>
     listSignLocations(ctx.auth.organizationId, {
       seasonYear: input?.seasonYear,
       city: input?.city,
@@ -72,17 +76,17 @@ export const signTracker360Router = router({
     }),
   ),
 
-  getById: protectedProcedure.input(z.object({ locationId: z.string().min(1) })).query(async ({ ctx, input }) => {
+  getById: signView.input(z.object({ locationId: z.string().min(1) })).query(async ({ ctx, input }) => {
     const loc = await getSignLocation(ctx.auth.organizationId, input.locationId);
     if (!loc) throw new TRPCError({ code: 'NOT_FOUND' });
     return loc;
   }),
 
-  reverseGeocode: protectedProcedure.input(reverseGeocodeSchema).query(({ input }) =>
+  reverseGeocode: signCreate.input(reverseGeocodeSchema).query(({ input }) =>
     reverseGeocodeSignLocation(input.latitude, input.longitude),
   ),
 
-  create: crewOrOfficeProcedure.input(createSignLocationSchema).mutation(({ ctx, input }) =>
+  create: signCreate.input(createSignLocationSchema).mutation(({ ctx, input }) =>
     createSignLocation(
       ctx.auth.organizationId,
       {
@@ -100,44 +104,73 @@ export const signTracker360Router = router({
     ),
   ),
 
-  update: crewOrOfficeProcedure.input(updateSignLocationSchema).mutation(async ({ ctx, input }) => {
+  update: signEdit.input(updateSignLocationSchema).mutation(async ({ ctx, input }) => {
     const { locationId, ...data } = input;
-  if (!canManageSigns(ctx.auth.role) && (data.status || data.quantityPlaced)) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'Crew can only update location details' });
-    }
     return updateSignLocation(ctx.auth.organizationId, locationId, data, ctx.auth.userId, ctx.auth.email);
   }),
 
-  delete: officeProcedure.input(deleteSignLocationSchema).mutation(async ({ ctx, input }) => {
+  delete: signDelete.input(deleteSignLocationSchema).mutation(async ({ ctx, input }) => {
     await deleteSignLocation(ctx.auth.organizationId, input.locationId);
     return { ok: true as const };
   }),
 
-  recover: crewOrOfficeProcedure.input(recoverSignLocationSchema).mutation(({ ctx, input }) => {
+  archive: signArchive.input(z.object({ locationId: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+    return updateSignLocation(
+      ctx.auth.organizationId,
+      input.locationId,
+      { status: 'removed' },
+      ctx.auth.userId,
+      ctx.auth.email,
+    );
+  }),
+
+  restore: signRestore
+    .input(z.object({ locationId: z.string().min(1), status: z.enum(['active', 'needs_pickup']).default('active') }))
+    .mutation(async ({ ctx, input }) => {
+      return updateSignLocation(
+        ctx.auth.organizationId,
+        input.locationId,
+        { status: input.status },
+        ctx.auth.userId,
+        ctx.auth.email,
+      );
+    }),
+
+  recover: signEdit.input(recoverSignLocationSchema).mutation(({ ctx, input }) => {
     const { locationId, ...data } = input;
     return recoverSignLocation(ctx.auth.organizationId, locationId, data, ctx.auth.userId, ctx.auth.email);
   }),
 
-  pickupRoute: protectedProcedure.input(signPickupQuerySchema).query(({ ctx, input }) =>
+  pickupRoute: signView.input(signPickupQuerySchema).query(({ ctx, input }) =>
     getSignPickupRoute(ctx.auth.organizationId, input.latitude, input.longitude, input.seasonYear),
   ),
 
-  report: officeProcedure
+  report: signView
     .input(z.object({ seasonYear: z.number().int().optional() }).optional())
     .query(({ ctx, input }) => getSignCampaignReport(ctx.auth.organizationId, input?.seasonYear)),
 
-  territory: officeProcedure
+  reportExport: signExport
+    .input(z.object({ seasonYear: z.number().int().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const [report, locations] = await Promise.all([
+        getSignCampaignReport(ctx.auth.organizationId, input?.seasonYear),
+        listSignLocations(ctx.auth.organizationId, { seasonYear: input?.seasonYear }),
+      ]);
+      return { report, locations };
+    }),
+
+  territory: signView
     .input(z.object({ seasonYear: z.number().int().optional() }).optional())
     .query(({ ctx, input }) => getTerritoryIntelligence(ctx.auth.organizationId, input?.seasonYear)),
 
   settings: router({
-    get: officeProcedure.query(({ ctx }) => getSignTrackerSettings(ctx.auth.organizationId)),
-    update: officeProcedure.input(signTrackerSettingsSchema).mutation(({ ctx, input }) =>
+    get: signManage.query(({ ctx }) => getSignTrackerSettings(ctx.auth.organizationId)),
+    update: signManage.input(signTrackerSettingsSchema).mutation(({ ctx, input }) =>
       updateSignTrackerSettings(ctx.auth.organizationId, input),
     ),
   }),
 
-  createFromJob: crewOrOfficeProcedure.input(createSignFromJobSchema).mutation(({ ctx, input }) =>
+  createFromJob: signCreate.input(createSignFromJobSchema).mutation(({ ctx, input }) =>
     createSignLocationFromJob(
       ctx.auth.organizationId,
       input.jobId,
@@ -153,11 +186,11 @@ export const signTracker360Router = router({
     ),
   ),
 
-  byCustomer: protectedProcedure.input(z.object({ customerId: z.string().min(1) })).query(({ ctx, input }) =>
+  byCustomer: signView.input(z.object({ customerId: z.string().min(1) })).query(({ ctx, input }) =>
     getCustomerSignLocations(ctx.auth.organizationId, input.customerId),
   ),
 
-  markNeedsPickup: officeProcedure
+  markNeedsPickup: signEdit
     .input(z.object({ seasonYear: z.number().int().optional() }).optional())
     .mutation(({ ctx, input }) => markSignLocationsNeedsPickup(ctx.auth.organizationId, input?.seasonYear)),
 });

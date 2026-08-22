@@ -1,5 +1,6 @@
-import { FieldTodayJobs } from "@/components/field";
+import { redirect } from 'next/navigation';
 
-export default function FieldHomePage() {
-  return <FieldTodayJobs />;
+/** Legacy field hub → canonical Sign Tracker */
+export default function FieldLegacyRedirectPage() {
+  redirect('/app/marketing/sign-tracker');
 }

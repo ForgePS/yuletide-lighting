@@ -5,6 +5,13 @@ import type {
   RebookingRecord,
   RebookingRecordWithCustomer,
 } from '@clcrm/types';
+import {
+  isPriorSeasonJobEligibleForRebooking,
+  isRebookingPopulateCustomerEligible,
+  isRebookingRecordTerminal,
+  shouldSendRebookingOutreach,
+} from '@clcrm/types';
+import { getAdminFirestore } from './admin';
 import { colCreate, colGet, colList, colUpdate, type CustomerRecord } from './firestore';
 import { createProposal360, getProposal360 } from './proposals';
 import { updateCustomerPipelineStage, logCustomerActivity } from './customer360';
@@ -21,8 +28,15 @@ function normalizeCampaign(raw: Record<string, unknown>, orgId: string): Rebooki
     seasonYear: Number(raw.seasonYear),
     name: String(raw.name ?? ''),
     status: (raw.status as RebookingCampaign['status']) ?? 'draft',
-    startDate: raw.startDate instanceof Date ? raw.startDate : raw.startDate ? new Date(String(raw.startDate)) : null,
-    targetCustomerIds: Array.isArray(raw.targetCustomerIds) ? (raw.targetCustomerIds as string[]) : [],
+    startDate:
+      raw.startDate instanceof Date
+        ? raw.startDate
+        : raw.startDate
+          ? new Date(String(raw.startDate))
+          : null,
+    targetCustomerIds: Array.isArray(raw.targetCustomerIds)
+      ? (raw.targetCustomerIds as string[])
+      : [],
     totalProjectedRevenueCents: Number(raw.totalProjectedRevenueCents ?? 0),
     totalBookedRevenueCents: Number(raw.totalBookedRevenueCents ?? 0),
     emailSubject: (raw.emailSubject as string) ?? null,
@@ -47,9 +61,19 @@ function normalizeRecord(raw: Record<string, unknown>, orgId: string): Rebooking
     status: (raw.status as RebookingRecord['status']) ?? 'not_sent',
     projectedValueCents: Number(raw.projectedValueCents ?? 0),
     bookedValueCents: Number(raw.bookedValueCents ?? 0),
-    preferredInstallDate: raw.preferredInstallDate instanceof Date ? raw.preferredInstallDate : raw.preferredInstallDate ? new Date(String(raw.preferredInstallDate)) : null,
+    preferredInstallDate:
+      raw.preferredInstallDate instanceof Date
+        ? raw.preferredInstallDate
+        : raw.preferredInstallDate
+          ? new Date(String(raw.preferredInstallDate))
+          : null,
     preferredMonth: (raw.preferredMonth as string) ?? null,
-    lastContactedAt: raw.lastContactedAt instanceof Date ? raw.lastContactedAt : raw.lastContactedAt ? new Date(String(raw.lastContactedAt)) : null,
+    lastContactedAt:
+      raw.lastContactedAt instanceof Date
+        ? raw.lastContactedAt
+        : raw.lastContactedAt
+          ? new Date(String(raw.lastContactedAt))
+          : null,
     notes: (raw.notes as string) ?? null,
     createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(),
     updatedAt: raw.updatedAt instanceof Date ? raw.updatedAt : new Date(),
@@ -61,7 +85,9 @@ function normalizeRecord(raw: Record<string, unknown>, orgId: string): Rebooking
 async function recalcCampaignTotals(orgId: string, campaignId: string) {
   const records = await listRebookingRecords(orgId, campaignId);
   const projected = records.reduce((s, r) => s + r.projectedValueCents, 0);
-  const booked = records.filter((r) => r.status === 'rebooked').reduce((s, r) => s + r.bookedValueCents, 0);
+  const booked = records
+    .filter((r) => r.status === 'rebooked')
+    .reduce((s, r) => s + r.bookedValueCents, 0);
   const targetIds = [...new Set(records.map((r) => r.customerId))];
   await colUpdate(orgId, 'rebookingCampaigns', campaignId, {
     totalProjectedRevenueCents: projected,
@@ -85,13 +111,21 @@ export async function getRebookingCampaign(orgId: string, campaignId: string) {
 
 export async function createRebookingCampaign(
   orgId: string,
-  input: { seasonYear: number; name?: string; startDate?: Date; emailSubject?: string; emailBody?: string },
+  input: {
+    seasonYear: number;
+    name?: string;
+    startDate?: Date;
+    emailSubject?: string;
+    emailBody?: string;
+  },
   userId?: string | null,
 ) {
-  const existing = (await listRebookingCampaigns(orgId)).find((c) => c.seasonYear === input.seasonYear);
+  const existing = (await listRebookingCampaigns(orgId)).find(
+    (c) => c.seasonYear === input.seasonYear,
+  );
   if (existing) return existing;
 
-  const created = await colCreate(orgId, 'rebookingCampaigns', {
+  const created = (await colCreate(orgId, 'rebookingCampaigns', {
     organizationId: orgId,
     seasonYear: input.seasonYear,
     name: input.name ?? campaignName(input.seasonYear),
@@ -101,10 +135,12 @@ export async function createRebookingCampaign(
     totalProjectedRevenueCents: 0,
     totalBookedRevenueCents: 0,
     emailSubject: input.emailSubject ?? `Book your ${input.seasonYear} holiday lighting display`,
-    emailBody: input.emailBody ?? 'We would love to install your display again this season. Reply or use your portal link to rebook with one click.',
+    emailBody:
+      input.emailBody ??
+      'We would love to install your display again this season. Reply or use your portal link to rebook with one click.',
     createdBy: userId,
     updatedBy: userId,
-  }) as Record<string, unknown>;
+  })) as Record<string, unknown>;
 
   return normalizeCampaign({ ...created, id: created.id }, orgId);
 }
@@ -122,10 +158,15 @@ export async function updateRebookingCampaign(
       const records = await listRebookingRecords(orgId, campaignId);
       for (const record of records.slice(0, 50)) {
         if (!record.customerId) continue;
-        await fireAutomationTrigger(orgId, 'rebooking_season_begins', {
-          customerId: record.customerId,
-          customerName: record.customerName ?? 'Customer',
-        }, userId);
+        await fireAutomationTrigger(
+          orgId,
+          'rebooking_season_begins',
+          {
+            customerId: record.customerId,
+            customerName: record.customerName ?? 'Customer',
+          },
+          userId,
+        );
       }
     } catch {
       // Best-effort batch trigger
@@ -134,14 +175,20 @@ export async function updateRebookingCampaign(
   return getRebookingCampaign(orgId, campaignId);
 }
 
-export async function listRebookingRecords(orgId: string, campaignId: string): Promise<RebookingRecord[]> {
+export async function listRebookingRecords(
+  orgId: string,
+  campaignId: string,
+): Promise<RebookingRecord[]> {
   const rows = await colList<Record<string, unknown>>(orgId, 'rebookingRecords');
   return rows
     .filter((r) => r.campaignId === campaignId)
     .map((r) => normalizeRecord({ ...r, id: r.id }, orgId));
 }
 
-export async function listRebookingRecordsDetailed(orgId: string, campaignId: string): Promise<RebookingRecordWithCustomer[]> {
+export async function listRebookingRecordsDetailed(
+  orgId: string,
+  campaignId: string,
+): Promise<RebookingRecordWithCustomer[]> {
   const records = await listRebookingRecords(orgId, campaignId);
   return Promise.all(
     records.map(async (record) => {
@@ -165,7 +212,11 @@ function customerDisplayName(c: CustomerRecord) {
   return c.businessName || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || 'Customer';
 }
 
-export async function populateCampaignFromPriorSeason(orgId: string, campaignId: string, userId?: string | null) {
+export async function populateCampaignFromPriorSeason(
+  orgId: string,
+  campaignId: string,
+  userId?: string | null,
+) {
   const campaign = await getRebookingCampaign(orgId, campaignId);
   if (!campaign) throw new Error('Campaign not found');
 
@@ -181,15 +232,24 @@ export async function populateCampaignFromPriorSeason(orgId: string, campaignId:
   const eligibleCustomerIds = new Set<string>();
 
   for (const job of jobs) {
-    const stage = String(job.stage ?? '');
-    if (!['installed', 'removed', 'complete', 'review_requested'].includes(stage)) continue;
-    const d = job.installedAt ?? job.removedAt ?? job.createdAt;
-    const year = d instanceof Date ? d.getFullYear() : d ? new Date(String(d)).getFullYear() : null;
-    if (year === priorYear && job.customerId) eligibleCustomerIds.add(String(job.customerId));
+    if (
+      isPriorSeasonJobEligibleForRebooking(
+        {
+          stage: job.stage as string | null | undefined,
+          customerId: job.customerId ? String(job.customerId) : null,
+          installedAt: (job.installedAt as Date | string | null | undefined) ?? null,
+          removedAt: (job.removedAt as Date | string | null | undefined) ?? null,
+          createdAt: (job.createdAt as Date | string | null | undefined) ?? null,
+        },
+        priorYear,
+      )
+    ) {
+      eligibleCustomerIds.add(String(job.customerId));
+    }
   }
 
   for (const customer of customers) {
-    if (['stored', 'removed', 'rebook_next_season'].includes(customer.pipelineStage ?? '')) {
+    if (isRebookingPopulateCustomerEligible(customer.pipelineStage)) {
       eligibleCustomerIds.add(customer.id);
     }
   }
@@ -209,7 +269,9 @@ export async function populateCampaignFromPriorSeason(orgId: string, campaignId:
       });
     const previousProposal = customerProposals[0];
     const customerJobs = jobs.filter((j) => j.customerId === customerId);
-    const previousJob = customerJobs.find((j) => ['installed', 'removed', 'complete'].includes(String(j.stage ?? '')));
+    const previousJob = customerJobs.find((j) =>
+      ['installed', 'removed', 'complete'].includes(String(j.stage ?? '')),
+    );
 
     await colCreate(orgId, 'rebookingRecords', {
       organizationId: orgId,
@@ -220,7 +282,9 @@ export async function populateCampaignFromPriorSeason(orgId: string, campaignId:
       previousJobId: previousJob ? String(previousJob.id) : null,
       newProposalId: null,
       status: 'not_sent',
-      projectedValueCents: Number(previousProposal?.subtotalCents ?? customer.pipelineEstimatedValueCents ?? 0),
+      projectedValueCents: Number(
+        previousProposal?.subtotalCents ?? customer.pipelineEstimatedValueCents ?? 0,
+      ),
       bookedValueCents: 0,
       preferredInstallDate: null,
       preferredMonth: null,
@@ -243,17 +307,32 @@ export async function updateRebookingRecord(
   userId?: string | null,
 ) {
   await colUpdate(orgId, 'rebookingRecords', recordId, { ...data, updatedBy: userId });
-  const record = normalizeRecord({ ...(await colGet(orgId, 'rebookingRecords', recordId))!, id: recordId }, orgId);
+  const record = normalizeRecord(
+    { ...(await colGet(orgId, 'rebookingRecords', recordId))!, id: recordId },
+    orgId,
+  );
   await recalcCampaignTotals(orgId, record.campaignId);
   return record;
 }
 
-export async function sendRebookingOutreach(orgId: string, recordId: string, userId?: string | null) {
+export async function sendRebookingOutreach(
+  orgId: string,
+  recordId: string,
+  userId?: string | null,
+) {
   const raw = await colGet<Record<string, unknown>>(orgId, 'rebookingRecords', recordId);
   if (!raw) throw new Error('Record not found');
   const record = normalizeRecord({ ...raw, id: recordId }, orgId);
   const campaign = await getRebookingCampaign(orgId, record.campaignId);
   if (!campaign) throw new Error('Campaign not found');
+
+  // YL-S25: idempotent — do not re-fire outreach for terminal / already-contacted rows.
+  if (!shouldSendRebookingOutreach(record.status)) {
+    return {
+      ...record,
+      replayed: true as const,
+    };
+  }
 
   await colUpdate(orgId, 'rebookingRecords', recordId, {
     status: 'sent',
@@ -261,10 +340,16 @@ export async function sendRebookingOutreach(orgId: string, recordId: string, use
     updatedBy: userId,
   });
 
-  await triggerAutomation(orgId, 'august_early_booking', record.customerId, {
-    seasonYear: String(campaign.seasonYear),
-    customerName: record.customerName,
-  }, userId).catch(() => {});
+  await triggerAutomation(
+    orgId,
+    'august_early_booking',
+    record.customerId,
+    {
+      seasonYear: String(campaign.seasonYear),
+      customerName: record.customerName,
+    },
+    userId,
+  ).catch(() => {});
 
   await recalcCampaignTotals(orgId, record.campaignId);
   return updateRebookingRecord(orgId, recordId, {}, userId);
@@ -273,7 +358,13 @@ export async function sendRebookingOutreach(orgId: string, recordId: string, use
 export async function processRebookRecord(
   orgId: string,
   recordId: string,
-  opts?: { sameDesign?: boolean; upgradeRequested?: boolean; preferredMonth?: string; notes?: string; userId?: string | null },
+  opts?: {
+    sameDesign?: boolean;
+    upgradeRequested?: boolean;
+    preferredMonth?: string;
+    notes?: string;
+    userId?: string | null;
+  },
 ) {
   const raw = await colGet<Record<string, unknown>>(orgId, 'rebookingRecords', recordId);
   if (!raw) throw new Error('Record not found');
@@ -281,34 +372,50 @@ export async function processRebookRecord(
   const campaign = await getRebookingCampaign(orgId, record.campaignId);
   if (!campaign) throw new Error('Campaign not found');
 
+  // Terminal states: deterministic replay, no duplicate proposals (P2-S6 / YL-S25).
+  if (isRebookingRecordTerminal(record.status)) {
+    return {
+      recordId,
+      newProposalId: record.newProposalId ?? null,
+      status: record.status,
+      bookedValueCents: record.bookedValueCents,
+      replayed: true as const,
+    };
+  }
+
   let newProposalId: string | null = null;
   let bookedValueCents = record.projectedValueCents;
 
   if (record.previousProposalId) {
     const prev = await getProposal360(orgId, record.previousProposalId);
     if (prev) {
-      const proposal = await createProposal360(orgId, {
-        customerId: record.customerId,
-        propertyId: prev.propertyId,
-        title: `${campaign.seasonYear} Season — ${prev.title}`,
-        season: String(campaign.seasonYear),
-        lineItems: prev.lineItems?.map((li) => ({
-          id: nanoid(),
-          description: li.description,
-          quantity: li.quantity,
-          unitPriceCents: li.unitPriceCents,
-          agreementCode: li.agreementCode ?? 'STD',
-        })) ?? [],
-        mockupIds: prev.mockupIds ?? [],
-        scopeOfWork: prev.scopeOfWork ?? undefined,
-        propertyPhotoUrl: prev.propertyPhotoUrl ?? undefined,
-        installType: prev.installType ?? undefined,
-        notes: opts?.upgradeRequested
-          ? `Upgrade requested. ${opts.notes ?? ''}`.trim()
-          : opts?.sameDesign !== false
-            ? `Same design rebook from ${campaign.seasonYear - 1} season. ${opts?.notes ?? ''}`.trim()
-            : opts?.notes ?? 'Rebook request',
-      }, opts?.userId);
+      const proposal = await createProposal360(
+        orgId,
+        {
+          customerId: record.customerId,
+          propertyId: prev.propertyId,
+          title: `${campaign.seasonYear} Season — ${prev.title}`,
+          season: String(campaign.seasonYear),
+          lineItems:
+            prev.lineItems?.map((li) => ({
+              id: nanoid(),
+              description: li.description,
+              quantity: li.quantity,
+              unitPriceCents: li.unitPriceCents,
+              agreementCode: li.agreementCode ?? 'STD',
+            })) ?? [],
+          mockupIds: prev.mockupIds ?? [],
+          scopeOfWork: prev.scopeOfWork ?? undefined,
+          propertyPhotoUrl: prev.propertyPhotoUrl ?? undefined,
+          installType: prev.installType ?? undefined,
+          notes: opts?.upgradeRequested
+            ? `Upgrade requested. ${opts.notes ?? ''}`.trim()
+            : opts?.sameDesign !== false
+              ? `Same design rebook from ${campaign.seasonYear - 1} season. ${opts?.notes ?? ''}`.trim()
+              : (opts?.notes ?? 'Rebook request'),
+        },
+        opts?.userId,
+      );
       newProposalId = proposal?.id ?? null;
       bookedValueCents = proposal?.subtotalCents ?? bookedValueCents;
     }
@@ -324,7 +431,13 @@ export async function processRebookRecord(
     updatedBy: opts?.userId,
   });
 
-  await updateCustomerPipelineStage(orgId, record.customerId, 'needs_estimate', opts?.userId, 'Rebooking');
+  await updateCustomerPipelineStage(
+    orgId,
+    record.customerId,
+    'needs_estimate',
+    opts?.userId,
+    'Rebooking',
+  );
   await logCustomerActivity(
     orgId,
     record.customerId,
@@ -341,32 +454,42 @@ export async function processRebookRecord(
 export async function processPortalRebook(
   orgId: string,
   customerId: string,
-  input: { sameDesign?: boolean; upgradeRequested?: boolean; preferredMonth?: string; notes?: string },
+  input: {
+    sameDesign?: boolean;
+    upgradeRequested?: boolean;
+    preferredMonth?: string;
+    notes?: string;
+  },
 ) {
   const campaigns = await listRebookingCampaigns(orgId);
-  const active = campaigns.find((c) => c.status === 'active') ?? campaigns[0];
-  if (!active) {
+  const activeCampaigns = campaigns.filter((c) => c.status === 'active');
+  const candidates = activeCampaigns.length > 0 ? activeCampaigns : campaigns.slice(0, 1);
+  if (candidates.length === 0) {
     const year = new Date().getFullYear();
     const campaign = await createRebookingCampaign(orgId, { seasonYear: year });
     await populateCampaignFromPriorSeason(orgId, campaign.id);
     return processPortalRebook(orgId, customerId, input);
   }
 
-  let records = await listRebookingRecords(orgId, active.id);
-  let record = records.find((r) => r.customerId === customerId);
-  if (!record) {
-    await populateCampaignFromPriorSeason(orgId, active.id);
-    records = await listRebookingRecords(orgId, active.id);
-    record = records.find((r) => r.customerId === customerId);
+  for (const active of candidates) {
+    let records = await listRebookingRecords(orgId, active.id);
+    let record = records.find((r) => r.customerId === customerId);
+    if (!record) {
+      await populateCampaignFromPriorSeason(orgId, active.id);
+      records = await listRebookingRecords(orgId, active.id);
+      record = records.find((r) => r.customerId === customerId);
+    }
+    if (record) {
+      return processRebookRecord(orgId, record.id, {
+        sameDesign: input.sameDesign,
+        upgradeRequested: input.upgradeRequested,
+        preferredMonth: input.preferredMonth,
+        notes: input.notes,
+      });
+    }
   }
-  if (!record) throw new Error('No prior season record found for rebooking');
 
-  return processRebookRecord(orgId, record.id, {
-    sameDesign: input.sameDesign,
-    upgradeRequested: input.upgradeRequested,
-    preferredMonth: input.preferredMonth,
-    notes: input.notes,
-  });
+  throw new Error('No prior season record found for rebooking');
 }
 
 export async function getRebookingDashboard(orgId: string): Promise<RebookingDashboard> {
@@ -377,10 +500,14 @@ export async function getRebookingDashboard(orgId: string): Promise<RebookingDas
 
   const notSent = records.filter((r) => r.status === 'not_sent').length;
   const sent = records.filter((r) => ['sent', 'opened'].includes(r.status)).length;
-  const rebooked = records.filter((r) => ['rebooked', 'upgrade_requested'].includes(r.status)).length;
+  const rebooked = records.filter((r) =>
+    ['rebooked', 'upgrade_requested'].includes(r.status),
+  ).length;
   const declined = records.filter((r) => r.status === 'declined').length;
   const projectedRevenueCents = records.reduce((s, r) => s + r.projectedValueCents, 0);
-  const bookedRevenueCents = records.filter((r) => r.status === 'rebooked' || r.status === 'upgrade_requested').reduce((s, r) => s + r.bookedValueCents, 0);
+  const bookedRevenueCents = records
+    .filter((r) => r.status === 'rebooked' || r.status === 'upgrade_requested')
+    .reduce((s, r) => s + r.bookedValueCents, 0);
   const contacted = records.filter((r) => r.status !== 'not_sent').length;
 
   return {
@@ -397,10 +524,25 @@ export async function getRebookingDashboard(orgId: string): Promise<RebookingDas
 }
 
 export async function getPortalRebookContext(orgId: string, customerId: string) {
-  const proposals = await colList<{ id: string; customerId?: string; title?: string; subtotalCents?: number; mockupIds?: string[]; createdAt?: Date }>(orgId, 'proposals');
-  const previous = proposals
-    .filter((p) => p.customerId === customerId)
-    .sort((a, b) => new Date(String(b.createdAt)).getTime() - new Date(String(a.createdAt)).getTime())[0];
+  if (!orgId || !customerId) {
+    return { hasPreviousSeason: false, previousProposalTitle: null, projectedValueCents: 0 };
+  }
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(`organizations/${orgId}/proposals`)
+    .where('customerId', '==', customerId)
+    .get();
+  const proposals = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Array<{
+    id: string;
+    customerId?: string;
+    title?: string;
+    subtotalCents?: number;
+    mockupIds?: string[];
+    createdAt?: Date;
+  }>;
+  const previous = proposals.sort(
+    (a, b) => new Date(String(b.createdAt)).getTime() - new Date(String(a.createdAt)).getTime(),
+  )[0];
   return {
     hasPreviousSeason: Boolean(previous),
     previousProposalTitle: previous?.title ?? null,

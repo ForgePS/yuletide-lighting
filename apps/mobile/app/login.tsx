@@ -6,81 +6,81 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Redirect } from 'expo-router';
-
+import { router } from 'expo-router';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { ScreenContainer } from '@/components/screen-container';
-import { useAuth } from '@/hooks/use-auth';
+import { getFirebaseAuth } from '@/lib/firebase';
+import { setAuthToken } from '@/lib/api';
 
-export default function LoginScreen() {
-  const { ready, signedIn, signIn } = useAuth();
+export default function CrewLoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (!ready) {
-    return (
-      <ScreenContainer style={styles.center}>
-        <ActivityIndicator size="large" color="#DC2626" />
-      </ScreenContainer>
-    );
-  }
-
-  if (signedIn) {
-    return <Redirect href="/(tabs)" />;
-  }
-
-  async function handleSignIn() {
-    setError('');
+  async function onSignIn() {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !password) {
+      Alert.alert('Sign in', 'Enter email and password.');
+      return;
+    }
     setBusy(true);
     try {
-      await signIn(email, password);
+      const cred = await signInWithEmailAndPassword(getFirebaseAuth(), trimmed, password);
+      const idToken = await cred.user.getIdToken(true);
+      await setAuthToken(idToken);
+      router.replace('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign in failed');
+      const message =
+        err instanceof Error && /auth\//.test(err.message)
+          ? 'Invalid email or password.'
+          : 'Could not sign in. Check your connection and try again.';
+      Alert.alert('Sign in failed', message);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer style={styles.root}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.formWrap}
+        style={styles.inner}
       >
-        <Text style={styles.title}>Yuletide Lighting Crew</Text>
-        <Text style={styles.subtitle}>Sign in to view your schedule and signs</Text>
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
+        <Text style={styles.heading}>Crew sign in</Text>
+        <Text style={styles.sub}>
+          Use the same email and password as your staff account (invited by an admin).
+        </Text>
         <TextInput
+          style={styles.input}
           autoCapitalize="none"
-          autoComplete="email"
+          autoCorrect={false}
           keyboardType="email-address"
           placeholder="Email"
           value={email}
           onChangeText={setEmail}
-          style={styles.input}
+          editable={!busy}
         />
         <TextInput
+          style={styles.input}
           secureTextEntry
           placeholder="Password"
           value={password}
           onChangeText={setPassword}
-          style={styles.input}
+          editable={!busy}
         />
         <TouchableOpacity
-          style={[styles.btnPrimary, busy && styles.btnDisabled]}
-          onPress={handleSignIn}
-          disabled={busy || !email.trim() || !password}
+          style={[styles.btn, busy && styles.btnDisabled]}
+          onPress={onSignIn}
+          disabled={busy}
         >
           {busy ? (
-            <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnPrimaryText}>Sign in</Text>
+            <Text style={styles.btnText}>Sign in</Text>
           )}
         </TouchableOpacity>
       </KeyboardAvoidingView>
@@ -89,27 +89,26 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { justifyContent: 'center', alignItems: 'center' },
-  formWrap: { flex: 1, justifyContent: 'center', gap: 12, maxWidth: 420, width: '100%', alignSelf: 'center' },
-  title: { fontSize: 26, fontWeight: '700', color: '#0F172A' },
-  subtitle: { fontSize: 15, color: '#64748B', marginBottom: 8 },
-  error: { color: '#DC2626', fontSize: 14, backgroundColor: '#FEF2F2', padding: 12, borderRadius: 8 },
+  root: { justifyContent: 'center' },
+  inner: { gap: 12, paddingHorizontal: 8 },
+  heading: { fontSize: 24, fontWeight: '700', color: '#111827' },
+  sub: { fontSize: 14, color: '#6B7280', marginBottom: 8 },
   input: {
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: '#D1D5DB',
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
-    backgroundColor: '#FFF',
+    backgroundColor: '#fff',
   },
-  btnPrimary: {
+  btn: {
+    marginTop: 8,
     backgroundColor: '#DC2626',
-    paddingVertical: 14,
     borderRadius: 10,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 4,
   },
   btnDisabled: { opacity: 0.7 },
-  btnPrimaryText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  btnText: { color: '#fff', fontWeight: '600', fontSize: 16 },
 });

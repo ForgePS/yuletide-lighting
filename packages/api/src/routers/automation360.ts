@@ -10,34 +10,45 @@ import {
   fireAutomationTrigger,
 } from '@yuletide/firebase';
 import { createAutomationRuleSchema, updateAutomationRuleSchema, automation360TriggerSchema } from '@clcrm/validators';
-import { router, officeProcedure, adminProcedure } from '../trpc';
+import { router, protectedProcedure, requireModule, requirePermission } from '../trpc';
+
+const automationModule = requireModule('automation');
+/** YL-S21: module + settings RBAC (no dedicated automation PermissionResource yet). */
+const automationView = protectedProcedure
+  .use(automationModule)
+  .use(requirePermission('settings', 'view'));
+const automationEdit = protectedProcedure
+  .use(automationModule)
+  .use(requirePermission('settings', 'edit'));
 
 export const automation360Router = router({
-  dashboard: officeProcedure.query(({ ctx }) => getAutomationDashboard(ctx.auth.organizationId)),
+  dashboard: automationView.query(({ ctx }) => getAutomationDashboard(ctx.auth.organizationId)),
 
   rules: router({
-    list: officeProcedure.query(({ ctx }) => listAutomationRules(ctx.auth.organizationId)),
-    create: adminProcedure.input(createAutomationRuleSchema).mutation(({ ctx, input }) =>
-      createAutomationRule(
-        ctx.auth.organizationId,
-        {
-          name: input.name,
-          trigger: input.trigger,
-          description: input.description ?? null,
-          conditions: input.conditions,
-          actions: input.actions,
-          active: input.active,
-        },
-        ctx.auth.userId,
+    list: automationView.query(({ ctx }) => listAutomationRules(ctx.auth.organizationId)),
+    create: automationEdit
+      .input(createAutomationRuleSchema)
+      .mutation(({ ctx, input }) =>
+        createAutomationRule(
+          ctx.auth.organizationId,
+          {
+            name: input.name,
+            trigger: input.trigger,
+            description: input.description ?? null,
+            conditions: input.conditions,
+            actions: input.actions,
+            active: input.active,
+          },
+          ctx.auth.userId,
+        ),
       ),
-    ),
-    update: adminProcedure.input(updateAutomationRuleSchema).mutation(async ({ ctx, input }) => {
+    update: automationEdit.input(updateAutomationRuleSchema).mutation(async ({ ctx, input }) => {
       const { ruleId, ...data } = input;
       const result = await updateAutomationRule360(ctx.auth.organizationId, ruleId, data, ctx.auth.userId);
       if (!result) throw new TRPCError({ code: 'NOT_FOUND' });
       return result;
     }),
-    toggle: adminProcedure
+    toggle: automationEdit
       .input(z.object({ ruleId: z.string().min(1), active: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
         const result = await toggleAutomationRule(
@@ -52,12 +63,12 @@ export const automation360Router = router({
   }),
 
   runs: router({
-    list: officeProcedure
+    list: automationView
       .input(z.object({ limit: z.number().int().min(1).max(200).optional() }).optional())
       .query(({ ctx, input }) => listAutomationRuns(ctx.auth.organizationId, input?.limit ?? 50)),
   }),
 
-  testTrigger: adminProcedure
+  testTrigger: automationEdit
     .input(
       z.object({
         trigger: automation360TriggerSchema,

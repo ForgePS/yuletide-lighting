@@ -15,19 +15,18 @@ import { EmptyState, LoadingState } from '@/components/ui/states';
 import { BulkActionBar } from '@/components/ui/bulk-action-bar';
 import { InventoryEditDialog, InventoryForm } from './inventory-table';
 import { LowStockAlertPanel } from './low-stock-panel';
-import type { InventoryItemRecord } from '@clcrm/types';
+import { computeAvailable, hasPermission, type InventoryItemRecord } from '@clcrm/types';
+import { useAuth } from '@/lib/firebase-auth';
 
 const PAGE_SIZES = [20, 50, 100];
 
-function computeAvailable(item: InventoryItemRecord) {
-  return Math.max(
-    0,
-    item.quantityOnHand - item.quantityReserved - item.quantityAssigned - item.quantityDamaged - item.quantityLost,
-  );
-}
-
 export function InventoryHub() {
   const { toast } = useToast();
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = !authLoading && !!idToken;
+  const { data: myPermissions } = trpc.settings360.myPermissions.useQuery(undefined, { enabled: ready });
+  const canCreate = myPermissions ? hasPermission(myPermissions, 'inventory', 'create') : false;
+  const canEdit = myPermissions ? hasPermission(myPermissions, 'inventory', 'edit') : false;
   const optionsRef = useRef<HTMLDivElement>(null);
   const { data, isLoading, refetch } = trpc.inventory360.items.list.useQuery(undefined, { staleTime: 15_000 });
   const { data: kpis } = trpc.inventory360.dashboard.useQuery(undefined, { staleTime: 60_000 });
@@ -97,10 +96,23 @@ export function InventoryHub() {
   const pageItems = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   function adjustStock(item: InventoryItemRecord, delta: number) {
+    if (!canEdit) {
+      toast('You do not have permission to edit inventory', 'error');
+      return;
+    }
+    const next = Math.max(0, item.quantityOnHand + delta);
+    if (delta < 0) {
+      const floor =
+        item.quantityReserved + item.quantityAssigned + item.quantityDamaged + item.quantityLost;
+      if (next < floor) {
+        toast('Cannot reduce on-hand below reserved/assigned/damaged stock', 'error');
+        return;
+      }
+    }
     setAdjustingId(item.id);
     update.mutate({
       itemId: item.id,
-      data: { quantityOnHand: Math.max(0, item.quantityOnHand + delta) },
+      data: { quantityOnHand: next },
     });
   }
 
@@ -126,9 +138,11 @@ export function InventoryHub() {
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="btn-primary" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Cancel' : '+ New item'}
-          </button>
+          {canCreate ? (
+            <button type="button" className="btn-primary" onClick={() => setShowForm((v) => !v)}>
+              {showForm ? 'Cancel' : '+ New item'}
+            </button>
+          ) : null}
           <div className="relative" ref={optionsRef}>
             <button
               type="button"
@@ -313,27 +327,31 @@ export function InventoryHub() {
                       </td>
                       <td className="text-right">
                         <div className="inline-flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border bg-muted/50 text-muted-foreground hover:bg-muted disabled:opacity-40"
-                            disabled={busy || item.quantityOnHand <= 0}
-                            onClick={() => adjustStock(item, -1)}
-                            aria-label={`Decrease stock for ${item.sku}`}
-                          >
-                            <Minus className="h-3.5 w-3.5" />
-                          </button>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border bg-muted/50 text-muted-foreground hover:bg-muted disabled:opacity-40"
+                              disabled={busy || item.quantityOnHand <= 0}
+                              onClick={() => adjustStock(item, -1)}
+                              aria-label={`Decrease stock for ${item.sku}`}
+                            >
+                              <Minus className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
                           <span className={`min-w-[2rem] text-center font-semibold tabular-nums ${avail <= item.reorderLevel ? 'text-amber-700' : ''}`}>
                             {item.quantityOnHand}
                           </span>
-                          <button
-                            type="button"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
-                            disabled={busy}
-                            onClick={() => adjustStock(item, 1)}
-                            aria-label={`Increase stock for ${item.sku}`}
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                          </button>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                              disabled={busy}
+                              onClick={() => adjustStock(item, 1)}
+                              aria-label={`Increase stock for ${item.sku}`}
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
                           <span
                             className={`ml-1 inline-block h-2 w-2 rounded-full ${stockLevelColor(avail, item.reorderLevel)}`}
                             title={`${avail} available · reorder at ${item.reorderLevel}`}
@@ -341,9 +359,11 @@ export function InventoryHub() {
                         </div>
                       </td>
                       <td>
-                        <button type="button" className="btn-ghost px-2 py-1 text-xs opacity-0 group-hover:opacity-100" onClick={() => setEditing(item)}>
-                          Edit
-                        </button>
+                        {canEdit ? (
+                          <button type="button" className="btn-ghost px-2 py-1 text-xs opacity-0 group-hover:opacity-100" onClick={() => setEditing(item)}>
+                            Edit
+                          </button>
+                        ) : null}
                       </td>
                     </tr>
                   );

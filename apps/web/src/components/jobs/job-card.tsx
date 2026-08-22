@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { canScheduleJob } from '@clcrm/types';
 import { formatStage } from '@clcrm/ui';
 import { WeatherRiskBadge } from './weather-risk-badge';
 
@@ -52,7 +53,7 @@ export function JobCard({
         </p>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        {onSchedule && ['accepted_proposal', 'deposit_paid', 'inventory_reserved'].includes(job.stage) && (
+        {onSchedule && canScheduleJob(job.stage) && (
           <button type="button" onClick={onSchedule} className="text-xs text-primary hover:underline">
             Schedule
           </button>

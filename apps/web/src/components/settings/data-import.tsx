@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import Link from 'next/link';
 import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
@@ -228,7 +229,7 @@ export function DataImportPage() {
               </p>
               {entity === 'inventory' && runImport.data.imported + runImport.data.updated > 0 && (
                 <p className="mt-2">
-                  <a href="/app/inventory/items" className="font-medium text-primary hover:underline">View inventory items →</a>
+                  <Link href="/app/inventory/items" className="font-medium text-primary hover:underline">View inventory items →</Link>
                 </p>
               )}
               {runImport.data.errors.length > 0 && (

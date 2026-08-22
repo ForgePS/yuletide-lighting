@@ -1,12 +1,23 @@
 import { z } from 'zod';
+import { publicAccessTokenSchema } from './public-token';
 
 export const multiYearAgreementStatusSchema = z.enum([
   'draft',
+  'awaiting_signature',
+  'signed',
   'active',
   'renewal_due',
   'completed',
   'cancelled',
 ]);
+
+export const agreementPublicSignSchema = z.object({
+  token: publicAccessTokenSchema,
+  signedByName: z.string().min(1).max(200),
+  signatureData: z.string().max(50000).optional(),
+  ipAddress: z.string().max(100).optional(),
+  userAgent: z.string().max(500).optional(),
+});
 
 export const multiYearAgreementListFiltersSchema = z.object({
   page: z.number().int().min(1).default(1),
@@ -18,7 +29,7 @@ export const multiYearAgreementListFiltersSchema = z.object({
 
 const multiYearAgreementBaseSchema = z.object({
   customerId: z.string().optional().or(z.literal('')),
-  customerName: z.string().min(1, 'Customer is required').max(200),
+  customerName: z.string().max(200).optional().or(z.literal('')),
   propertyId: z.string().optional().or(z.literal('')),
   propertyLabel: z.string().max(200).optional().or(z.literal('')),
   title: z.string().min(1, 'Title is required').max(200),
@@ -33,6 +44,7 @@ const multiYearAgreementBaseSchema = z.object({
   linkedProjectIds: z.array(z.string()).default([]),
   notes: z.string().max(10000).optional().or(z.literal('')),
   source: z.string().max(80).optional().or(z.literal('')),
+  signedDocumentUrl: z.string().max(2000).optional().nullable().or(z.literal('')),
   signedAt: z.coerce.date().optional().nullable(),
   cancelledAt: z.coerce.date().optional().nullable(),
   nextRenewalDate: z.coerce.date().optional().nullable(),

@@ -67,6 +67,12 @@ export type CrewMobileJobDetail = CrewScheduleItem & {
   photos: Array<{ id: string; url: string; photoType?: CrewPhotoType | null; caption?: string | null }>;
   activity: JobActivityLog[];
   activeTimeEntryId?: string | null;
+  scopeSummary?: string | null;
+  safetyNotes?: string | null;
+  accessNotes?: string | null;
+  mockupPhotoUrls?: string[] | null;
+  approvedPackageName?: string | null;
+  installNotes?: string | null;
 };
 
 export type CrewDashboard = {
@@ -77,3 +83,89 @@ export type CrewDashboard = {
   openIssues: number;
   photosUploadedToday: number;
 };
+
+/** YL-S11 — calendar-day equality in local time. */
+export function isSameCalendarDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function toDate(value: Date | string | null | undefined): Date | null {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export type CrewScheduleJobRow = {
+  id: string;
+  assignedCrewUserId?: string | null;
+  assignedCrewId?: string | null;
+  scheduledStart?: Date | string | null;
+};
+
+export type CrewScheduleEventRow = {
+  jobId?: string | null;
+  crewId?: string | null;
+};
+
+/**
+ * YL-S11 — which jobs belong on a crew member's day schedule.
+ * Does not include every calendar event for the day.
+ */
+export function collectCrewScheduleJobIds(input: {
+  userId: string;
+  targetDate: Date;
+  jobs: CrewScheduleJobRow[];
+  dayEvents: CrewScheduleEventRow[];
+  /** crewSchedules profile id → Auth user id */
+  crewUserByProfileId: Record<string, string | null | undefined>;
+}): string[] {
+  const { userId, targetDate, jobs, dayEvents, crewUserByProfileId } = input;
+  const ids = new Set<string>();
+
+  const profileOwnedByUser = (crewProfileId: string | null | undefined) =>
+    Boolean(crewProfileId && crewUserByProfileId[crewProfileId] === userId);
+
+  for (const job of jobs) {
+    const assigned =
+      job.assignedCrewUserId === userId || profileOwnedByUser(job.assignedCrewId ?? null);
+    if (!assigned) continue;
+    const start = toDate(job.scheduledStart);
+    // Require a start on the target day (no more “no start ⇒ every day”).
+    if (!start || !isSameCalendarDay(start, targetDate)) continue;
+    ids.add(job.id);
+  }
+
+  for (const event of dayEvents) {
+    if (!event.jobId) continue;
+    if (profileOwnedByUser(event.crewId ?? null)) ids.add(event.jobId);
+  }
+
+  return [...ids];
+}
+
+/** YL-S11 — whether a crew Auth user may mutate a job in the field. */
+export function isCrewAssignedToJob(input: {
+  userId: string;
+  job: { assignedCrewUserId?: string | null; assignedCrewId?: string | null };
+  eventCrewIds?: Array<string | null | undefined>;
+  crewUserByProfileId: Record<string, string | null | undefined>;
+}): boolean {
+  if (input.job.assignedCrewUserId === input.userId) return true;
+  if (input.job.assignedCrewId && input.crewUserByProfileId[input.job.assignedCrewId] === input.userId) {
+    return true;
+  }
+  for (const crewId of input.eventCrewIds ?? []) {
+    if (crewId && input.crewUserByProfileId[crewId] === input.userId) return true;
+  }
+  return false;
+}
+
+/** YL-S11 — null-safe activity action label. */
+export function formatCrewActivityLabel(action: string | null | undefined): string {
+  const value = typeof action === 'string' ? action.trim() : '';
+  if (!value) return 'Unknown';
+  return value
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}

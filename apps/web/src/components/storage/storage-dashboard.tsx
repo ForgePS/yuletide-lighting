@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency } from '@clcrm/ui';
-import { LoadingState, EmptyState } from '@/components/ui/states';
+import { formatStorageStatusLabel } from '@clcrm/types';
+import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 import { StoragePullSheetView } from './storage-pull-sheet';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -16,9 +17,16 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function StorageStatsCards() {
-  const { data, isLoading } = trpc.storage360.dashboard.useQuery();
-  if (isLoading || !data) return <LoadingState message="Loading storage stats..." />;
-
+  const { data, isLoading, isError, error, refetch } = trpc.storage360.dashboard.useQuery();
+  if (isLoading) return <LoadingState message="Loading storage stats..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load storage stats.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
   const cards = [
     { label: 'Total records', value: String(data.totalRecords) },
     { label: 'In storage', value: String(data.stored) },
@@ -90,8 +98,8 @@ export function StorageRecordsTable({ customerId }: { customerId?: string }) {
                 </td>
                 <td>{row.itemCount}</td>
                 <td>
-                  <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${STATUS_COLORS[row.status] ?? ''}`}>
-                    {row.status}
+                  <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${STATUS_COLORS[row.status] ?? 'bg-muted text-muted-foreground'}`}>
+                    {formatStorageStatusLabel(row.status)}
                   </span>
                 </td>
                 <td className="text-muted-foreground">{row.storedAt.toLocaleDateString()}</td>

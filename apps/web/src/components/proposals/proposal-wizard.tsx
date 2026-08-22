@@ -78,6 +78,8 @@ export function ProposalWizard({ proposalId, initial }: { proposalId?: string; i
       financingOption: form.financingOption as never,
       depositPercent: form.depositPercent,
       notes: form.notes || undefined,
+      // Seed Good/Better/Best from Settings; package pricing takes precedence over line items.
+      preferPackages: true,
     };
     try {
       if (proposalId) {
@@ -193,7 +195,10 @@ export function ProposalWizard({ proposalId, initial }: { proposalId?: string; i
               <label className="text-sm">Tree wraps<input type="number" value={form.treeWrapCount} onChange={(e) => setForm({ ...form, treeWrapCount: Number(e.target.value) })} className="input mt-1" /></label>
               <label className="text-sm">Labor hours<input type="number" value={form.laborHours} onChange={(e) => setForm({ ...form, laborHours: Number(e.target.value) })} className="input mt-1" /></label>
             </div>
-            <p className="text-sm text-muted-foreground">Good / Better / Best packages will be auto-created from pricing inputs.</p>
+            <p className="text-sm text-muted-foreground">
+              Good / Better / Best packages will be auto-created from Settings defaults and pricing inputs.
+              Package deals take precedence over line items. Prefer New proposal for full package editing.
+            </p>
             <label className="text-sm">Deposit %<input type="number" min={0} max={100} value={form.depositPercent} onChange={(e) => setForm({ ...form, depositPercent: Number(e.target.value) })} className="input mt-1 w-32" /></label>
           </div>
         )}

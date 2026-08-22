@@ -1,4 +1,9 @@
 import type { AppointmentType, CalendarEvent, CustomerStage, Property, ProposalRecord } from '@clcrm/types';
+import {
+  jobStageFromAppointmentComplete,
+  jobStageFromAppointmentSchedule,
+} from '@clcrm/types';
+import { pickPrimaryCalendarEventForJob } from '@clcrm/types';
 import { colGet, colList } from './firestore';
 import { updateCustomerPipelineStage } from './customer360';
 
@@ -10,6 +15,7 @@ export type OrgJobRecord = {
   title: string;
   stage: string;
   assignedCrewUserId?: string | null;
+  assignedCrewId?: string | null;
   scheduledStart?: Date | null;
   scheduledEnd?: Date | null;
   installedAt?: Date | null;
@@ -19,6 +25,12 @@ export type OrgJobRecord = {
   estimatedHours?: number | null;
   installNotes?: string | null;
   internalNotes?: string | null;
+  scopeSummary?: string | null;
+  safetyNotes?: string | null;
+  accessNotes?: string | null;
+  mockupPhotoUrls?: string[] | null;
+  approvedPackageName?: string | null;
+  approvedPackageId?: string | null;
 };
 
 export type JobMaterialRow = {
@@ -56,19 +68,17 @@ const JOB_STAGE_TO_PIPELINE: Partial<Record<string, CustomerStage>> = {
   deposit_paid: 'deposit_paid',
 };
 
-const APPOINTMENT_TO_PIPELINE_ON_SCHEDULE: Partial<Record<AppointmentType, CustomerStage>> = {
-  installation: 'scheduled',
-  takedown: 'removal_scheduled',
-  permanent_lighting_install: 'scheduled',
-  commercial_project: 'scheduled',
-};
+function appointmentPipelineOnSchedule(
+  appointmentType: AppointmentType,
+): CustomerStage | undefined {
+  return (jobStageFromAppointmentSchedule(appointmentType) as CustomerStage | null) ?? undefined;
+}
 
-const APPOINTMENT_TO_PIPELINE_ON_COMPLETE: Partial<Record<AppointmentType, CustomerStage>> = {
-  installation: 'installed',
-  takedown: 'removed',
-  permanent_lighting_install: 'installed',
-  commercial_project: 'installed',
-};
+function appointmentPipelineOnComplete(
+  appointmentType: AppointmentType,
+): CustomerStage | undefined {
+  return (jobStageFromAppointmentComplete(appointmentType) as CustomerStage | null) ?? undefined;
+}
 
 export async function syncCustomerPipelineFromJob(
   orgId: string,
@@ -89,8 +99,10 @@ export async function syncCustomerPipelineFromAppointment(
   action: 'scheduled' | 'completed',
   userId?: string | null,
 ) {
-  const map = action === 'scheduled' ? APPOINTMENT_TO_PIPELINE_ON_SCHEDULE : APPOINTMENT_TO_PIPELINE_ON_COMPLETE;
-  const stage = map[appointmentType];
+  const stage =
+    action === 'scheduled'
+      ? appointmentPipelineOnSchedule(appointmentType)
+      : appointmentPipelineOnComplete(appointmentType);
   if (stage) {
     await updateCustomerPipelineStage(orgId, customerId, stage, userId, 'System');
   }
@@ -127,7 +139,7 @@ export async function getJob360(orgId: string, jobId: string): Promise<Job360Det
     ).filter(Boolean) as Job360Detail['mockups'];
   }
 
-  const eventRow = events.find((e) => e.jobId === jobId);
+  const eventRow = pickPrimaryCalendarEventForJob(events, jobId);
   const calendarEvent = eventRow
     ? ({
         id: eventRow.id,

@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type Stripe from 'stripe';
+import { inferInvoicePaymentType } from '@clcrm/types';
 import { getStripe } from '@/lib/stripe';
-import { getAdminFirestore, colUpdate, colCreate } from '@yuletide/firebase';
 import {
   applySubscriptionUpdate,
   findOrgByStripeCustomerId,
   mapStripeSubscriptionStatus,
   planFromPriceId,
   recordSubscriptionPayment,
+  recordInvoicePayment360,
+  getInvoice360,
 } from '@yuletide/firebase';
 
 async function resolveOrgId(subscription: Stripe.Subscription, customerId: string) {
@@ -52,8 +54,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  const db = getAdminFirestore();
-
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
 
@@ -68,26 +68,32 @@ export async function POST(req: NextRequest) {
         });
       }
     } else {
+      // YL-S13: customer AR invoice checkout — canonical recordInvoicePayment360 path.
       const invoiceId = session.metadata?.invoiceId;
       const orgId = session.metadata?.organizationId;
       if (invoiceId && orgId) {
-        const amountCents = session.amount_total ?? 0;
-        const snap = await db.doc(`organizations/${orgId}/invoices/${invoiceId}`).get();
-        if (snap.exists) {
-          const invoice = snap.data()!;
-          const newPaid = (invoice.amountPaidCents ?? 0) + amountCents;
-          const status = newPaid >= invoice.subtotalCents ? 'paid' : 'partial';
-          await colUpdate(orgId, 'invoices', invoiceId, {
-            amountPaidCents: newPaid,
-            status,
-            paidAt: status === 'paid' ? new Date() : invoice.paidAt,
-          });
-          await colCreate(orgId, 'payments', {
-            invoiceId,
-            amountCents,
-            status: 'succeeded',
-            stripePaymentIntentId: session.payment_intent,
-          });
+        const amountCents = session.amount_total ?? Number(session.metadata?.amountCents ?? 0);
+        if (amountCents > 0) {
+          const invoice = await getInvoice360(orgId, invoiceId);
+          if (invoice) {
+            const paymentIntentId =
+              typeof session.payment_intent === 'string'
+                ? session.payment_intent
+                : session.payment_intent?.id ?? session.id;
+            await recordInvoicePayment360(
+              orgId,
+              {
+                invoiceId,
+                amountCents,
+                paymentType: inferInvoicePaymentType(invoice, amountCents),
+                paymentMethod: 'credit_card',
+                transactionId: paymentIntentId,
+                processor: 'stripe',
+                notes: 'Stripe Checkout',
+              },
+              null,
+            );
+          }
         }
       }
     }

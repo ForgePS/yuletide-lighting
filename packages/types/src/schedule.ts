@@ -99,6 +99,8 @@ export type CrewProfile = ScheduleAuditFields & {
   skillLevel: 'junior' | 'mid' | 'senior' | 'lead';
   availabilityStatus: CrewAvailabilityStatus;
   assignedVehicleId?: string | null;
+  /** Optional Firebase Auth user linked to this schedule crew profile (YL-S10). */
+  assignedUserId?: string | null;
   leaderUserId?: string | null;
   memberUserIds: string[];
   isActive: boolean;
@@ -128,6 +130,8 @@ export type RoutePlan = ScheduleAuditFields & {
     eventId: string;
     customerName?: string | null;
     address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     arrivalAt?: Date | null;
     travelMinutes: number;
     order: number;
@@ -294,6 +298,72 @@ export function appointmentDurationHours(type: AppointmentType): number {
   return map[type] ?? 2;
 }
 
+/** YL-S10 — null-safe display label for schedule statuses / categories / appointment types. */
+export function formatScheduleLabel(value: string | null | undefined): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return 'Unknown';
+  return text
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+/**
+ * YL-S10 — resolve job crew fields from a schedule crew profile.
+ * Never treat the crewSchedules document id as a Firebase user id.
+ */
+export function resolveJobCrewAssignment(
+  crew: { id: string; assignedUserId?: string | null } | null | undefined,
+): { assignedCrewId: string | null; assignedCrewUserId: string | null } {
+  if (!crew?.id) return { assignedCrewId: null, assignedCrewUserId: null };
+  const userId = typeof crew.assignedUserId === 'string' ? crew.assignedUserId.trim() : '';
+  return {
+    assignedCrewId: crew.id,
+    assignedCrewUserId: userId || null,
+  };
+}
+
+/** YL-S10 — empty strings are not valid customer ids for calendar writes. */
+export function normalizeOptionalId(id: string | null | undefined): string | undefined {
+  const value = typeof id === 'string' ? id.trim() : '';
+  return value || undefined;
+}
+
+type CalendarEventPick = {
+  id: string;
+  jobId?: string | null;
+  startAt?: Date | string | null;
+  updatedAt?: Date | string | null;
+};
+
+/** YL-S10 — prefer the latest event for a job when multiples exist. */
+export function pickPrimaryCalendarEventForJob<T extends CalendarEventPick>(
+  events: T[],
+  jobId: string,
+): T | null {
+  const matches = events.filter((e) => e.jobId === jobId);
+  if (!matches.length) return null;
+  return matches.reduce((best, cur) => {
+    const bestTs = eventRecencyMs(best);
+    const curTs = eventRecencyMs(cur);
+    return curTs >= bestTs ? cur : best;
+  });
+}
+
+function eventRecencyMs(event: CalendarEventPick): number {
+  const updated = toMs(event.updatedAt);
+  if (updated != null) return updated;
+  const start = toMs(event.startAt);
+  return start ?? 0;
+}
+
+function toMs(value: Date | string | null | undefined): number | null {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  const ms = d.getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
 export function detectConflicts(
   events: CalendarEvent[],
   newEvent: Pick<CalendarEvent, 'id' | 'crewId' | 'vehicleId' | 'customerId' | 'propertyId' | 'startAt' | 'endAt'>,
@@ -348,23 +418,4 @@ export function aiSchedulingQuery(question: string, events: CalendarEvent[], cre
   }
 
   return { answer: `Found ${filtered.length} relevant schedule item(s) for "${question}".`, events: filtered.slice(0, 20), recommendations };
-}
-
-export function mockWeatherForecast(days = 5): WeatherForecast[] {
-  const forecasts: WeatherForecast[] = [];
-  for (let i = 0; i < days; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() + i);
-    const rain = Math.round(Math.random() * 80);
-    const wind = Math.round(5 + Math.random() * 25);
-    forecasts.push({
-      date,
-      condition: rain > 50 ? 'Rain likely' : wind > 20 ? 'Windy' : 'Clear',
-      rainProbability: rain,
-      windSpeedMph: wind,
-      temperatureF: Math.round(35 + Math.random() * 30),
-      riskLevel: rain > 60 || wind > 25 ? 'high' : rain > 30 ? 'medium' : 'low',
-    });
-  }
-  return forecasts;
 }

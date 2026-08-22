@@ -19,7 +19,7 @@ export function CreatorPanel({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/30 px-5 py-4">
         <div className="flex items-center gap-2">
           {Icon ? <Icon className="h-4 w-4 text-primary" /> : null}
-          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         </div>
         {actions}
       </div>
@@ -32,7 +32,7 @@ export function CreatorStatCard({ label, value, sub }: { label: string; value: s
   return (
     <div className="card px-4 py-3">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
+      <p className="mt-1 text-2xl font-bold text-foreground">{value}</p>
       {sub ? <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p> : null}
     </div>
   );
@@ -57,8 +57,8 @@ export function CreatorTabBar({
           className={cn(
             'inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-colors',
             active === tab.id
-              ? 'bg-primary text-white shadow-sm'
-              : 'border border-slate-200 bg-white text-slate-600 hover:text-slate-900',
+              ? 'btn-primary px-4 py-2 text-xs font-semibold'
+              : 'btn-secondary px-4 py-2 text-xs font-semibold',
           )}
         >
           <tab.icon className="h-3.5 w-3.5" />
@@ -70,16 +70,16 @@ export function CreatorTabBar({
 }
 
 export function statusBadgeClass(status: string, locked?: boolean) {
-  if (locked) return 'bg-red-100 text-red-800';
+  if (locked) return 'badge-danger';
   const map: Record<string, string> = {
-    active: 'bg-emerald-100 text-emerald-800',
-    trialing: 'bg-blue-100 text-blue-800',
-    past_due: 'bg-amber-100 text-amber-800',
-    canceled: 'bg-slate-100 text-slate-700',
-    locked: 'bg-red-100 text-red-800',
-    none: 'bg-slate-100 text-slate-600',
+    active: 'badge-success',
+    trialing: 'badge-primary',
+    past_due: 'badge-warning',
+    canceled: 'badge-secondary',
+    locked: 'badge-danger',
+    none: 'badge-secondary',
   };
-  return map[status] ?? 'bg-slate-100 text-slate-700';
+  return map[status] ?? 'badge-secondary';
 }
 
 export function healthStatusClass(status: 'pass' | 'warn' | 'fail') {

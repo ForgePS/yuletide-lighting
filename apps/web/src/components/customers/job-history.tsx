@@ -6,7 +6,7 @@ import { useToast } from '@/lib/toast';
 import { EmptyState, LoadingState } from '@/components/ui/states';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { formatCurrency, formatDate, JOB_STATUS_OPTIONS, JOB_TYPE_OPTIONS } from '@/lib/customer360-utils';
-import type { JobRecord, JobType, JobStatus } from '@clcrm/types';
+import { formatJobStageLabel, type JobRecord, type JobType, type JobStatus } from '@clcrm/types';
 
 export function JobHistory({ customerId }: { customerId: string }) {
   const { toast } = useToast();
@@ -73,10 +73,14 @@ function JobCard({ customerId, job, onChanged }: { customerId: string; job: JobR
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-semibold">{job.title}</p>
-          <p className="text-sm text-muted-foreground capitalize">{job.jobType.replace(/_/g, ' ')} · {job.propertyName ?? '—'}</p>
+          <p className="text-sm text-muted-foreground capitalize">
+            {formatJobStageLabel(job.jobType)} · {job.propertyName ?? '—'}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs capitalize">{job.status.replace(/_/g, ' ')}</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs capitalize">
+            {formatJobStageLabel(job.status)}
+          </span>
           <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => setEditing(true)}>Edit</button>
           <button type="button" className="btn-ghost px-2 py-1 text-xs text-primary" onClick={() => setRemoveOpen(true)}>Remove</button>
         </div>

@@ -1,17 +1,20 @@
 import type {
   Automation360Trigger,
   AutomationAction,
-  AutomationCondition,
   AutomationDashboard,
   AutomationRule360,
   AutomationRunLog,
   AutomationTriggerContext,
 } from '@clcrm/types';
-import { DEFAULT_AUTOMATION360_RULES } from '@clcrm/types';
+import {
+  DEFAULT_AUTOMATION360_RULES,
+  evaluateAutomationConditions,
+  renderMessageTemplate,
+  shouldFallbackToMessagingAutomations,
+} from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { colCreate, colGet, colList, colUpdate } from './firestore';
 import { mapTimestampsFromData } from './firestore-utils';
-import { renderMessageTemplate } from '@clcrm/types';
 import { sendMessage360, ensureInternalChannels, sendInternalMessage } from './messages360';
 import { updateCustomerPipelineStage, updateCustomerNextAction, logCustomerActivity } from './customer360';
 import type { CustomerStage } from '@clcrm/types';
@@ -48,37 +51,6 @@ const LEGACY_TRIGGER_MAP: Partial<Record<Automation360Trigger, import('@clcrm/ty
   deposit_paid: 'payment_received',
   proposal_accepted: 'payment_received',
 };
-
-function resolveFieldValue(field: string, ctx: AutomationTriggerContext): unknown {
-  if (field.startsWith('metadata.')) {
-    return ctx.metadata?.[field.slice(9)];
-  }
-  if (field.startsWith('vars.')) {
-    return ctx.vars?.[field.slice(5)];
-  }
-  return (ctx as Record<string, unknown>)[field] ?? ctx.metadata?.[field] ?? ctx.vars?.[field];
-}
-
-function evaluateConditions(conditions: AutomationCondition[], ctx: AutomationTriggerContext): boolean {
-  if (!conditions.length) return true;
-  return conditions.every((c) => {
-    const actual = resolveFieldValue(c.field, ctx);
-    switch (c.operator) {
-      case 'exists':
-        return actual != null && actual !== '';
-      case 'equals':
-        return String(actual ?? '') === String(c.value ?? '');
-      case 'not_equals':
-        return String(actual ?? '') !== String(c.value ?? '');
-      case 'greater_than':
-        return Number(actual ?? 0) > Number(c.value ?? 0);
-      case 'less_than':
-        return Number(actual ?? 0) < Number(c.value ?? 0);
-      default:
-        return true;
-    }
-  });
-}
 
 async function executeAction(
   orgId: string,
@@ -267,7 +239,7 @@ export async function runAutomationRule(
     });
   }
 
-  if (!evaluateConditions(rule.conditions, ctx)) {
+  if (!evaluateAutomationConditions(rule.conditions, ctx)) {
     return logAutomationRun(orgId, {
       ruleId: rule.id,
       ruleName: rule.name,
@@ -324,13 +296,16 @@ export async function fireAutomationTrigger(
   const rules = (await ensureAutomationRules(orgId)).filter((r) => r.trigger === trigger);
   const runs = await Promise.all(rules.map((rule) => runAutomationRule(orgId, rule, ctx, userId)));
 
-  const legacy = LEGACY_TRIGGER_MAP[trigger];
-  if (legacy) {
-    try {
-      const { triggerAutomation } = await import('./messages360');
-      await triggerAutomation(orgId, legacy, ctx.customerId, ctx.vars ?? {}, userId);
-    } catch {
-      // Legacy automations are best-effort
+  // YL-S21: messaging automations only as fallback when no automation360 rules for this trigger.
+  if (shouldFallbackToMessagingAutomations(rules.length)) {
+    const legacy = LEGACY_TRIGGER_MAP[trigger];
+    if (legacy) {
+      try {
+        const { triggerAutomation } = await import('./messages360');
+        await triggerAutomation(orgId, legacy, ctx.customerId, ctx.vars ?? {}, userId);
+      } catch {
+        // Legacy automations are best-effort
+      }
     }
   }
 

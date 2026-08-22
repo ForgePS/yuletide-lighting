@@ -16,15 +16,21 @@ import {
   getOrganization,
   updateOrganization,
   nanoid,
+  generatePublicAccessToken,
   reserveJobMaterials,
   consumeJobMaterials,
   getLowStockItems,
+  listLowStockInventory360,
+  listInventoryItems360,
+  createInventoryItem360,
+  updateInventoryItem360,
   getAdminFirestore,
   getJob360,
   createEventFromJob,
   syncCustomerPipelineFromJob,
   inferAppointmentTypeFromJob,
   createStorageFromRemoval,
+  computeJobCosting,
 } from '@yuletide/firebase';
 import {
   createCustomerSchema,
@@ -41,6 +47,7 @@ import {
   timeEntrySchema,
   paginationSchema,
   reportFilterSchema,
+  publicAccessTokenSchema,
 } from '@clcrm/validators';
 import { customer360Router } from './customer360';
 import { portal360Router } from './portal360';
@@ -64,10 +71,14 @@ import { billingRouter } from './billing';
 import { import360Router } from './import360';
 import { crew360Router, crewMobileRouter } from './crew360';
 import { reviews360Router } from './reviews360';
+import { signTracker360Router } from './signTracker360';
 import { automation360Router } from './automation360';
 import { creator360Router } from './creator360';
-import { signTracker360Router } from './signTracker360';
-import { router, protectedProcedure, officeProcedure, adminProcedure, publicProcedure } from '../trpc';
+import { websiteCmsRouter } from './website-cms';
+import { crmUiConfigRouter } from './crm-ui-config';
+import { siteCmsExtendedRouter } from './site-cms-extended';
+import { onboarding360Router } from './onboarding360';
+import { router, permissionProcedure, publicProcedure } from '../trpc';
 
 type InvoiceRow = {
   id: string;
@@ -199,13 +210,17 @@ async function upsertPrimaryProperty(
 }
 
 export const customersRouter = router({
-  list: officeProcedure.input(paginationSchema).query(({ ctx, input }) =>
-    listCustomers(ctx.auth.organizationId, input.search, input.page, input.pageSize),
-  ),
-  getById: officeProcedure.input(z.object({ id: z.string() })).query(({ ctx, input }) =>
-    getCustomer(ctx.auth.organizationId, input.id),
-  ),
-  create: officeProcedure.input(createCustomerSchema).mutation(async ({ ctx, input }) => {
+  list: permissionProcedure('customers', 'view')
+    .input(paginationSchema)
+    .query(({ ctx, input }) =>
+      listCustomers(ctx.auth.organizationId, input.search, input.page, input.pageSize),
+    ),
+  getById: permissionProcedure('customers', 'view')
+    .input(z.object({ id: z.string() }))
+    .query(({ ctx, input }) => getCustomer(ctx.auth.organizationId, input.id)),
+  create: permissionProcedure('customers', 'create')
+    .input(createCustomerSchema)
+    .mutation(async ({ ctx, input }) => {
     const orgId = ctx.auth.organizationId;
     const {
       addressLine1,
@@ -259,7 +274,7 @@ export const customersRouter = router({
 
     return customer;
   }),
-  update: officeProcedure
+  update: permissionProcedure('customers', 'edit')
     .input(z.object({ id: z.string(), data: updateCustomerSchema }))
     .mutation(async ({ ctx, input }) => {
       const orgId = ctx.auth.organizationId;
@@ -327,20 +342,26 @@ export const customersRouter = router({
 
       return customer;
     }),
-  delete: adminProcedure
+  delete: permissionProcedure('customers', 'delete')
     .input(z.object({ id: z.string() }))
     .mutation(({ ctx, input }) => deleteCustomer(ctx.auth.organizationId, input.id)),
 });
 
 export const propertiesRouter = router({
-  create: officeProcedure.input(createPropertySchema).mutation(({ ctx, input }) =>
-    createProperty(ctx.auth.organizationId, input),
-  ),
-  update: officeProcedure
+  create: permissionProcedure('customers', 'create')
+    .input(createPropertySchema)
+    .mutation(({ ctx, input }) => createProperty(ctx.auth.organizationId, input)),
+  update: permissionProcedure('customers', 'edit')
     .input(z.object({ id: z.string(), data: updatePropertySchema }))
     .mutation(({ ctx, input }) => updateProperty(ctx.auth.organizationId, input.id, input.data)),
-  geocode: officeProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const property = await colGet<Record<string, string>>(ctx.auth.organizationId, 'properties', input.id);
+  geocode: permissionProcedure('customers', 'edit')
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+    const property = await colGet<Record<string, string>>(
+      ctx.auth.organizationId,
+      'properties',
+      input.id,
+    );
     if (!property) throw new TRPCError({ code: 'NOT_FOUND' });
     const address = `${property.addressLine1}, ${property.city}, ${property.state} ${property.postalCode}`;
     const token = process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -351,39 +372,45 @@ export const propertiesRouter = router({
     const data = (await res.json()) as { features?: Array<{ center?: [number, number] }> };
     const [lng, lat] = data.features?.[0]?.center ?? [null, null];
     if (lat && lng) {
-      return colUpdate(ctx.auth.organizationId, 'properties', input.id, { latitude: lat, longitude: lng });
+      return colUpdate(ctx.auth.organizationId, 'properties', input.id, {
+        latitude: lat,
+        longitude: lng,
+      });
     }
     return property;
   }),
 });
 
+/** @deprecated YL-S16 — prefer inventory360. Thin shim to inventory360 helpers. */
 export const inventoryRouter = router({
-  list: officeProcedure.query(({ ctx }) =>
-    colList<{
-      id: string;
-      sku: string;
-      name: string;
-      quantityOnHand: number;
-      quantityReserved: number;
-      reorderThreshold: number;
-      prices: Array<{ agreementCode: string; unitPriceCents: number }>;
-    }>(ctx.auth.organizationId, 'inventoryItems'),
+  list: permissionProcedure('inventory', 'view').query(({ ctx }) =>
+    listInventoryItems360(ctx.auth.organizationId),
   ),
-  lowStock: officeProcedure.query(({ ctx }) => getLowStockItems(ctx.auth.organizationId)),
-  create: officeProcedure.input(createInventoryItemSchema).mutation(({ ctx, input }) =>
-    colCreate(ctx.auth.organizationId, 'inventoryItems', { ...input, quantityReserved: 0 }),
+  lowStock: permissionProcedure('inventory', 'view').query(({ ctx }) =>
+    listLowStockInventory360(ctx.auth.organizationId),
   ),
-  update: officeProcedure
+  create: permissionProcedure('inventory', 'create')
+    .input(createInventoryItemSchema)
+    .mutation(({ ctx, input }) =>
+      createInventoryItem360(ctx.auth.organizationId, input as never, ctx.auth.userId),
+    ),
+  update: permissionProcedure('inventory', 'edit')
     .input(z.object({ id: z.string(), data: createInventoryItemSchema.partial() }))
-    .mutation(({ ctx, input }) => colUpdate(ctx.auth.organizationId, 'inventoryItems', input.id, input.data)),
+    .mutation(({ ctx, input }) =>
+      updateInventoryItem360(ctx.auth.organizationId, input.id, input.data as never, ctx.auth.userId),
+    ),
 });
 
 export const proposalsRouter = router({
-  list: officeProcedure.query(({ ctx }) => colList<ProposalRow>(ctx.auth.organizationId, 'proposals')),
-  getById: officeProcedure
+  list: permissionProcedure('proposals', 'view').query(({ ctx }) =>
+    colList<ProposalRow>(ctx.auth.organizationId, 'proposals'),
+  ),
+  getById: permissionProcedure('proposals', 'view')
     .input(z.object({ id: z.string() }))
     .query(({ ctx, input }) => colGet<ProposalRow>(ctx.auth.organizationId, 'proposals', input.id)),
-  create: officeProcedure.input(createProposalSchema).mutation(async ({ ctx, input }) => {
+  create: permissionProcedure('proposals', 'create')
+    .input(createProposalSchema)
+    .mutation(async ({ ctx, input }) => {
     const lineItems = input.lineItems.map((item) => ({ ...item, id: nanoid() }));
     const proposal = await colCreate(ctx.auth.organizationId, 'proposals', {
       ...input,
@@ -403,21 +430,22 @@ export const proposalsRouter = router({
     });
     return proposal;
   }),
-  send: officeProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
-    const proposal = await colUpdate(ctx.auth.organizationId, 'proposals', input.id, {
-      status: 'sent',
-      sentAt: new Date(),
-    });
-    const jobs = await colList<{ id: string; proposalId: string }>(ctx.auth.organizationId, 'jobs');
-    const job = jobs.find((j) => j.proposalId === input.id);
-    if (job) await colUpdate(ctx.auth.organizationId, 'jobs', job.id, { stage: 'sent_proposal' });
-    return proposal;
-  }),
-  getByToken: publicProcedure.input(z.object({ token: z.string() })).query(async ({ input }) => {
-    const proposal = await getByPublicToken<ProposalRow & { organizationId: string; customerId: string; propertyId: string }>(
-      'proposals',
-      input.token,
-    );
+  send: permissionProcedure('proposals', 'edit')
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const proposal = await colUpdate(ctx.auth.organizationId, 'proposals', input.id, {
+        status: 'sent',
+        sentAt: new Date(),
+      });
+      const jobs = await colList<{ id: string; proposalId: string }>(ctx.auth.organizationId, 'jobs');
+      const job = jobs.find((j) => j.proposalId === input.id);
+      if (job) await colUpdate(ctx.auth.organizationId, 'jobs', job.id, { stage: 'sent_proposal' });
+      return proposal;
+    }),
+  getByToken: publicProcedure.input(z.object({ token: publicAccessTokenSchema })).query(async ({ input }) => {
+    const proposal = await getByPublicToken<
+      ProposalRow & { organizationId: string; customerId: string; propertyId: string }
+    >('proposals', input.token);
     if (!proposal) throw new TRPCError({ code: 'NOT_FOUND' });
     const orgId = proposal.organizationId;
     await colUpdate(orgId, 'proposals', proposal.id, {
@@ -428,10 +456,27 @@ export const proposalsRouter = router({
     const customer = await colGet<CustomerRow>(orgId, 'customers', proposal.customerId);
     const property = await colGet<PropertyRow>(orgId, 'properties', proposal.propertyId);
     const organization = await getOrganization(orgId);
-    return { proposal, customer, property, organization, mockups: [] as Array<{ id: string; name: string; imageUrl: string; renderedImageUrl?: string | null }> };
+    return {
+      proposal,
+      customer,
+      property,
+      organization,
+      mockups: [] as Array<{
+        id: string;
+        name: string;
+        imageUrl: string;
+        renderedImageUrl?: string | null;
+      }>,
+    };
   }),
   accept: publicProcedure
-    .input(z.object({ token: z.string(), agreementCode: z.string().optional(), customerName: z.string() }))
+    .input(
+      z.object({
+        token: publicAccessTokenSchema,
+        agreementCode: z.string().optional(),
+        customerName: z.string(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const proposal = await getByPublicToken<Record<string, unknown>>('proposals', input.token);
       if (!proposal) throw new TRPCError({ code: 'NOT_FOUND' });
@@ -446,34 +491,43 @@ export const proposalsRouter = router({
 });
 
 export const invoicesRouter = router({
-  list: officeProcedure.query(({ ctx }) => colList<InvoiceRow>(ctx.auth.organizationId, 'invoices')),
-  createFromProposal: officeProcedure.input(createInvoiceSchema).mutation(async ({ ctx, input }) => {
-    const proposal = await colGet<Record<string, unknown>>(ctx.auth.organizationId, 'proposals', input.proposalId);
-    if (!proposal) throw new TRPCError({ code: 'NOT_FOUND' });
-    if (proposal.status !== 'accepted') throw new TRPCError({ code: 'BAD_REQUEST' });
-    const all = await colList<InvoiceRow>(ctx.auth.organizationId, 'invoices');
-    const depositCents = Math.round((proposal.subtotalCents as number) * (input.depositPercent / 100));
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + input.dueDays);
-    return colCreate(ctx.auth.organizationId, 'invoices', {
-      customerId: proposal.customerId,
-      proposalId: input.proposalId,
-      invoiceNumber: `INV-${String(all.length + 1).padStart(5, '0')}`,
-      status: 'sent',
-      subtotalCents: proposal.subtotalCents,
-      depositPercent: input.depositPercent,
-      depositCents,
-      amountPaidCents: 0,
-      dueDate,
-      publicToken: nanoid(32),
-      sentAt: new Date(),
-    });
-  }),
-  getByToken: publicProcedure.input(z.object({ token: z.string() })).query(async ({ input }) => {
-    const invoice = await getByPublicToken<InvoiceRow & { organizationId: string; customerId: string }>(
-      'invoices',
-      input.token,
-    );
+  list: permissionProcedure('invoices', 'view').query(({ ctx }) =>
+    colList<InvoiceRow>(ctx.auth.organizationId, 'invoices'),
+  ),
+  createFromProposal: permissionProcedure('invoices', 'create')
+    .input(createInvoiceSchema)
+    .mutation(async ({ ctx, input }) => {
+      const proposal = await colGet<Record<string, unknown>>(
+        ctx.auth.organizationId,
+        'proposals',
+        input.proposalId,
+      );
+      if (!proposal) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (proposal.status !== 'accepted') throw new TRPCError({ code: 'BAD_REQUEST' });
+      const all = await colList<InvoiceRow>(ctx.auth.organizationId, 'invoices');
+      const depositCents = Math.round(
+        (proposal.subtotalCents as number) * (input.depositPercent / 100),
+      );
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + input.dueDays);
+      return colCreate(ctx.auth.organizationId, 'invoices', {
+        customerId: proposal.customerId,
+        proposalId: input.proposalId,
+        invoiceNumber: `INV-${String(all.length + 1).padStart(5, '0')}`,
+        status: 'sent',
+        subtotalCents: proposal.subtotalCents,
+        depositPercent: input.depositPercent,
+        depositCents,
+        amountPaidCents: 0,
+        dueDate,
+        publicToken: generatePublicAccessToken(),
+        sentAt: new Date(),
+      });
+    }),
+  getByToken: publicProcedure.input(z.object({ token: publicAccessTokenSchema })).query(async ({ input }) => {
+    const invoice = await getByPublicToken<
+      InvoiceRow & { organizationId: string; customerId: string }
+    >('invoices', input.token);
     if (!invoice) throw new TRPCError({ code: 'NOT_FOUND' });
     const orgId = invoice.organizationId;
     const customer = await colGet<CustomerRow>(orgId, 'customers', invoice.customerId);
@@ -483,33 +537,47 @@ export const invoicesRouter = router({
 });
 
 export const jobsRouter = router({
-  list: officeProcedure
+  list: permissionProcedure('jobs', 'view')
     .input(z.object({ stage: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
       const jobs = await colList<JobRow>(ctx.auth.organizationId, 'jobs');
       return input?.stage ? jobs.filter((j) => j.stage === input.stage) : jobs;
     }),
-  getById: officeProcedure.input(z.object({ jobId: z.string().min(1) })).query(async ({ ctx, input }) => {
-    const detail = await getJob360(ctx.auth.organizationId, input.jobId);
-    if (!detail) throw new TRPCError({ code: 'NOT_FOUND' });
-    return detail;
-  }),
-  pipeline: officeProcedure.query(async ({ ctx }) => {
+  getById: permissionProcedure('jobs', 'view')
+    .input(z.object({ jobId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const detail = await getJob360(ctx.auth.organizationId, input.jobId);
+      if (!detail) throw new TRPCError({ code: 'NOT_FOUND' });
+      return detail;
+    }),
+  costing: permissionProcedure('jobs', 'view')
+    .input(z.object({ jobId: z.string().min(1) }))
+    .query(({ ctx, input }) => computeJobCosting(ctx.auth.organizationId, input.jobId)),
+  pipeline: permissionProcedure('jobs', 'view').query(async ({ ctx }) => {
     const allJobs = await colList<JobRow>(ctx.auth.organizationId, 'jobs');
     const stages = [
-      'draft_proposal', 'sent_proposal', 'accepted_proposal', 'invoiced', 'deposit_paid',
-      'inventory_reserved', 'scheduled', 'installed', 'removal_scheduled', 'removed',
-      'review_requested', 'complete',
+      'draft_proposal',
+      'sent_proposal',
+      'accepted_proposal',
+      'invoiced',
+      'deposit_paid',
+      'inventory_reserved',
+      'scheduled',
+      'installed',
+      'removal_scheduled',
+      'removed',
+      'review_requested',
+      'complete',
     ] as const;
     return stages.map((stage) => ({ stage, jobs: allJobs.filter((j) => j.stage === stage) }));
   }),
-  reserveInventory: officeProcedure
+  reserveInventory: permissionProcedure('jobs', 'edit')
     .input(z.object({ jobId: z.string() }))
     .mutation(({ ctx, input }) => reserveJobMaterials(ctx.auth.organizationId, input.jobId)),
-  completeInstall: officeProcedure
+  completeInstall: permissionProcedure('jobs', 'edit')
     .input(z.object({ jobId: z.string() }))
     .mutation(({ ctx, input }) => consumeJobMaterials(ctx.auth.organizationId, input.jobId)),
-  schedule: officeProcedure
+  schedule: permissionProcedure('jobs', 'edit')
     .input(
       z.object({
         jobId: z.string().min(1),
@@ -520,37 +588,45 @@ export const jobsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-    const job = await colGet<JobRow>(ctx.auth.organizationId, 'jobs', input.jobId);
-    if (!job) throw new TRPCError({ code: 'NOT_FOUND' });
-    const start = new Date(input.scheduledStart);
-    const end = input.scheduledEnd
-      ? new Date(input.scheduledEnd)
-      : new Date(start.getTime() + 2 * 60 * 60 * 1000);
-    const appointmentType = inferAppointmentTypeFromJob({
-      ...job,
-      customerId: job.customerId ?? '',
-    });
-    await createEventFromJob(
-      ctx.auth.organizationId,
-      {
-        jobId: input.jobId,
-        appointmentType,
-        crewId: input.crewId ?? input.crewUserId,
-        startAt: start,
-        endAt: end,
-      },
-      ctx.auth.userId,
-    );
-    return { success: true };
-  }),
-  markRemovalComplete: officeProcedure
+      const job = await colGet<JobRow>(ctx.auth.organizationId, 'jobs', input.jobId);
+      if (!job) throw new TRPCError({ code: 'NOT_FOUND' });
+      const start = new Date(input.scheduledStart);
+      const end = input.scheduledEnd
+        ? new Date(input.scheduledEnd)
+        : new Date(start.getTime() + 2 * 60 * 60 * 1000);
+      const appointmentType = inferAppointmentTypeFromJob({
+        ...job,
+        customerId: job.customerId ?? '',
+      });
+      await createEventFromJob(
+        ctx.auth.organizationId,
+        {
+          jobId: input.jobId,
+          appointmentType,
+          crewId: input.crewId ?? input.crewUserId,
+          startAt: start,
+          endAt: end,
+        },
+        ctx.auth.userId,
+      );
+      return { success: true };
+    }),
+  markRemovalComplete: permissionProcedure('jobs', 'edit')
     .input(z.object({ jobId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const job = await colGet<JobRow>(ctx.auth.organizationId, 'jobs', input.jobId);
       if (!job) throw new TRPCError({ code: 'NOT_FOUND' });
-      await colUpdate(ctx.auth.organizationId, 'jobs', input.jobId, { stage: 'removed', removedAt: new Date() });
+      await colUpdate(ctx.auth.organizationId, 'jobs', input.jobId, {
+        stage: 'removed',
+        removedAt: new Date(),
+      });
       if (job.customerId) {
-        await syncCustomerPipelineFromJob(ctx.auth.organizationId, job.customerId, 'removed', ctx.auth.userId);
+        await syncCustomerPipelineFromJob(
+          ctx.auth.organizationId,
+          job.customerId,
+          'removed',
+          ctx.auth.userId,
+        );
         await createStorageFromRemoval(ctx.auth.organizationId, input.jobId, {}, ctx.auth.userId);
       }
       return { success: true };
@@ -558,17 +634,20 @@ export const jobsRouter = router({
 });
 
 export const messagesRouter = router({
-  threads: officeProcedure.query(async ({ ctx }) => {
-    const threads = await colList<{ id: string; customerId: string; unreadCount: number }>(
-      ctx.auth.organizationId,
-      'messageThreads',
-    );
+  threads: permissionProcedure('customers', 'view').query(async ({ ctx }) => {
+    const { listConversations, emitLegacyPathDeprecation } = await import('@yuletide/firebase');
+    emitLegacyPathDeprecation('messages', 'messagesRouter.threads→listConversations');
+    const conversations = await listConversations(ctx.auth.organizationId);
     const customers = await colList<{ id: string; firstName: string; lastName: string }>(
       ctx.auth.organizationId,
       'customers',
     );
-    return threads.map((thread) => ({
-      thread,
+    return conversations.map((thread) => ({
+      thread: {
+        id: thread.id,
+        customerId: thread.customerId,
+        unreadCount: (thread as { unreadCount?: number }).unreadCount ?? 0,
+      },
       customer: customers.find((c) => c.id === thread.customerId) ?? {
         id: thread.customerId,
         firstName: 'Customer',
@@ -576,45 +655,49 @@ export const messagesRouter = router({
       },
     }));
   }),
-  getThread: officeProcedure.input(z.object({ customerId: z.string() })).query(async ({ ctx, input }) => {
-    const threads = await colList<{ id: string; customerId: string }>(ctx.auth.organizationId, 'messageThreads');
-    let thread = threads.find((t) => t.customerId === input.customerId);
-    if (!thread) {
-      thread = await colCreate(ctx.auth.organizationId, 'messageThreads', {
-        customerId: input.customerId,
-        unreadCount: 0,
-      });
-    }
-    const allMessages = await colList<{
-      id: string;
-      threadId: string;
-      channel: string;
-      direction: string;
-      body: string;
-    }>(ctx.auth.organizationId, 'messages');
-    const messages = allMessages.filter((m) => m.threadId === thread!.id);
-    return { thread, messages };
-  }),
-  send: officeProcedure.input(sendMessageSchema).mutation(async ({ ctx, input }) => {
-    const message = await colCreate(ctx.auth.organizationId, 'messages', {
-      customerId: input.customerId,
-      channel: input.channel,
-      direction: 'outbound',
-      subject: input.subject,
-      body: input.body,
-      sentByUserId: ctx.auth.userId,
-      isRead: false,
-    });
-    return message;
-  }),
-  templates: officeProcedure.query(({ ctx }) =>
-    colList<{ id: string; name: string; body: string }>(ctx.auth.organizationId, 'messageTemplates'),
+  getThread: permissionProcedure('customers', 'view')
+    .input(z.object({ customerId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { ensureConversation, getConversationMessages, emitLegacyPathDeprecation } =
+        await import('@yuletide/firebase');
+      emitLegacyPathDeprecation('messages', 'messagesRouter.getThread→ensureConversation');
+      const conversation = await ensureConversation(ctx.auth.organizationId, input.customerId);
+      const messages = await getConversationMessages(ctx.auth.organizationId, conversation.id);
+      return {
+        thread: { id: conversation.id, customerId: conversation.customerId },
+        messages,
+      };
+    }),
+  send: permissionProcedure('customers', 'create')
+    .input(sendMessageSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { sendMessage360, emitLegacyPathDeprecation } = await import('@yuletide/firebase');
+      emitLegacyPathDeprecation('messages', 'messagesRouter.send→sendMessage360');
+      return sendMessage360(
+        ctx.auth.organizationId,
+        {
+          customerId: input.customerId,
+          channel: input.channel as 'sms' | 'email' | 'portal' | 'internal',
+          body: input.body,
+          subject: input.subject,
+        },
+        ctx.auth.userId,
+        ctx.auth.email,
+      );
+    }),
+  templates: permissionProcedure('customers', 'view').query(({ ctx }) =>
+    colList<{ id: string; name: string; body: string }>(
+      ctx.auth.organizationId,
+      'messageTemplates',
+    ),
   ),
-  automations: officeProcedure.query(({ ctx }) => colList(ctx.auth.organizationId, 'automations')),
+  automations: permissionProcedure('customers', 'view').query(({ ctx }) =>
+    colList(ctx.auth.organizationId, 'automations'),
+  ),
 });
 
 export const scheduleRouter = router({
-  calendar: officeProcedure
+  calendar: permissionProcedure('jobs', 'view')
     .input(z.object({ start: z.string().datetime(), end: z.string().datetime() }))
     .query(async ({ ctx }) => {
       const blocks = await colList<{ id: string; jobId: string; startAt: Date; endAt: Date }>(
@@ -624,30 +707,46 @@ export const scheduleRouter = router({
       const jobs = await colList<JobRow>(ctx.auth.organizationId, 'jobs');
       return blocks.map((block) => ({ block, job: jobs.find((j) => j.id === block.jobId) }));
     }),
-  optimizeRoute: officeProcedure
-    .input(z.object({ crewUserId: z.string().optional(), routeDate: z.string().datetime(), jobIds: z.array(z.string()) }))
+  optimizeRoute: permissionProcedure('jobs', 'create')
+    .input(
+      z.object({
+        crewUserId: z.string().optional(),
+        routeDate: z.string().datetime(),
+        jobIds: z.array(z.string()),
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      colCreate(ctx.auth.organizationId, 'routes', { ...input, routeDate: new Date(input.routeDate), stops: [] }),
+      colCreate(ctx.auth.organizationId, 'routes', {
+        ...input,
+        routeDate: new Date(input.routeDate),
+        stops: [],
+      }),
     ),
-  getRoutes: officeProcedure
+  getRoutes: permissionProcedure('jobs', 'view')
     .input(z.object({ date: z.string().datetime() }))
     .query(({ ctx }) => colList<RouteRow>(ctx.auth.organizationId, 'routes')),
 });
 
 export const mockupsRouter = router({
-  list: officeProcedure
+  list: permissionProcedure('mockups', 'view')
     .input(z.object({ propertyId: z.string() }))
     .query(async ({ ctx, input }) => {
       const all = await colList<{ propertyId: string }>(ctx.auth.organizationId, 'mockups');
       return all.filter((m) => m.propertyId === input.propertyId);
     }),
-  create: officeProcedure.input(createMockupSchema).mutation(({ ctx, input }) =>
-    colCreate(ctx.auth.organizationId, 'mockups', { ...input, version: 1 }),
-  ),
-  attachToProposal: officeProcedure
+  create: permissionProcedure('mockups', 'create')
+    .input(createMockupSchema)
+    .mutation(({ ctx, input }) =>
+      colCreate(ctx.auth.organizationId, 'mockups', { ...input, version: 1 }),
+    ),
+  attachToProposal: permissionProcedure('mockups', 'edit')
     .input(z.object({ proposalId: z.string(), mockupId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const proposal = await colGet<{ mockupIds: string[] }>(ctx.auth.organizationId, 'proposals', input.proposalId);
+      const proposal = await colGet<{ mockupIds: string[] }>(
+        ctx.auth.organizationId,
+        'proposals',
+        input.proposalId,
+      );
       if (!proposal) throw new TRPCError({ code: 'NOT_FOUND' });
       return colUpdate(ctx.auth.organizationId, 'proposals', input.proposalId, {
         mockupIds: [...new Set([...(proposal.mockupIds ?? []), input.mockupId])],
@@ -656,33 +755,23 @@ export const mockupsRouter = router({
 });
 
 export const reportsRouter = router({
-  dashboard: officeProcedure.input(reportFilterSchema.optional()).query(async ({ ctx, input }) => {
-    const year = input?.year ?? null;
-    const customers = await colList<{ createdAt?: Date }>(ctx.auth.organizationId, 'customers');
-    const proposals = await colList<{ status: string; subtotalCents?: number; createdAt?: Date; season?: string }>(ctx.auth.organizationId, 'proposals');
-    const invoices = await colList<{ amountPaidCents?: number; subtotalCents?: number; status: string; paidAt?: Date; createdAt?: Date }>(ctx.auth.organizationId, 'invoices');
-    const jobs = await colList<{ stage: string; createdAt?: Date; completionDate?: Date }>(ctx.auth.organizationId, 'jobs');
-
-    const inYear = (date?: Date | null) => !year || (date && date.getFullYear() === year);
-    const proposalInYear = (p: { season?: string; createdAt?: Date }) =>
-      !year || String(p.season) === String(year) || inYear(p.createdAt);
-
-    const scopedProposals = proposals.filter(proposalInYear);
-    const scopedInvoices = invoices.filter((i) => inYear(i.paidAt ?? i.createdAt));
-    const scopedJobs = jobs.filter((j) => inYear(j.completionDate ?? j.createdAt));
-    const accepted = scopedProposals.filter((p) => p.status === 'accepted' || p.status === 'approved');
-
+  dashboard: permissionProcedure('reports', 'view')
+    .input(reportFilterSchema.optional())
+    .query(async ({ ctx, input }) => {
+    // YL-S19: legacy shim — prefer reports360.executive
+    const { getExecutiveDashboard } = await import('@yuletide/firebase');
+    const exec = await getExecutiveDashboard(ctx.auth.organizationId, input ?? {});
     return {
-      customers: year ? customers.filter((c) => inYear(c.createdAt)).length : customers.length,
-      proposals: scopedProposals.length,
-      acceptedProposals: accepted.length,
-      conversionRate: scopedProposals.length ? Math.round((accepted.length / scopedProposals.length) * 100) : 0,
-      revenueCents: scopedInvoices.reduce((s, i) => s + (i.amountPaidCents ?? 0), 0),
-      pendingCents: invoices.filter((i) => i.status !== 'paid' && i.status !== 'cancelled').reduce((s, i) => s + ((i.subtotalCents ?? 0) - (i.amountPaidCents ?? 0)), 0),
-      activeJobs: scopedJobs.filter((j) => !['complete', 'lost', 'installed'].includes(j.stage)).length,
+      customers: exec.activeCustomers,
+      proposals: 0,
+      acceptedProposals: 0,
+      conversionRate: exec.proposalConversionRatePercent,
+      revenueCents: exec.totalRevenueCents,
+      pendingCents: exec.outstandingReceivablesCents,
+      activeJobs: exec.jobsScheduled,
     };
   }),
-  exportCsv: officeProcedure
+  exportCsv: permissionProcedure('reports', 'export')
     .input(z.object({ type: z.enum(['customers', 'invoices', 'jobs']) }))
     .query(async ({ ctx, input }) => {
       const rows = await colList(ctx.auth.organizationId, input.type);
@@ -691,11 +780,13 @@ export const reportsRouter = router({
 });
 
 export const settingsRouter = router({
-  get: officeProcedure.query(({ ctx }) => getOrganization(ctx.auth.organizationId)),
-  update: adminProcedure.input(orgSettingsSchema).mutation(({ ctx, input }) =>
-    updateOrganization(ctx.auth.organizationId, input),
+  get: permissionProcedure('settings', 'view').query(({ ctx }) =>
+    getOrganization(ctx.auth.organizationId),
   ),
-  team: officeProcedure.query(async ({ ctx }) => {
+  update: permissionProcedure('settings', 'edit')
+    .input(orgSettingsSchema)
+    .mutation(({ ctx, input }) => updateOrganization(ctx.auth.organizationId, input)),
+  team: permissionProcedure('settings', 'view').query(async ({ ctx }) => {
     const { getAdminFirestore } = await import('@yuletide/firebase');
     const snap = await getAdminFirestore()
       .collection('users')
@@ -715,14 +806,25 @@ export const settingsRouter = router({
 });
 
 export const reviewsRouter = router({
-  send: officeProcedure
-    .input(z.object({ jobId: z.string(), platform: z.enum(['google', 'facebook']).default('google') }))
+  send: permissionProcedure('customers', 'create')
+    .input(
+      z.object({ jobId: z.string(), platform: z.enum(['google', 'facebook']).default('google') }),
+    )
     .mutation(async ({ ctx, input }) => {
-      const job = await colGet<{ customerId: string }>(ctx.auth.organizationId, 'jobs', input.jobId);
+      const job = await colGet<{ customerId: string }>(
+        ctx.auth.organizationId,
+        'jobs',
+        input.jobId,
+      );
       if (!job?.customerId) throw new TRPCError({ code: 'NOT_FOUND' });
       const { triggerReviewRequestForJob } = await import('@yuletide/firebase');
-      const result = await triggerReviewRequestForJob(ctx.auth.organizationId, input.jobId, ctx.auth.userId);
-      if (!result) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Could not send review request' });
+      const result = await triggerReviewRequestForJob(
+        ctx.auth.organizationId,
+        input.jobId,
+        ctx.auth.userId,
+      );
+      if (!result)
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Could not send review request' });
       return result;
     }),
 });
@@ -747,6 +849,7 @@ export const appRouter = router({
   mockups360: mockups360Router,
   reports360: reports360Router,
   settings360: settings360Router,
+  onboarding360: onboarding360Router,
   billing: billingRouter,
   import360: import360Router,
   properties: propertiesRouter,
@@ -760,9 +863,12 @@ export const appRouter = router({
   crew360: crew360Router,
   crew: crewMobileRouter,
   reviews360: reviews360Router,
+  signTracker360: signTracker360Router,
   automation360: automation360Router,
   creator360: creator360Router,
-  signTracker360: signTracker360Router,
+  websiteCms: websiteCmsRouter,
+  siteCms: siteCmsExtendedRouter,
+  crmUiConfig: crmUiConfigRouter,
   reports: reportsRouter,
   settings: settingsRouter,
   reviews: reviewsRouter,

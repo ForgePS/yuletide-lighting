@@ -8,6 +8,7 @@ import {
   CirclePlus,
   CreditCard,
   ExternalLink,
+  Globe,
   GraduationCap,
   Layers,
   LayoutDashboard,
@@ -18,15 +19,18 @@ import {
   UserCog,
   Users,
 } from 'lucide-react';
-import { CRM_PLATFORM_MODULES, type CrmPlatformModuleKey } from '@clcrm/types';
+import { CRM_PLATFORM_MODULES, PORTAL_FEATURES, type CrmPlatformModuleKey, type PortalFeatureKey } from '@clcrm/types';
 import { formatCurrency } from '@clcrm/ui';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
+import { ErrorState } from '@/components/ui/states';
 import { SubscriptionControlPanel, SubscriptionSummaryRowActions } from './subscription-control-panel';
 import { CreatorPanel, CreatorStatCard, CreatorTabBar, healthStatusClass, statusBadgeClass } from './creator-ui';
+import { WebsiteCmsHub } from '@/components/cms/website-cms-hub';
 
 export type CreatorConsoleTab =
   | 'overview'
+  | 'website'
   | 'platform'
   | 'subscriptions'
   | 'modules'
@@ -37,6 +41,7 @@ export type CreatorConsoleTab =
 
 const TABS = [
   { id: 'overview' as const, label: 'Overview', icon: LayoutDashboard },
+  { id: 'website' as const, label: 'Website', icon: Globe },
   { id: 'platform' as const, label: 'Platform Settings', icon: Settings },
   { id: 'subscriptions' as const, label: 'Subscriptions', icon: CreditCard },
   { id: 'modules' as const, label: 'Tenant Modules', icon: Layers },
@@ -48,6 +53,7 @@ const TABS = [
 
 const TAB_ROUTES: Record<CreatorConsoleTab, string> = {
   overview: '/creator',
+  website: '/creator/website',
   platform: '/creator/settings',
   subscriptions: '/creator/subscriptions',
   modules: '/creator/modules',
@@ -76,12 +82,23 @@ export function CreatorConsole({ initialTab = 'overview' }: { initialTab?: Creat
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Platform Admin</h1>
+          <h1 className="page-title">Platform Admin</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Manage {productName} platform-wide settings, tenant subscriptions, modules, and operations.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-primary inline-flex items-center gap-2 text-xs"
+            onClick={() => {
+              setActiveTab('website');
+              router.push('/creator/website');
+            }}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            Website CMS
+          </button>
           {settings?.hostingUrl ? (
             <a href={settings.hostingUrl} target="_blank" rel="noreferrer" className="btn-secondary inline-flex items-center gap-2 text-xs">
               <ExternalLink className="h-3.5 w-3.5" />
@@ -97,6 +114,28 @@ export function CreatorConsole({ initialTab = 'overview' }: { initialTab?: Creat
         </div>
       </div>
 
+      <button
+        type="button"
+        onClick={() => {
+          setActiveTab('website');
+          router.push('/creator/website');
+        }}
+        className="flex w-full items-center justify-between gap-4 rounded-xl border-2 border-primary/30 bg-primary/5 px-5 py-4 text-left transition hover:border-primary hover:bg-primary/10"
+      >
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white">
+            <Globe className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="font-semibold text-foreground">Website CMS</p>
+            <p className="text-sm text-muted-foreground">
+              Edit pages, navigation, branding, media, forms, SEO, and collections without code.
+            </p>
+          </div>
+        </div>
+        <span className="shrink-0 text-sm font-semibold text-primary">Open →</span>
+      </button>
+
       {message ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p>
       ) : null}
@@ -104,8 +143,8 @@ export function CreatorConsole({ initialTab = 'overview' }: { initialTab?: Creat
       <CreatorPanel title="Platform hierarchy" icon={ShieldCheck}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-slate-900">{settings?.productLabel ?? 'Platform Admin'}</p>
-            <ul className="mt-3 space-y-2 border-l-2 border-slate-200 pl-4">
+            <p className="text-sm font-semibold text-foreground">{settings?.productLabel ?? 'Platform Admin'}</p>
+            <ul className="mt-3 space-y-2 border-l-2 border-border pl-4">
               <li className="font-semibold text-primary">
                 {productName}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">· platform root</span>
@@ -149,6 +188,7 @@ export function CreatorConsole({ initialTab = 'overview' }: { initialTab?: Creat
         }}
       />
 
+      {activeTab === 'website' ? <WebsiteCmsHub /> : null}
       {activeTab === 'overview' ? <OverviewTab onNavigate={setActiveTab} /> : null}
       {activeTab === 'platform' ? <PlatformTab onMessage={setMessage} /> : null}
       {activeTab === 'subscriptions' ? <SubscriptionsTab /> : null}
@@ -187,6 +227,9 @@ function OverviewTab({ onNavigate }: { onNavigate: (tab: CreatorConsoleTab) => v
           ))}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
+          <Link href="/creator/website" className="btn-primary text-xs inline-flex items-center gap-1">
+            <Globe className="h-3.5 w-3.5" /> Website CMS →
+          </Link>
           {(['platform', 'subscriptions', 'organizations', 'operations'] as CreatorConsoleTab[]).map((tab) => (
             <button key={tab} type="button" className="btn-secondary text-xs capitalize" onClick={() => onNavigate(tab)}>
               {tab.replace(/_/g, ' ')} →
@@ -228,7 +271,7 @@ function OverviewTab({ onNavigate }: { onNavigate: (tab: CreatorConsoleTab) => v
 
 function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
   const { toast } = useToast();
-  const { data, isLoading, refetch } = trpc.creator360.settings.get.useQuery();
+  const { data, isLoading, isError, error, refetch } = trpc.creator360.settings.get.useQuery();
   const update = trpc.creator360.settings.update.useMutation({
     onSuccess: () => { toast('Platform settings saved', 'success'); onMessage('Platform configuration saved.'); refetch(); },
     onError: (e) => toast(e.message, 'error'),
@@ -245,13 +288,13 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
     hostingUrl: '',
     docsUrl: '',
     availableModules: [] as CrmPlatformModuleKey[],
+    availablePortalFeatures: [] as PortalFeatureKey[],
     signupEnabled: true,
     maintenanceMode: false,
     maintenanceMessage: '',
     defaultTrialDays: 14,
     supportEmail: '',
     announcementBanner: '',
-    platformCreatorEmails: [] as string[],
   });
 
   useEffect(() => {
@@ -267,13 +310,13 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
         hostingUrl: data.hostingUrl ?? '',
         docsUrl: data.docsUrl ?? '',
         availableModules: data.availableModules ?? [],
+        availablePortalFeatures: data.availablePortalFeatures ?? [],
         signupEnabled: data.signupEnabled,
         maintenanceMode: data.maintenanceMode,
         maintenanceMessage: data.maintenanceMessage,
         defaultTrialDays: data.defaultTrialDays,
         supportEmail: data.supportEmail,
         announcementBanner: data.announcementBanner ?? '',
-        platformCreatorEmails: data.platformCreatorEmails ?? [],
       });
     }
   }, [data]);
@@ -287,7 +330,24 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
     }));
   }
 
-  if (isLoading || !data) return <div className="card h-64 animate-pulse bg-muted/50" />;
+  function togglePortalFeature(key: PortalFeatureKey) {
+    setForm((prev) => ({
+      ...prev,
+      availablePortalFeatures: prev.availablePortalFeatures.includes(key)
+        ? prev.availablePortalFeatures.filter((k) => k !== key)
+        : [...prev.availablePortalFeatures, key],
+    }));
+  }
+
+  if (isLoading) return <div className="card h-64 animate-pulse bg-muted/50" />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load platform settings.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   return (
     <CreatorPanel title="Platform settings" icon={Settings}>
@@ -303,7 +363,9 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
             docsUrl: form.docsUrl || null,
             announcementBanner: form.announcementBanner || null,
             availableModules: form.availableModules.length ? form.availableModules : CRM_PLATFORM_MODULES.map((m) => m.key),
-            platformCreatorEmails: form.platformCreatorEmails,
+            availablePortalFeatures: form.availablePortalFeatures.length
+              ? form.availablePortalFeatures
+              : PORTAL_FEATURES.map((f) => f.key),
           });
         }}
       >
@@ -342,26 +404,27 @@ function PlatformTab({ onMessage }: { onMessage: (msg: string) => void }) {
           </div>
         </div>
 
-        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-          <p className="text-sm font-medium">Platform operators</p>
-          <p className="text-xs text-muted-foreground">
-            Emails with Creator Console access (multi-tenant admin). One per line. Env var PLATFORM_CREATOR_EMAILS also grants access.
+        <div>
+          <p className="mb-2 text-sm font-medium">Customer Portal features</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Creator-controlled portal features. Tenants can only enable a subset of these.
           </p>
-          <textarea
-            className="input w-full font-mono text-sm"
-            rows={4}
-            placeholder="you@company.com&#10;ops@company.com"
-            value={form.platformCreatorEmails.join('\n')}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                platformCreatorEmails: e.target.value
-                  .split(/[\n,;]+/)
-                  .map((v) => v.trim().toLowerCase())
-                  .filter(Boolean),
-              })
-            }
-          />
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {PORTAL_FEATURES.map((feat) => (
+              <label key={feat.key} className="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted/30">
+                <input
+                  type="checkbox"
+                  checked={form.availablePortalFeatures.includes(feat.key)}
+                  onChange={() => togglePortalFeature(feat.key)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">{feat.label}</span>
+                  <span className="block text-xs text-muted-foreground">{feat.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
@@ -563,9 +626,8 @@ function OrganizationsTab({
   const { data, isLoading, refetch } = trpc.creator360.organizations.list.useQuery({ search: search || undefined, status });
   const provision = trpc.creator360.provision.useMutation({
     onSuccess: (result) => {
-      const inviteNote = result.ownerInviteSent ? ' Owner invite sent.' : '';
       toast(`Provisioned ${result.companyName}`, 'success');
-      onMessage(`Created tenant ${result.companyName}. Trial ends ${result.trialEndsAt.toLocaleDateString()}.${inviteNote}`);
+      onMessage(`Created tenant ${result.companyName}. Trial ends ${result.trialEndsAt.toLocaleDateString()}.`);
       setProvisionForm({ companyName: '', ownerEmail: '', trialDays: 14, note: '' });
       refetch();
     },
@@ -628,7 +690,7 @@ function OrganizationsTab({
 
       <CreatorPanel title="Provision new organization" icon={CirclePlus}>
         <p className="mb-4 text-sm text-muted-foreground">
-          Creates a new tenant with trial subscription. If you enter an owner email, they receive an invite to join as owner.
+          Creates a new tenant in Firestore with a trial subscription. The owner can sign up separately or be invited later.
         </p>
         <form
           className="grid gap-4 md:grid-cols-2"
@@ -643,7 +705,7 @@ function OrganizationsTab({
           }}
         >
           <label className="block text-sm">Company name<input required className="input mt-1 w-full" value={provisionForm.companyName} onChange={(e) => setProvisionForm({ ...provisionForm, companyName: e.target.value })} /></label>
-          <label className="block text-sm">Owner email<input className="input mt-1 w-full" type="email" placeholder="owner@their-company.com" value={provisionForm.ownerEmail} onChange={(e) => setProvisionForm({ ...provisionForm, ownerEmail: e.target.value })} /></label>
+          <label className="block text-sm">Owner email (optional)<input className="input mt-1 w-full" type="email" value={provisionForm.ownerEmail} onChange={(e) => setProvisionForm({ ...provisionForm, ownerEmail: e.target.value })} /></label>
           <label className="block text-sm">Trial days<input className="input mt-1 w-32" type="number" min={0} max={365} value={provisionForm.trialDays} onChange={(e) => setProvisionForm({ ...provisionForm, trialDays: Number(e.target.value) })} /></label>
           <label className="block text-sm md:col-span-2">Note<textarea className="input mt-1 w-full" rows={2} value={provisionForm.note} onChange={(e) => setProvisionForm({ ...provisionForm, note: e.target.value })} /></label>
           <div className="flex gap-2 md:col-span-2">
@@ -811,11 +873,11 @@ function EcosystemTab() {
           </div>
         ))}
       </div>
-      <div className="mt-6 rounded-lg bg-slate-950 p-6 text-white">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{settings?.productLabel ?? 'Platform Admin'}</p>
-        <p className="mt-2 text-2xl font-bold">{settings?.productName ?? 'Yuletide CRM'}</p>
-        <p className="mt-1 text-sm text-slate-300">{settings?.tagline}</p>
-        <p className="mt-3 text-xs text-slate-500">Version {settings?.version ?? '1.0.0'} · Status {settings?.status ?? 'active'}</p>
+      <div className="card mt-6 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-surface to-surface p-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-primary">{settings?.productLabel ?? 'Platform Admin'}</p>
+        <p className="mt-2 text-2xl font-bold text-foreground">{settings?.productName ?? 'Yuletide CRM'}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{settings?.tagline}</p>
+        <p className="mt-3 text-xs text-muted-foreground">Version {settings?.version ?? '1.0.0'} · Status {settings?.status ?? 'active'}</p>
       </div>
     </CreatorPanel>
   );

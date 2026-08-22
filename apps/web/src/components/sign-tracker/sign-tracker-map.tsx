@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import type { SignLocationListItem } from '@clcrm/types';
 import { STATUS_COLORS } from '@/lib/sign-tracker-utils';
-import { getMapboxPublicToken } from '@/lib/mapbox-env';
+import { resolveMapboxPublicToken } from '@/lib/mapbox-env';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 type SignTrackerMapProps = {
@@ -43,22 +43,25 @@ export function SignTrackerMap({
   );
 
   useEffect(() => {
-    const token = getMapboxPublicToken();
-    if (!token) {
-      setMapError('Map unavailable — add NEXT_PUBLIC_MAPBOX_TOKEN to GitHub secrets and redeploy.');
-      return;
-    }
-
     let cancelled = false;
 
     async function initMap() {
+      const token = await resolveMapboxPublicToken();
+      if (cancelled) return;
+      if (!token) {
+        setMapError(
+          'Map unavailable — add a Mapbox token (NEXT_PUBLIC_MAPBOX_TOKEN or MAPBOX_TOKEN) to .env and redeploy.',
+        );
+        return;
+      }
+
       if (!mapboxRef.current) {
         mapboxRef.current = (await import('mapbox-gl')).default;
       }
       const mapboxgl = mapboxRef.current;
       if (cancelled || !containerRef.current || !mapboxgl) return;
 
-      mapboxgl.accessToken = token!;
+      mapboxgl.accessToken = token;
       const defaultCenter = center ?? (mapPoints[0]
         ? { lat: mapPoints[0].location.latitude, lng: mapPoints[0].location.longitude }
         : { lat: 35.0, lng: -90.0 });

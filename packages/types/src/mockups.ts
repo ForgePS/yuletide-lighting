@@ -258,19 +258,6 @@ export function calculateMaterials(mockup: Pick<MockupRecord, 'strands' | 'scale
   };
 }
 
-export function mockAiPropertyDetection(_imageUrl: string): AiDetectionResult {
-  return {
-    features: [
-      { type: 'roofline', points: [{ x: 100, y: 150 }, { x: 700, y: 150 }], confidence: 0.92 },
-      { type: 'peak', points: [{ x: 400, y: 80 }], confidence: 0.88 },
-      { type: 'gutter', points: [{ x: 100, y: 160 }, { x: 700, y: 160 }], confidence: 0.85 },
-      { type: 'window', points: [{ x: 250, y: 200 }, { x: 350, y: 280 }], confidence: 0.79 },
-      { type: 'tree', points: [{ x: 50, y: 300 }, { x: 120, y: 450 }], confidence: 0.81 },
-    ],
-    overlayUrl: null,
-  };
-}
-
 export function aiGenerateDesign(style: string): AiDesignResult {
   const lower = style.toLowerCase();
   const baseStrand: MockupStrand = {

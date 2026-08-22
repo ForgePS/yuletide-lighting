@@ -2,12 +2,19 @@
 
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
-import { LoadingState, EmptyState } from '@/components/ui/states';
+import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 
 export function CrewStatsCards() {
-  const { data, isLoading } = trpc.crew360.dashboard.useQuery();
-  if (isLoading || !data) return <LoadingState message="Loading crew stats..." />;
-
+  const { data, isLoading, isError, error, refetch } = trpc.crew360.dashboard.useQuery();
+  if (isLoading) return <LoadingState message="Loading crew stats..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load crew stats.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
   const cards = [
     { label: 'Jobs today', value: String(data.jobsToday) },
     { label: 'In progress', value: String(data.jobsInProgress) },

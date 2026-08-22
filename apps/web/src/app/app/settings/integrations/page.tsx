@@ -1,2 +1,11 @@
+import { Suspense } from 'react';
 import { IntegrationCenterPage } from '@/components/settings';
-export default function Page() { return <IntegrationCenterPage />; }
+import { SettingsLoading } from '@/components/settings/settings-widgets';
+
+export default function Page() {
+  return (
+    <Suspense fallback={<SettingsLoading />}>
+      <IntegrationCenterPage />
+    </Suspense>
+  );
+}

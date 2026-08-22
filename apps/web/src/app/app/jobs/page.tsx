@@ -10,6 +10,7 @@ import { useAnalyticsYear } from '@/lib/analytics-year-context';
 
 import { jobInYear } from '@/lib/year-filter-utils';
 
+import { canMarkJobInstalled } from '@clcrm/types';
 import { JobCard, ScheduleJobModal } from '@/components/jobs';
 
 
@@ -84,7 +85,7 @@ export default function JobsPage() {
 
                   <div className="mt-1 flex flex-wrap gap-2 px-1">
 
-                    {job.stage === 'scheduled' && (
+                    {canMarkJobInstalled(job.stage) && (
 
                       <button
 

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, labelProposalStatus, formatDate } from '@/lib/proposal-utils';
 import { LoadingState, ErrorState } from '@/components/ui/states';
+import { SignaturePad } from '@/components/ui/signature-pad';
 
 export default function PublicProposalPage() {
   const token = useParams().token as string;
@@ -136,7 +137,12 @@ export default function PublicProposalPage() {
               <>This proposal is {displayStatus.toLowerCase()}.</>
             )}
             {proposal.contractUrl && (
-              <p className="mt-2 text-sm"><a href={proposal.contractUrl} className="underline">View contract</a></p>
+              <p className="mt-2 text-sm"><a href={proposal.contractUrl} className="underline">View signed acceptance record</a></p>
+            )}
+            {!proposal.contractUrl && (proposal.status === 'approved' || proposal.status === 'deposit_paid') && (
+              <p className="mt-2 text-sm">
+                <a href={`/p/${token}/receipt?signed=1`} className="underline">View signed acceptance record</a>
+              </p>
             )}
           </div>
         ) : (
@@ -168,8 +174,8 @@ export default function PublicProposalPage() {
                         ))}
                       </select>
                     )}
-                    <input placeholder="Type your name as signature" value={signature} onChange={(e) => setSignature(e.target.value)} className="input" />
-                    <p className="text-xs text-muted-foreground">By approving, you agree to scope of work and terms. IP and timestamp recorded.</p>
+                    <SignaturePad value={signature} onChange={setSignature} />
+                    <p className="text-xs text-muted-foreground">By approving, you agree to scope of work and terms. IP, signature, and timestamp are recorded.</p>
                   </>
                 )}
                 {mode === 'changes' && (

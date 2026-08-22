@@ -22,11 +22,18 @@ export const customerStatusSchema = z.enum([
 
 export const customerStageSchema = z.enum([
   'new_lead',
+  'attempting_contact',
   'contacted',
+  'qualified',
+  'consultation_scheduled',
+  'consultation_completed',
+  'design_in_progress',
   'needs_estimate',
   'mockup_needed',
+  'proposal_draft',
   'proposal_sent',
   'proposal_viewed',
+  'follow_up_required',
   'approved',
   'deposit_paid',
   'scheduled',
@@ -37,6 +44,7 @@ export const customerStageSchema = z.enum([
   'removed',
   'stored',
   'rebook_next_season',
+  'deferred',
   'lost',
 ]);
 
@@ -56,6 +64,7 @@ export const siteHazardSchema = z.enum([
 export const activityTypeSchema = z.enum([
   'lead_created',
   'consultation_scheduled',
+  'consultation_completed',
   'estimate_sent',
   'estimate_approved',
   'design_created',
@@ -72,6 +81,8 @@ export const activityTypeSchema = z.enum([
   'sms_sent',
   'phone_call_logged',
   'note_added',
+  'proposal_accepted',
+  'job_created',
 ]);
 
 export const designStatusSchema = z.enum(['draft', 'sent', 'approved', 'rejected', 'archived']);
@@ -191,6 +202,7 @@ export const customer360BaseSchema = z.object({
   preferredContactMethod: preferredContactMethodSchema.default('email'),
   notes: z.string().max(10000).optional().or(z.literal('')),
   tags: z.array(z.string()).default([]),
+  customFields: z.record(z.unknown()).optional().default({}),
   smsOptIn: z.boolean().default(true),
   emailOptIn: z.boolean().default(true),
   gateCodesInstructions: z.string().max(5000).optional().or(z.literal('')),

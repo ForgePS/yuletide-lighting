@@ -1,0 +1,272 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\nvm4w\nodejs/node.exe" "C:\nvm4w\nodejs/node_modules/npm/bin/np ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+Running 39 tests using 6 workers
+
+[1A[2K(node:19416) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:32192) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:4372) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:13296) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:7848) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:26424) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:4372) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:13296) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:19416) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:26424) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:20:7 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ portal files API rejects missing/forged tickets without leaking paths
+[1A[2K(node:32192) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:7848) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[2/39] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:22:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal login has no horizontal overflow at phone width
+[1A[2K[3/39] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:11:7 ΓÇ║ portal access + mobile shell ΓÇ║ invalid QR access page stays branded without leaking customer data
+[1A[2K[4/39] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:44:7 ΓÇ║ portal access + mobile shell ΓÇ║ login remains usable at 360px width
+[1A[2K[5/39] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:4:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal login is reachable
+[1A[2K[6/39] [chromium] ΓÇ║ e2e\portal-mobile.spec.ts:36:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal PWA manifest is published
+[1A[2K[7/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:33:7 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ portal files API ignores arbitrary path query (no client path)
+[1A[2K[8/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token billing route stays generic
+[1A[2K[9/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token documents route stays generic
+[1A[2K[10/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token messages route stays generic
+[1A[2K[11/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token jobs route stays generic
+[1A[2K[12/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token mockups route stays generic
+[1A[2K[13/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token agreements route stays generic
+[1A[2K[14/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token proposals route stays generic
+[1A[2K[15/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 390x844
+[1A[2K[16/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 768x1024
+[1A[2K[17/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1024x768
+[1A[2K[18/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1440x900
+[1A[2K[19/39] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:83:7 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ browser back from invalid portal does not expose protected identifiers
+[1A[2K[20/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:20:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ portal login page loads without staff chrome
+[1A[2K[21/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:30:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invalid magic token does not enumerate customers
+[1A[2K[22/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:41:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invalid QR access stays generic
+[1A[2K[23/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:49:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invalid invitation stays generic without tenant identifiers
+[1A[2K[24/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:68:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invitation page fits 390x844
+[1A[2K[25/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:68:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invitation page fits 768x1024
+[1A[2K[26/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:68:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invitation page fits 1024x768
+[1A[2K[27/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:68:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ invitation page fits 1440x900
+[1A[2K[28/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:86:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ portal session API rejects empty body
+[1A[2K[29/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:97:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ staff /app is not accessible via portal cookie alone
+[1A[2K  1) [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 390x844 
+
+    Error: [31mTimed out 15000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByRole('heading').first()
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 15000ms[22m
+    [2m  - waiting for getByRole('heading').first()[22m
+
+
+      77 |       expect(overflow).toBeLessThanOrEqual(2);
+      78 |       const heading = page.getByRole('heading').first();
+    > 79 |       await expect(heading).toBeVisible();
+         |                             ^
+      80 |     });
+      81 |   }
+      82 |
+        at C:\Users\jerem\Projects\christmas-light-crm\e2e\portal-phase2-s5-security.spec.ts:79:29
+
+    Error Context: test-results\portal-phase2-s5-security--93efe--billing-state-fits-390x844-chromium\error-context.md
+
+
+[1A[2K(node:14296) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[30/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:128:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ no horizontal overflow at 320x568
+[1A[2K(node:14296) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[31/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:113:7 ΓÇ║ portal phase 2 security surfaces ΓÇ║ keyboard focus reaches login controls
+[1A[2K  2) [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1440x900 
+
+    Error: [31mTimed out 15000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByRole('heading').first()
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 15000ms[22m
+    [2m  - waiting for getByRole('heading').first()[22m
+
+
+      77 |       expect(overflow).toBeLessThanOrEqual(2);
+      78 |       const heading = page.getByRole('heading').first();
+    > 79 |       await expect(heading).toBeVisible();
+         |                             ^
+      80 |     });
+      81 |   }
+      82 |
+        at C:\Users\jerem\Projects\christmas-light-crm\e2e\portal-phase2-s5-security.spec.ts:79:29
+
+    Error Context: test-results\portal-phase2-s5-security--150ec-billing-state-fits-1440x900-chromium\error-context.md
+
+
+[1A[2K  3) [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 768x1024 
+
+    Error: [31mTimed out 15000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByRole('heading').first()
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 15000ms[22m
+    [2m  - waiting for getByRole('heading').first()[22m
+
+
+      77 |       expect(overflow).toBeLessThanOrEqual(2);
+      78 |       const heading = page.getByRole('heading').first();
+    > 79 |       await expect(heading).toBeVisible();
+         |                             ^
+      80 |     });
+      81 |   }
+      82 |
+        at C:\Users\jerem\Projects\christmas-light-crm\e2e\portal-phase2-s5-security.spec.ts:79:29
+
+    Error Context: test-results\portal-phase2-s5-security--e5f5a-billing-state-fits-768x1024-chromium\error-context.md
+
+
+[1A[2K  4) [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1024x768 
+
+    Error: [31mTimed out 15000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByRole('heading').first()
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 15000ms[22m
+    [2m  - waiting for getByRole('heading').first()[22m
+
+
+      77 |       expect(overflow).toBeLessThanOrEqual(2);
+      78 |       const heading = page.getByRole('heading').first();
+    > 79 |       await expect(heading).toBeVisible();
+         |                             ^
+      80 |     });
+      81 |   }
+      82 |
+        at C:\Users\jerem\Projects\christmas-light-crm\e2e\portal-phase2-s5-security.spec.ts:79:29
+
+    Error Context: test-results\portal-phase2-s5-security--42b69-billing-state-fits-1024x768-chromium\error-context.md
+
+
+[1A[2K(node:37472) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:31048) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:35876) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:35876) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:31048) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:37472) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[32/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:128:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ no horizontal overflow at 1280x800
+[1A[2K[33/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:128:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ no horizontal overflow at 768x1024
+[1A[2K[34/39] [chromium] ΓÇ║ e2e\portal-phase2-security.spec.ts:128:9 ΓÇ║ portal phase 2 security surfaces ΓÇ║ no horizontal overflow at 390x844
+[1A[2K(node:13608) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:13608) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[35/39] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:4:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal login is reachable
+[1A[2K(node:33676) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:12668) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:3368) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:26960) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:33676) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:12668) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:3368) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:26960) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[36/39] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:11:7 ΓÇ║ portal access + mobile shell ΓÇ║ invalid QR access page stays branded without leaking customer data
+[1A[2K[37/39] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:44:7 ΓÇ║ portal access + mobile shell ΓÇ║ login remains usable at 360px width
+[1A[2K[38/39] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:22:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal login has no horizontal overflow at phone width
+[1A[2K[39/39] [mobile-chrome] ΓÇ║ e2e\portal-mobile.spec.ts:36:7 ΓÇ║ portal access + mobile shell ΓÇ║ portal PWA manifest is published
+[1A[2K  4 failed
+    [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 390x844 
+    [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 768x1024 
+    [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1024x768 
+    [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1440x900 
+  35 passed (38.9s)

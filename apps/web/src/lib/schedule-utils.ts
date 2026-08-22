@@ -1,4 +1,5 @@
 import { formatCurrency } from '@clcrm/ui';
+import { formatScheduleLabel } from '@clcrm/types';
 
 export { formatCurrency };
 
@@ -23,6 +24,7 @@ export const DISPATCH_STATUS_COLORS: Record<string, string> = {
   delayed: 'bg-red-100 text-red-800',
 };
 
-export function categoryLabel(category: string) {
-  return category.replace(/_/g, ' ');
+/** YL-S10 — null-safe category / status label. */
+export function categoryLabel(category: string | null | undefined) {
+  return formatScheduleLabel(category);
 }

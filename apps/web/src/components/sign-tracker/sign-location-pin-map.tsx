@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { getMapboxPublicToken } from '@/lib/mapbox-env';
+import { resolveMapboxPublicToken } from '@/lib/mapbox-env';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 export type SignLocationPinMapProps = {
@@ -38,16 +38,20 @@ export function SignLocationPinMap({
   const coordsReady = hasValidCoords(latitude, longitude);
 
   useEffect(() => {
-    const token = getMapboxPublicToken();
-    if (!token) {
-      setMapError('Map unavailable — add NEXT_PUBLIC_MAPBOX_TOKEN and redeploy.');
-      return;
-    }
     if (!coordsReady || !containerRef.current) return;
 
     let cancelled = false;
 
     async function initMap() {
+      const token = await resolveMapboxPublicToken();
+      if (cancelled) return;
+      if (!token) {
+        setMapError(
+          'Map unavailable — add a Mapbox token (NEXT_PUBLIC_MAPBOX_TOKEN or MAPBOX_TOKEN) to .env and redeploy.',
+        );
+        return;
+      }
+
       if (!mapboxRef.current) {
         mapboxRef.current = (await import('mapbox-gl')).default;
       }

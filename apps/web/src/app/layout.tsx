@@ -1,11 +1,13 @@
 import type { Metadata, Viewport } from 'next';
-import { DM_Sans } from 'next/font/google';
+import { Public_Sans } from 'next/font/google';
+import { FirebaseAuthProvider } from '@/lib/firebase-auth';
 import './globals.css';
 
-const dmSans = DM_Sans({
+const publicSans = Public_Sans({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
+  weight: ['300', '400', '500', '600', '700'],
 });
 
 export const viewport: Viewport = {
@@ -13,29 +15,18 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: 'cover',
-  themeColor: '#0c1222',
+  themeColor: '#696cff',
 };
 
 export const metadata: Metadata = {
-  title: {
-    default: 'Yuletide Lighting Co. — Christmas Light Installation in Arkansas',
-    template: '%s | Yuletide Lighting Co.',
-  },
+  title: 'Yuletide Lighting Co. — Christmas Light Business Software',
   description:
-    'Professional Christmas light installation for homes and businesses in Eastern & Southeast Arkansas. Custom design, install, takedown, and storage. Call 870-588-7841.',
-  keywords: ['Christmas lights', 'holiday lighting', 'Arkansas', 'DeWitt', 'Stuttgart', 'Pine Bluff', 'light installation'],
+    'All-in-one CRM for Christmas light installers. Proposals, invoicing, inventory, scheduling, and crew management.',
   icons: {
     icon: '/logo.png',
     apple: '/logo.png',
   },
   manifest: '/manifest.webmanifest',
-  openGraph: {
-    type: 'website',
-    locale: 'en_US',
-    siteName: 'Yuletide Lighting Co.',
-    title: 'Yuletide Lighting Co. — Christmas Light Installation',
-    description: 'Custom holiday lighting across Eastern & Southeast Arkansas.',
-  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -45,8 +36,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={dmSans.variable}>
-      <body className="font-sans">{children}</body>
+    <html lang="en" className={publicSans.variable} suppressHydrationWarning>
+      <body className="font-sans" suppressHydrationWarning>
+        <FirebaseAuthProvider>{children}</FirebaseAuthProvider>
+      </body>
     </html>
   );
 }

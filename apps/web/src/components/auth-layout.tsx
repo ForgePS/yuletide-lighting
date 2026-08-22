@@ -12,8 +12,8 @@ export function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="auth-panel-bg relative hidden overflow-hidden text-white lg:flex lg:flex-col lg:justify-between lg:px-12 lg:py-10 xl:px-16 xl:py-12">
+    <div className="grid min-h-screen overflow-x-hidden xl:grid-cols-2">
+      <div className="auth-panel-bg relative hidden min-w-0 overflow-hidden text-white xl:flex xl:flex-col xl:justify-between xl:px-12 xl:py-10">
         <Logo
           href="/"
           className="relative z-10"
@@ -40,9 +40,9 @@ export function AuthLayout({
         </p>
       </div>
 
-      <div className="auth-form-bg flex items-center justify-center p-6 sm:p-10">
+      <div className="auth-form-bg flex min-w-0 items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-md">
-          <div className="mb-8 lg:hidden">
+          <div className="mb-8 xl:hidden">
             <div className="auth-panel-bg -mx-6 -mt-6 mb-8 px-6 py-8 sm:-mx-10 sm:-mt-10 sm:px-10">
               <Logo href="/" imageClassName="h-16 w-auto max-w-[220px] object-contain object-left brightness-110" />
               <p className="mt-6 text-xs font-semibold uppercase tracking-[0.28em] text-accent">

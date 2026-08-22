@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useAnalyticsYear } from '@/lib/analytics-year-context';
 import { formatCurrency } from '@clcrm/ui';
@@ -39,7 +39,7 @@ function SectionCard({
   return (
     <div className="card p-6">
       <div className="mb-4 flex items-start justify-between gap-3">
-        <h3 className="font-semibold">{title}</h3>
+        <h3 className="text-base font-semibold tracking-tight text-foreground">{title}</h3>
         {href && linkLabel ? (
           <Link href={href} className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:underline">
             {linkLabel}
@@ -58,9 +58,34 @@ function formatTime(date: Date) {
 
 export function SeasonalCommandCenter() {
   const { filterInput, yearLabel } = useAnalyticsYear();
-  const { data, isLoading, isError, error, refetch } = trpc.reports360.commandCenter.useQuery(filterInput, { staleTime: 60_000 });
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const kick = () => {
+      if (!cancelled) setReady(true);
+    };
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleId = window.requestIdleCallback(kick, { timeout: 400 });
+    } else {
+      timeoutId = setTimeout(kick, 100);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    };
+  }, []);
 
-  if (isLoading || (!data && !isError)) {
+  const { data, isLoading, isError, error, refetch } = trpc.reports360.commandCenter.useQuery(filterInput, {
+    staleTime: 60_000,
+    enabled: ready,
+  });
+
+  if (!ready || isLoading || (!data && !isError)) {
     return (
       <div className="space-y-6">
         <div className="h-10 w-64 animate-pulse rounded-lg bg-muted/50" />
@@ -74,10 +99,17 @@ export function SeasonalCommandCenter() {
   }
 
   if (isError || !data) {
-    const code = (error as { data?: { code?: string } } | null)?.data?.code;
+    const code = (error as { data?: { code?: string }; message?: string } | null)?.data?.code;
+    const raw = (error as { message?: string } | null)?.message ?? '';
+    const looksLikeServerAuth =
+      /PERMISSION_DENIED|FIREBASE_SERVICE_ACCOUNT|createAuthContext|Missing or insufficient permissions/i.test(
+        raw,
+      );
     const message =
       code === 'UNAUTHORIZED'
-        ? 'Your session expired. Sign out and sign in again.'
+        ? looksLikeServerAuth
+          ? 'Server could not verify your account (Firebase Admin credentials). Check FIREBASE_SERVICE_ACCOUNT_PATH or FIREBASE_USE_ADC in .env, then restart the app.'
+          : 'Could not verify your session. Sign out and sign in again. If this keeps happening, local Firebase Admin credentials are missing or unauthorized.'
         : code === 'FORBIDDEN'
           ? 'Your account does not have access to the dashboard.'
           : 'The command center took too long or hit an error. Try again in a moment.';
@@ -85,9 +117,14 @@ export function SeasonalCommandCenter() {
       <div className="card mx-auto max-w-lg p-8 text-center">
         <h2 className="text-lg font-semibold">Could not load dashboard</h2>
         <p className="mt-2 text-sm text-muted-foreground">{message}</p>
-        <button type="button" onClick={() => refetch()} className="btn-primary mt-4">
-          Retry
-        </button>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <button type="button" onClick={() => refetch()} className="btn-primary">
+            Retry
+          </button>
+          <Link href="/sign-in" className="btn-secondary">
+            Sign in again
+          </Link>
+        </div>
       </div>
     );
   }
@@ -123,13 +160,13 @@ export function SeasonalCommandCenter() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {cards.map(({ label, value, icon: Icon, href, color }) => (
-          <Link key={label} href={href} className="card-hover group block p-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link key={label} href={href} className="stat-card group">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{label}</p>
-                <p className="mt-2 text-2xl font-bold tracking-tight">{value}</p>
+                <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">{value}</p>
               </div>
-              <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${color}`}>
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${color}`}>
                 <Icon className="h-4 w-4" />
               </span>
             </div>

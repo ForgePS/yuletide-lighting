@@ -5,6 +5,7 @@ import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency } from '@/lib/inventory-utils';
 import { LoadingState, EmptyState } from '@/components/ui/states';
+import { formatInventoryLabel } from '@clcrm/types';
 
 export function PurchaseOrderManager() {
   const { toast } = useToast();
@@ -38,7 +39,7 @@ export function PurchaseOrderManager() {
               <tr key={po.id}>
                 <td className="font-mono">{po.poNumber}</td>
                 <td>{po.vendorName}</td>
-                <td className="capitalize">{po.status.replace(/_/g, ' ')}</td>
+                <td className="capitalize">{formatInventoryLabel(po.status)}</td>
                 <td>{formatCurrency(po.subtotalCents)}</td>
                 <td className="space-x-2">
                   {po.status === 'draft' && <button type="button" className="text-sm text-primary" onClick={() => updateStatus.mutate({ poId: po.id, status: 'ordered' })}>Order</button>}
@@ -102,7 +103,7 @@ export function AuditManager() {
       </form>
       {data?.map((audit) => (
         <div key={audit.id} className="card p-4">
-          <p className="font-medium capitalize">{audit.auditType.replace(/_/g, ' ')} — {audit.accuracyPercent}% accuracy</p>
+          <p className="font-medium capitalize">{formatInventoryLabel(audit.auditType)} — {audit.accuracyPercent}% accuracy</p>
           <p className="text-xs text-muted-foreground">{audit.lines.length} lines · {audit.completedAt ? new Date(audit.completedAt).toLocaleString() : ''}</p>
         </div>
       ))}
@@ -119,7 +120,7 @@ export function TruckInventoryManager() {
       {data?.map((truck) => (
         <div key={truck.id} className="card p-5">
           <h3 className="font-semibold">{truck.vehicleName}</h3>
-          <p className="text-sm capitalize text-muted-foreground">{truck.vehicleType.replace(/_/g, ' ')}</p>
+          <p className="text-sm capitalize text-muted-foreground">{formatInventoryLabel(truck.vehicleType)}</p>
           <p className="mt-3 text-sm">{truck.totalItems} items · {formatCurrency(truck.totalValueCents)}</p>
           <ul className="mt-2 text-xs text-muted-foreground">{items?.filter((i) => i.truckId === truck.id).slice(0, 3).map((i) => <li key={i.id}>{i.name}</li>)}</ul>
         </div>

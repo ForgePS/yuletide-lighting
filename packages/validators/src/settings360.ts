@@ -84,6 +84,13 @@ export const inviteUserSchema = z.object({
   department: z.string().max(100).optional().nullable(),
 });
 
+export const claimStaffInviteSchema = z.object({
+  token: z.string().min(16).max(256),
+  password: z.string().min(8).max(128),
+  firstName: z.string().max(100).optional().nullable(),
+  lastName: z.string().max(100).optional().nullable(),
+});
+
 export const updateRolePermissionsSchema = z.object({
   roleId: z.string().min(1),
   permissions: permissionMatrixSchema,
@@ -138,14 +145,34 @@ export const proposalSettingsSchema = z.object({
   numberFormat: z.string().default('PROP-{YYYY}-{SEQ}'),
   defaultExpirationDays: z.number().min(1).max(365).default(30),
   defaultDepositPercent: z.number().min(0).max(100).default(50),
-  defaultTerms: z.string().max(5000).default(''),
+  defaultTerms: z.string().max(20000).default(''),
   defaultTemplateId: z.string().optional().nullable(),
   packageDefaults: z.object({
-    good: z.object({ label: z.string(), markupPercent: z.number() }),
-    better: z.object({ label: z.string(), markupPercent: z.number() }),
-    best: z.object({ label: z.string(), markupPercent: z.number() }),
+    good: z.object({
+      label: z.string(),
+      markupPercent: z.number(),
+      description: z.string().max(2000).default(''),
+      inclusions: z.array(z.string().max(200)).max(40).default([]),
+    }),
+    better: z.object({
+      label: z.string(),
+      markupPercent: z.number(),
+      description: z.string().max(2000).default(''),
+      inclusions: z.array(z.string().max(200)).max(40).default([]),
+    }),
+    best: z.object({
+      label: z.string(),
+      markupPercent: z.number(),
+      description: z.string().max(2000).default(''),
+      inclusions: z.array(z.string().max(200)).max(40).default([]),
+    }),
   }).optional(),
   layout: proposalLayoutSchema.optional(),
+});
+
+export const agreementSettingsSchema = z.object({
+  termsBody: z.string().min(1).max(20000),
+  termsVersion: z.string().min(1).max(40),
 });
 
 export const invoiceSettingsConfigSchema = z.object({
@@ -179,6 +206,11 @@ export const seasonSettingsSchema = z.object({
   defaultInstallLeadDays: z.number().int().min(0).max(120).default(14),
   defaultRemovalLeadDays: z.number().int().min(0).max(120).default(7),
   blackoutWeeks: z.array(z.number().int().min(1).max(53)).default([]),
+  installCutoffDate: z.string().optional().nullable(),
+  takedownStartDate: z.string().optional().nullable(),
+  rebookingStartDate: z.string().optional().nullable(),
+  publicMarketingYear: z.number().int().min(2020).max(2100).optional().nullable(),
+  bookingOpen: z.boolean().optional().nullable(),
 });
 
 export const inventorySettingsConfigSchema = z.object({
@@ -196,6 +228,12 @@ export const customerPortalSettingsSchema = z.object({
   allowSelfScheduling: z.boolean().default(false),
   allowOnlinePayments: z.boolean().default(true),
   allowServiceRequests: z.boolean().default(true),
+  enabledFeatures: z.array(z.enum([
+    'dashboard', 'properties', 'consultations', 'mockups', 'proposals', 'agreements',
+    'e_sign', 'billing', 'online_payments', 'scheduling', 'install_tracking',
+    'service_requests', 'takedowns', 'storage', 'messaging', 'documents',
+    'reviews', 'referrals', 'rebooking',
+  ])).optional(),
   permissions: z.object({
     viewProposals: z.boolean().default(true),
     viewInvoices: z.boolean().default(true),

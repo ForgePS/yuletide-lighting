@@ -1,6 +1,8 @@
 import { getAdminFirestore, Timestamp, colList, colGet, colCreate, colUpdate, getByPublicToken, nanoid } from '@yuletide/firebase';
 import type { CustomerRecord, PropertyRecord } from './firestore';
 import { syncCustomerPipelineFromJob } from './jobs360';
+import { computeAvailable } from '@clcrm/types';
+import { listLowStockInventory360 } from './inventory360';
 
 function ts() {
   return Timestamp.now();
@@ -32,10 +34,17 @@ export async function reserveJobMaterials(orgId: string, jobId: string) {
     const itemSnap = await itemRef.get();
     if (!itemSnap.exists) throw new Error('Inventory item not found');
     const item = itemSnap.data()!;
-    const available = item.quantityOnHand - item.quantityReserved;
+    // YL-S16: use full computeAvailable carve-outs (not onHand − reserved only).
+    const available = computeAvailable({
+      quantityOnHand: Number(item.quantityOnHand ?? 0),
+      quantityReserved: Number(item.quantityReserved ?? 0),
+      quantityAssigned: Number(item.quantityAssigned ?? 0),
+      quantityDamaged: Number(item.quantityDamaged ?? 0),
+      quantityLost: Number(item.quantityLost ?? 0),
+    });
     if (available < mat.quantity) throw new Error(`Insufficient stock for ${item.name}`);
     batch.update(itemRef, {
-      quantityReserved: item.quantityReserved + mat.quantity,
+      quantityReserved: Number(item.quantityReserved ?? 0) + mat.quantity,
       updatedAt: ts(),
     });
     batch.update(matDoc.ref, { status: 'reserved', updatedAt: ts() });
@@ -61,12 +70,17 @@ export async function consumeJobMaterials(orgId: string, jobId: string) {
     const itemRef = db.doc(`organizations/${orgId}/inventoryItems/${mat.inventoryItemId}`);
     const itemSnap = await itemRef.get();
     const item = itemSnap.data()!;
+    const unitCostCentsAtConsume = Number(item.unitCostCents ?? item.costCents ?? 0);
     batch.update(itemRef, {
       quantityOnHand: item.quantityOnHand - mat.quantity,
       quantityReserved: item.quantityReserved - mat.quantity,
       updatedAt: ts(),
     });
-    batch.update(matDoc.ref, { status: 'consumed', updatedAt: ts() });
+    batch.update(matDoc.ref, {
+      status: 'consumed',
+      unitCostCentsAtConsume,
+      updatedAt: ts(),
+    });
   }
   batch.update(db.doc(`organizations/${orgId}/jobs/${jobId}`), {
     stage: 'installed',
@@ -75,15 +89,36 @@ export async function consumeJobMaterials(orgId: string, jobId: string) {
   });
   await batch.commit();
 
-  const job = await colGet<{ customerId?: string }>(orgId, 'jobs', jobId);
+  try {
+    const { recomputeAndStoreJobCosting } = await import('./job-costing');
+    await recomputeAndStoreJobCosting(orgId, jobId);
+  } catch {
+    // Best-effort costing refresh
+  }
+
+  const job = await colGet<{ customerId?: string; title?: string }>(orgId, 'jobs', jobId);
   if (job?.customerId) {
     await syncCustomerPipelineFromJob(orgId, job.customerId, 'installed');
+    try {
+      const { fireAutomationTrigger } = await import('./automation360');
+      const { triggerReviewRequestForJob } = await import('./reviews360');
+      const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', job.customerId);
+      const customerName = customer
+        ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || 'Customer'
+        : 'Customer';
+      await fireAutomationTrigger(
+        orgId,
+        'job_completed',
+        { customerId: job.customerId, customerName, jobId },
+      );
+      await triggerReviewRequestForJob(orgId, jobId, null);
+    } catch {
+      // Best-effort post-install hooks
+    }
   }
 }
 
+/** YL-S16: legacy low-stock delegates to inventory360 (reorderLevel + computeAvailable). */
 export async function getLowStockItems(orgId: string) {
-  const items = await colList<Record<string, number>>(orgId, 'inventoryItems');
-  return items.filter(
-    (item) => (item.quantityOnHand as number) - (item.quantityReserved as number) <= (item.reorderThreshold as number),
-  );
+  return listLowStockInventory360(orgId);
 }

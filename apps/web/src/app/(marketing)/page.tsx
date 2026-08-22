@@ -1,30 +1,35 @@
-import { loadHomeContent } from '@/lib/tina-content';
-import { HomePageClient } from '@/components/marketing/home-page-client';
-import { HomePageView } from '@/components/marketing/home-page-view';
-import type { HomeContent } from '@/lib/marketing-content-types';
 import type { Metadata } from 'next';
+import { CmsPageView } from '@/components/cms/cms-page-view';
+import { loadCmsPageBundle } from '@/lib/cms-content';
+import { applyCmsLocale } from '@/lib/cms-runtime';
 
-export const revalidate = 60;
+/** Edge HTML cache; Creator saves also call revalidatePath. */
+export const revalidate = 30;
 
-export const metadata: Metadata = {
-  title: 'Christmas Light Installation in Eastern Arkansas',
-  description:
-    'Yuletide Lighting Co. provides custom holiday lighting for homes and businesses across DeWitt, Stuttgart, Pine Bluff, and Southeast Arkansas. Free consultation.',
-};
+type Props = { searchParams: Promise<{ lang?: string }> };
 
-export default async function HomePage() {
-  const payload = await loadHomeContent();
-  const home = payload.data.home as HomeContent;
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const { lang } = await searchParams;
+  const { page, globals } = await loadCmsPageBundle('home');
+  const localized = page ? applyCmsLocale(page, lang || globals.defaultLocale) : null;
+  return {
+    title: localized?.seo?.title ?? 'Yuletide Lighting | Christmas Light CRM',
+    description:
+      localized?.seo?.description ??
+      'Proposals, invoicing, inventory, crew scheduling, and customer messaging for Christmas light installers.',
+    icons: {
+      icon: globals.branding.faviconUrl || '/logo.png',
+      apple: globals.branding.faviconUrl || '/logo.png',
+    },
+  };
+}
 
-  if (!payload.query) {
-    return <HomePageView home={home} />;
+export default async function HomePage({ searchParams }: Props) {
+  const { lang } = await searchParams;
+  const { page, globals } = await loadCmsPageBundle('home');
+  if (!page) {
+    return null;
   }
-
-  return (
-    <HomePageClient
-      query={payload.query}
-      variables={payload.variables}
-      data={{ home }}
-    />
-  );
+  const localized = applyCmsLocale(page, lang || globals.defaultLocale);
+  return <CmsPageView page={localized} globals={globals} locale={lang || globals.defaultLocale} />;
 }

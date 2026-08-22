@@ -1,44 +1,177 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/firebase-auth';
 import { AuthLayout } from '@/components/auth-layout';
 import { authErrorMessage } from '@/lib/auth-errors';
-import { trpc } from '@/lib/trpc';
-import { defaultAppHome } from '@/lib/field-utils';
+import {
+  establishServerSession,
+  clearServerSession,
+  writeAuthCookie,
+  setCachedAuthToken,
+} from '@/lib/auth-token';
 
-export default function SignInPage() {
-  const { signIn, user, loading } = useAuth();
-  const router = useRouter();
+const LOOP_KEY = 'clcrm-auth-redirect-count';
+const LOOP_TS_KEY = 'clcrm-auth-redirect-ts';
+
+function readLoopCount() {
+  try {
+    const ts = Number(sessionStorage.getItem(LOOP_TS_KEY) || '0');
+    if (Date.now() - ts > 15_000) {
+      sessionStorage.removeItem(LOOP_KEY);
+      sessionStorage.removeItem(LOOP_TS_KEY);
+      return 0;
+    }
+    return Number(sessionStorage.getItem(LOOP_KEY) || '0');
+  } catch {
+    return 0;
+  }
+}
+
+function bumpLoopCount() {
+  try {
+    const next = readLoopCount() + 1;
+    sessionStorage.setItem(LOOP_KEY, String(next));
+    sessionStorage.setItem(LOOP_TS_KEY, String(Date.now()));
+    return next;
+  } catch {
+    return 99;
+  }
+}
+
+function clearLoopCount() {
+  try {
+    sessionStorage.removeItem(LOOP_KEY);
+    sessionStorage.removeItem(LOOP_TS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        window.clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+function SignInForm() {
+  const { signIn, signOut, user, loading } = useAuth();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'redirecting' | 'stopped'>('idle');
+  const started = useRef(false);
 
-  const { data: me, isLoading: meLoading } = trpc.settings360.me.useQuery(undefined, {
-    enabled: !!user && !loading,
-    staleTime: 60_000,
-  });
+  const nextPath = searchParams.get('next') || '/app';
+  const safeNext =
+    nextPath.startsWith('/') && !nextPath.startsWith('//') ? nextPath : '/app';
+  const bounced = searchParams.get('bounced') === '1';
+  const reset = searchParams.get('reset') === '1';
 
   useEffect(() => {
-    if (!user || loading || meLoading) return;
-    router.replace(defaultAppHome(me));
-  }, [user, loading, meLoading, me, router]);
+    if (reset) clearLoopCount();
+  }, [reset]);
 
-  if (loading || (user && meLoading)) {
-    return (
-      <AuthLayout title="Welcome back" subtitle="Sign in to your installer account">
-        <p className="mt-6 text-center text-sm text-muted-foreground">Loading...</p>
-      </AuthLayout>
-    );
+  useEffect(() => {
+    if (loading || !user || started.current || status === 'stopped') return;
+
+    // Only stop after repeated failures — first bounce is often a stale cookie race.
+    if (readLoopCount() >= 3) {
+      started.current = true;
+      setStatus('stopped');
+      setError(
+        'Sign-in kept bouncing between pages. Your session was cleared — enter your email and password again.',
+      );
+      clearLoopCount();
+      void clearServerSession();
+      void signOut();
+      return;
+    }
+
+    // Clear bounce query so retries don't look like a fresh failure loop in the URL.
+    if (bounced && typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('bounced');
+      window.history.replaceState({}, '', url.pathname + url.search);
+    }
+
+    started.current = true;
+    setStatus('redirecting');
+
+    const watchdog = window.setTimeout(() => {
+      clearLoopCount();
+      setStatus('stopped');
+      setError('Opening the dashboard took too long. Please sign in again.');
+      setBusy(false);
+      started.current = false;
+      void clearServerSession();
+      void signOut();
+    }, 8_000);
+
+    void (async () => {
+      try {
+        const token = await withTimeout(user.getIdToken(false), 5_000, 'Auth token');
+        setCachedAuthToken(token);
+        writeAuthCookie(token);
+        // Fire-and-forget — never block navigation on the session API.
+        void establishServerSession(token);
+        bumpLoopCount();
+        window.clearTimeout(watchdog);
+        window.location.replace(safeNext);
+      } catch (err) {
+        window.clearTimeout(watchdog);
+        clearLoopCount();
+        setStatus('stopped');
+        setError(authErrorMessage(err, 'Could not open the dashboard. Try signing in again.'));
+        setBusy(false);
+        started.current = false;
+        await clearServerSession();
+        await signOut();
+      }
+    })();
+
+    // Intentionally no cleanup cancel — idToken/status updates must not abort navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per signed-in user
+  }, [loading, user]);
+
+  async function cancelAndReset() {
+    clearLoopCount();
+    setStatus('stopped');
+    started.current = false;
+    writeAuthCookie(null);
+    setCachedAuthToken(null);
+    try {
+      await clearServerSession();
+      await signOut();
+    } catch {
+      /* ignore */
+    }
+    window.location.replace('/sign-in?reset=1');
   }
 
-  if (user) {
+  if (loading || (user && status === 'redirecting')) {
     return (
       <AuthLayout title="Welcome back" subtitle="Sign in to your installer account">
-        <p className="mt-6 text-center text-sm text-muted-foreground">Redirecting to your dashboard...</p>
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          {user ? 'Opening your dashboard...' : 'Loading...'}
+        </p>
+        <button type="button" className="btn-secondary mt-4 w-full" onClick={() => void cancelAndReset()}>
+          Cancel and sign in again
+        </button>
       </AuthLayout>
     );
   }
@@ -47,6 +180,9 @@ export default function SignInPage() {
     e.preventDefault();
     setError('');
     setBusy(true);
+    clearLoopCount();
+    started.current = false;
+    setStatus('idle');
     try {
       await signIn(email, password);
     } catch (err) {
@@ -107,5 +243,19 @@ export default function SignInPage() {
         </p>
       </form>
     </AuthLayout>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <AuthLayout title="Welcome back" subtitle="Sign in to your installer account">
+          <p className="mt-6 text-center text-sm text-muted-foreground">Loading...</p>
+        </AuthLayout>
+      }
+    >
+      <SignInForm />
+    </Suspense>
   );
 }

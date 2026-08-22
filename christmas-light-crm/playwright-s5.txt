@@ -1,0 +1,175 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\nvm4w\nodejs/node.exe" "C:\nvm4w\nodejs/node_modules/npm/bin/np ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+Running 14 tests using 6 workers
+
+[1A[2K(node:26660) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:19664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:18400) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:12532) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:27820) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:30516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:26660) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:19664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:27820) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:18400) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:30516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:12532) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[1/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:20:7 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ portal files API rejects missing/forged tickets without leaking paths
+[1A[2K[2/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token documents route stays generic
+[1A[2K[3/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:33:7 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ portal files API ignores arbitrary path query (no client path)
+[1A[2K[4/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token jobs route stays generic
+[1A[2K[5/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token messages route stays generic
+[1A[2K[6/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token billing route stays generic
+[1A[2K[7/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token mockups route stays generic
+[1A[2K[8/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token agreements route stays generic
+[1A[2K[9/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:51:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ invalid token proposals route stays generic
+[1A[2K[10/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 390x844
+[1A[2K[11/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 768x1024
+[1A[2K[12/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1024x768
+[1A[2K[13/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1440x900
+[1A[2K[14/14] [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:83:7 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ browser back from invalid portal does not expose protected identifiers
+[1A[2K  1) [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 768x1024 
+
+    Error: [31mTimed out 15000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByRole('heading').first()
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 15000ms[22m
+    [2m  - waiting for getByRole('heading').first()[22m
+
+
+      77 |       expect(overflow).toBeLessThanOrEqual(2);
+      78 |       const heading = page.getByRole('heading').first();
+    > 79 |       await expect(heading).toBeVisible();
+         |                             ^
+      80 |     });
+      81 |   }
+      82 |
+        at C:\Users\jerem\Projects\christmas-light-crm\e2e\portal-phase2-s5-security.spec.ts:79:29
+
+    Error Context: test-results\portal-phase2-s5-security--e5f5a-billing-state-fits-768x1024-chromium\error-context.md
+
+
+[1A[2K  2) [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 390x844 
+
+    Error: [31mTimed out 15000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByRole('heading').first()
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 15000ms[22m
+    [2m  - waiting for getByRole('heading').first()[22m
+
+
+      77 |       expect(overflow).toBeLessThanOrEqual(2);
+      78 |       const heading = page.getByRole('heading').first();
+    > 79 |       await expect(heading).toBeVisible();
+         |                             ^
+      80 |     });
+      81 |   }
+      82 |
+        at C:\Users\jerem\Projects\christmas-light-crm\e2e\portal-phase2-s5-security.spec.ts:79:29
+
+    Error Context: test-results\portal-phase2-s5-security--93efe--billing-state-fits-390x844-chromium\error-context.md
+
+
+[1A[2K  3) [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1024x768 
+
+    Error: [31mTimed out 15000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByRole('heading').first()
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 15000ms[22m
+    [2m  - waiting for getByRole('heading').first()[22m
+
+
+      77 |       expect(overflow).toBeLessThanOrEqual(2);
+      78 |       const heading = page.getByRole('heading').first();
+    > 79 |       await expect(heading).toBeVisible();
+         |                             ^
+      80 |     });
+      81 |   }
+      82 |
+        at C:\Users\jerem\Projects\christmas-light-crm\e2e\portal-phase2-s5-security.spec.ts:79:29
+
+    Error Context: test-results\portal-phase2-s5-security--42b69-billing-state-fits-1024x768-chromium\error-context.md
+
+
+[1A[2K  4) [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1440x900 
+
+    Error: [31mTimed out 15000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m()[22m
+
+    Locator: getByRole('heading').first()
+    Expected: visible
+    Received: <element(s) not found>
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 15000ms[22m
+    [2m  - waiting for getByRole('heading').first()[22m
+
+
+      77 |       expect(overflow).toBeLessThanOrEqual(2);
+      78 |       const heading = page.getByRole('heading').first();
+    > 79 |       await expect(heading).toBeVisible();
+         |                             ^
+      80 |     });
+      81 |   }
+      82 |
+        at C:\Users\jerem\Projects\christmas-light-crm\e2e\portal-phase2-s5-security.spec.ts:79:29
+
+    Error Context: test-results\portal-phase2-s5-security--150ec-billing-state-fits-1440x900-chromium\error-context.md
+
+
+[1A[2K  4 failed
+    [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 390x844 
+    [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 768x1024 
+    [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1024x768 
+    [chromium] ΓÇ║ e2e\portal-phase2-s5-security.spec.ts:70:9 ΓÇ║ portal phase 2 S5 route/file security surfaces ΓÇ║ denied billing state fits 1440x900 
+  10 passed (35.5s)

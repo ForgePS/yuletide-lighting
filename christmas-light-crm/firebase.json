@@ -1,0 +1,33 @@
+{
+  "hosting": {
+    "source": "apps/web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "!local_deps/**"],
+    "frameworksBackend": {
+      "region": "us-central1",
+      "memory": "1GiB",
+      "timeoutSeconds": 120,
+      "serviceAccount": "firebase-adminsdk-fbsvc@yuletide-lighting.iam.gserviceaccount.com"
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "firestore": {
+      "host": "127.0.0.1",
+      "port": 8080
+    },
+    "storage": {
+      "host": "127.0.0.1",
+      "port": 9199
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  }
+}

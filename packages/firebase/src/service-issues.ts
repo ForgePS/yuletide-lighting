@@ -66,6 +66,8 @@ export async function listServiceIssues360(
     customerId?: string;
     jobId?: string;
     warranty?: boolean;
+    /** Cap Firestore reads (dashboard / command center). */
+    maxScan?: number;
   } = {},
 ) {
   const page = opts.page ?? 1;
@@ -73,9 +75,13 @@ export async function listServiceIssues360(
   const db = getAdminFirestore();
   let snap;
   try {
-    snap = await db.collection(issuePath(orgId)).orderBy('updatedAt', 'desc').get();
+    let query = db.collection(issuePath(orgId)).orderBy('updatedAt', 'desc') as FirebaseFirestore.Query;
+    if (opts.maxScan && opts.maxScan > 0) query = query.limit(opts.maxScan);
+    snap = await query.get();
   } catch {
-    snap = await db.collection(issuePath(orgId)).get();
+    let query = db.collection(issuePath(orgId)) as FirebaseFirestore.Query;
+    if (opts.maxScan && opts.maxScan > 0) query = query.limit(opts.maxScan);
+    snap = await query.get();
   }
 
   let items = snap.docs.map((doc) => mapDoc({ id: doc.id, ...doc.data() }));

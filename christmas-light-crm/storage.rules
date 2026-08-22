@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// Portal customer file access is server-ticketed (/api/portal/files).
+// Direct client Storage SDK access for portal customers must fail closed.
+// Staff org users may read/write under organizations/{orgId}/.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userPath() {
+      return /databases/(default)/documents/users/$(request.auth.uid);
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && firestore.exists(userPath());
+    }
+
+    function userDoc() {
+      return firestore.get(userPath()).data;
+    }
+
+    function userOrgId() {
+      return userDoc().organizationId;
+    }
+
+    function isStaffRole() {
+      return userDoc().role in ['owner', 'admin', 'office', 'manager', 'crew', 'installer', 'sales'];
+    }
+
+    function isActiveStaffForOrg(orgId) {
+      return hasUserDoc()
+        && userOrgId() == orgId
+        && isStaffRole()
+        && (!('status' in userDoc()) || userDoc().status == 'active');
+    }
+
+    match /organizations/{orgId}/{allPaths=**} {
+      // Staff-only direct access. Portal customers use short-lived server tickets.
+      allow read: if isActiveStaffForOrg(orgId);
+      allow write: if isActiveStaffForOrg(orgId)
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

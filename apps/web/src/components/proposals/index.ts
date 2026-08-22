@@ -5,5 +5,6 @@ export { ProposalPipeline } from './proposal-pipeline';
 export { ProposalWizard } from './proposal-wizard';
 export { ProposalDetail } from './proposal-detail';
 export { ProposalAnalyticsPage } from './proposal-analytics';
-export { ProposalTemplatesPage, ProposalPackagesPage } from './proposal-templates';
+export { ProposalTemplatesPage } from './proposal-templates';
+export { ProposalPackagesPage } from './proposal-package-defaults-editor';
 export { ProposalPresentationMode } from './proposal-presentation';

@@ -11,37 +11,65 @@ import {
   crewUploadPhoto,
   crewReportIssue,
   crewRecordCustomerNotHome,
+  crewRecordMaterialUsage,
   crewSubmitSignature,
   getCrewDashboard,
   listCrewJobsForOffice,
   listJobActivity,
+  assertCrewAssignedToJob,
 } from '@yuletide/firebase';
 import {
   crewClockInSchema,
   crewPhotoUploadSchema,
   crewIssueReportSchema,
   crewCustomerNotHomeSchema,
+  crewMaterialUsageSchema,
   crewSignatureSchema,
   crewScheduleQuerySchema,
 } from '@clcrm/validators';
-import { router, protectedProcedure, officeProcedure } from '../trpc';
+import { router, protectedProcedure, permissionProcedure } from '../trpc';
 import { colUpdate } from '@yuletide/firebase';
 
+function mapCrewFieldError(err: unknown): never {
+  const message = err instanceof Error ? err.message : 'Crew operation failed';
+  if (message === 'Job not found' || message === 'Time entry not found') {
+    throw new TRPCError({ code: 'NOT_FOUND', message });
+  }
+  if (message === 'Not assigned to this job') {
+    throw new TRPCError({ code: 'FORBIDDEN', message });
+  }
+  throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message });
+}
+
+async function runCrewMutation<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    mapCrewFieldError(err);
+  }
+}
+
 export const crew360Router = router({
-  dashboard: officeProcedure.query(({ ctx }) => getCrewDashboard(ctx.auth.organizationId)),
+  dashboard: permissionProcedure('jobs', 'view').query(({ ctx }) =>
+    getCrewDashboard(ctx.auth.organizationId),
+  ),
 
   jobs: router({
-    today: officeProcedure.input(crewScheduleQuerySchema.optional()).query(({ ctx, input }) =>
-      listCrewJobsForOffice(ctx.auth.organizationId, input?.date ? new Date(input.date) : undefined),
-    ),
-    activity: officeProcedure.input(z.object({ jobId: z.string().min(1) })).query(({ ctx, input }) =>
-      listJobActivity(ctx.auth.organizationId, input.jobId),
-    ),
-    detail: officeProcedure.input(z.object({ jobId: z.string().min(1) })).query(async ({ ctx, input }) => {
-      const detail = await getCrewMobileJobDetail(ctx.auth.organizationId, input.jobId, ctx.auth.userId);
-      if (!detail) throw new TRPCError({ code: 'NOT_FOUND' });
-      return detail;
-    }),
+    today: permissionProcedure('jobs', 'view')
+      .input(crewScheduleQuerySchema.optional())
+      .query(({ ctx, input }) =>
+        listCrewJobsForOffice(ctx.auth.organizationId, input?.date ? new Date(input.date) : undefined),
+      ),
+    activity: permissionProcedure('jobs', 'view')
+      .input(z.object({ jobId: z.string().min(1) }))
+      .query(({ ctx, input }) => listJobActivity(ctx.auth.organizationId, input.jobId)),
+    detail: permissionProcedure('jobs', 'view')
+      .input(z.object({ jobId: z.string().min(1) }))
+      .query(async ({ ctx, input }) => {
+        const detail = await getCrewMobileJobDetail(ctx.auth.organizationId, input.jobId, ctx.auth.userId);
+        if (!detail) throw new TRPCError({ code: 'NOT_FOUND' });
+        return detail;
+      }),
   }),
 });
 
@@ -55,26 +83,28 @@ export const crewMobileRouter = router({
     ),
   ),
 
-  getJob: protectedProcedure.input(z.object({ jobId: z.string().min(1) })).query(({ ctx, input }) =>
-    getCrewMobileJobDetail(ctx.auth.organizationId, input.jobId, ctx.auth.userId),
-  ),
+  getJob: protectedProcedure.input(z.object({ jobId: z.string().min(1) })).query(async ({ ctx, input }) => {
+    await runCrewMutation(() =>
+      assertCrewAssignedToJob(ctx.auth.organizationId, ctx.auth.userId, input.jobId),
+    );
+    return getCrewMobileJobDetail(ctx.auth.organizationId, input.jobId, ctx.auth.userId);
+  }),
 
   clockIn: protectedProcedure.input(crewClockInSchema).mutation(({ ctx, input }) =>
-    crewClockIn(
-      ctx.auth.organizationId,
-      ctx.auth.userId,
-      ctx.auth.email,
-      {
+    runCrewMutation(() =>
+      crewClockIn(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, {
         jobId: input.jobId,
         clockIn: new Date(input.clockIn),
         latitude: input.latitude,
         longitude: input.longitude,
-      },
+      }),
     ),
   ),
 
   clockOut: protectedProcedure.input(z.object({ entryId: z.string().min(1) })).mutation(({ ctx, input }) =>
-    crewClockOut(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.entryId),
+    runCrewMutation(() =>
+      crewClockOut(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.entryId),
+    ),
   ),
 
   getActiveClockIn: protectedProcedure.query(({ ctx }) =>
@@ -82,27 +112,45 @@ export const crewMobileRouter = router({
   ),
 
   startJob: protectedProcedure.input(z.object({ jobId: z.string().min(1) })).mutation(({ ctx, input }) =>
-    crewStartJob(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.jobId),
+    runCrewMutation(() =>
+      crewStartJob(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.jobId),
+    ),
   ),
 
   completeJob: protectedProcedure.input(z.object({ jobId: z.string().min(1) })).mutation(({ ctx, input }) =>
-    crewCompleteJob(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.jobId),
+    runCrewMutation(() =>
+      crewCompleteJob(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.jobId),
+    ),
   ),
 
   uploadPhoto: protectedProcedure.input(crewPhotoUploadSchema).mutation(({ ctx, input }) =>
-    crewUploadPhoto(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input),
+    runCrewMutation(() =>
+      crewUploadPhoto(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input),
+    ),
   ),
 
   reportIssue: protectedProcedure.input(crewIssueReportSchema).mutation(({ ctx, input }) =>
-    crewReportIssue(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input),
+    runCrewMutation(() =>
+      crewReportIssue(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input),
+    ),
   ),
 
   customerNotHome: protectedProcedure.input(crewCustomerNotHomeSchema).mutation(({ ctx, input }) =>
-    crewRecordCustomerNotHome(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.jobId, input.notes),
+    runCrewMutation(() =>
+      crewRecordCustomerNotHome(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.jobId, input.notes),
+    ),
+  ),
+
+  recordMaterialUsage: protectedProcedure.input(crewMaterialUsageSchema).mutation(({ ctx, input }) =>
+    runCrewMutation(() =>
+      crewRecordMaterialUsage(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input),
+    ),
   ),
 
   submitSignature: protectedProcedure.input(crewSignatureSchema).mutation(({ ctx, input }) =>
-    crewSubmitSignature(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input),
+    runCrewMutation(() =>
+      crewSubmitSignature(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input),
+    ),
   ),
 
   updatePushToken: protectedProcedure

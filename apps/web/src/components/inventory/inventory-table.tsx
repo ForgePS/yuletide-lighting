@@ -4,18 +4,14 @@ import { useMemo, useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency } from '@/lib/inventory-utils';
 import { PillSelect } from '@/components/ui/pill-select';
-import type { InventoryCategoryGroup, InventoryItemRecord } from '@clcrm/types';
+import { computeAvailable, formatInventoryLabel, type InventoryCategoryGroup, type InventoryItemRecord } from '@clcrm/types';
 import { useToast } from '@/lib/toast';
 
 const FALLBACK_AISLES = ['1', '2', '3', '4', '5', '6'];
 const FALLBACK_RACKS = ['1', '2', '3', '4'];
 
-function formatCategoryGroup(group: InventoryCategoryGroup) {
-  return group.replace(/_/g, ' ');
-}
-
-function computeAvailable(item: InventoryItemRecord) {
-  return Math.max(0, item.quantityOnHand - item.quantityReserved - item.quantityAssigned - item.quantityDamaged - item.quantityLost);
+function formatCategoryGroup(group: InventoryCategoryGroup | null | undefined) {
+  return formatInventoryLabel(group);
 }
 
 export function InventoryEditDialog({

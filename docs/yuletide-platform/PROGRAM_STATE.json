@@ -1,0 +1,74 @@
+{
+  "program": "YULETIDE-FIREBASE-SAAS",
+  "currentAuthorizedSprint": "YL-S30",
+  "lastCompletedSprint": "YL-S30",
+  "status": "COMPLETE",
+  "automaticSprintAdvance": false,
+  "productionAuthorized": true,
+  "firebaseProductionWritesAuthorized": false,
+  "firebaseProductionDeployAuthorized": true,
+  "baselineEstablished": true,
+  "worktree": "C:\\Users\\jerem\\Projects\\christmas-light-crm-s8-go-live",
+  "branch": "feat/sneat-theme-tailwind",
+  "lastCommit": "pending-yl-s30-deploy",
+  "deployAuthorizedAt": "2026-08-21",
+  "deployAuthorizedBy": "user:commit-deploy",
+  "verification": {
+    "unit": "NOT_RUN",
+    "integrationAuth": "NOT_RUN",
+    "integrationPermissions": "NOT_RUN",
+    "firestoreRules": "NOT_RUN",
+    "lint": "NOT_RUN",
+    "typecheck": "NOT_RUN",
+    "build": "NOT_RUN"
+  },
+  "knownBlockers": [],
+  "deferredItems": [
+    "YL-BACKLOG-001 Sneat theme (full zip — token restyle already on branch)",
+    "YL-BACKLOG-004 Portal HASH_ONLY production cutover",
+    "YL-BACKLOG-005 Production cross-org probe",
+    "YL-BACKLOG-006 remainder: staging/prod live lifecycle UAT (unit smoke done in YL-S23)",
+    "YL-BACKLOG-007 remainder: path cutover + rules PermissionMatrix + Storage settingsRole",
+    "YL-BACKLOG-008 packages/db legacy",
+    "YL-BACKLOG-009 remainder: optional local Node 22 for builds (prod SSR already nodejs22 as of 2026-08-13 deploy)",
+    "YL-BACKLOG-011 Staging Auth disabled-user live E2E",
+    "Live Stripe/Connect prod ops + PORTAL_ALLOW_LIVE_PAYMENTS cutover (code ready YL-S26)",
+    "Live Twilio/Resend REAL_SMS/REAL_EMAIL cutover + campaign audience (honesty UI YL-S26)",
+    "Messages/automation/reviews PermissionResource expansion (post YL-S18/S21)",
+    "Staff UI for publicToken rotate (API ready post YL-S22)",
+    "Org-scoped CMS editors (platform Creator-only today)"
+  ],
+  "ylS27": {
+    "cmsSchedulePublish": true,
+    "cmsVersionRestoreUi": true,
+    "cmsBlockStyleEditor": true,
+    "cmsTipTapRichText": true,
+    "cmsMediaFocalLazy": true,
+    "cmsGlobalCssJs": true
+  },
+  "ylS28": {
+    "cmsSectionLibrary": true,
+    "cmsLiveDevicePreview": true,
+    "cmsNamedFooters": true,
+    "cmsMultiStepForms": true,
+    "cmsTurnstileStub": true,
+    "cmsGtmMetaTags": true,
+    "cmsRbacDocumentedCreatorOnly": true
+  },
+  "ylS29": {
+    "cmsSlideshowMapCalendar": true,
+    "cmsImageTextVideoGallery": true,
+    "cmsCropVariants": true,
+    "cmsFormConditionalsSignature": true,
+    "cmsA11yPanel": true,
+    "cmsEmailTipTap": true
+  },
+  "ylS30": {
+    "cmsInlinePreviewEdit": true,
+    "cmsBreakpointOrder": true,
+    "cmsThemesLayouts": true,
+    "cmsSiteSearch": true,
+    "cmsBrokenLinkMonitor": true,
+    "cmsLocalizationOverlays": true
+  }
+}

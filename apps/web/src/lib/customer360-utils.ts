@@ -98,6 +98,7 @@ export const COMMUNICATION_TYPE_OPTIONS: { value: CommunicationType; label: stri
 export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   lead_created: 'Lead Created',
   consultation_scheduled: 'Consultation Scheduled',
+  consultation_completed: 'Consultation Completed',
   estimate_sent: 'Estimate Sent',
   estimate_approved: 'Estimate Approved',
   design_created: 'Design Created',
@@ -114,7 +115,42 @@ export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
   sms_sent: 'SMS Sent',
   phone_call_logged: 'Phone Call Logged',
   note_added: 'Note Added',
+  proposal_accepted: 'Proposal Accepted',
+  job_created: 'Job Created',
 };
+
+export const PIPELINE_STAGE_LABELS: Record<string, string> = {
+  new_lead: 'New Lead',
+  attempting_contact: 'Attempting Contact',
+  contacted: 'Contacted',
+  qualified: 'Qualified',
+  consultation_scheduled: 'Consultation Scheduled',
+  consultation_completed: 'Consultation Completed',
+  design_in_progress: 'Design in Progress',
+  needs_estimate: 'Needs Estimate',
+  mockup_needed: 'Mockup Needed',
+  proposal_draft: 'Proposal Draft',
+  proposal_sent: 'Proposal Sent',
+  proposal_viewed: 'Proposal Viewed',
+  follow_up_required: 'Follow-Up Required',
+  approved: 'Won',
+  deposit_paid: 'Deposit Paid',
+  scheduled: 'Scheduled',
+  installed: 'Installed',
+  balance_due: 'Balance Due',
+  paid: 'Paid',
+  removal_scheduled: 'Removal Scheduled',
+  removed: 'Removed',
+  stored: 'Stored',
+  rebook_next_season: 'Rebook Next Season',
+  deferred: 'Deferred',
+  lost: 'Lost',
+};
+
+export function labelPipelineStage(stage?: string | null) {
+  if (!stage) return '—';
+  return PIPELINE_STAGE_LABELS[stage] ?? stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export const DESIGN_STATUS_OPTIONS: { value: DesignStatus; label: string }[] = [
   { value: 'draft', label: 'Draft' },

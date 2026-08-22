@@ -10,8 +10,8 @@ import type {
   ProposalRecord,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
-import { colCreate, colGet, colList, colUpdate } from './firestore';
-import { createProperty, createCustomer } from './firestore';
+import { colCreate, colGet, colList, colUpdate, createCustomer } from './firestore';
+import { createOrgProperty } from './record-paths';
 import { createProposal360, getProposal360 } from './proposals';
 import { mapTimestampsFromData } from './firestore-utils';
 
@@ -265,7 +265,7 @@ export async function addCommercialLocation(
   let propertyId = input.propertyId ?? null;
   if (!propertyId) {
     const customerId = await ensureCustomerForAccount(orgId, account);
-    const property = await createProperty(orgId, {
+    const property = await createOrgProperty(orgId, {
       customerId,
       label: input.name,
       addressLine1: input.addressLine1,

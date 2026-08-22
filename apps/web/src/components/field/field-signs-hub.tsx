@@ -1,45 +1,40 @@
 'use client';
 
 import Link from 'next/link';
-import { Megaphone, MapPin, PlusCircle } from 'lucide-react';
+import { MapPin, Package, AlertTriangle } from 'lucide-react';
 
+/** Mobile-oriented hub that links to canonical Sign Tracker routes. */
 export function FieldSignsHub() {
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-lg space-y-4 p-4">
       <div>
-        <h1 className="text-xl font-bold">Marketing signs</h1>
-        <p className="text-sm text-muted-foreground">Track yard signs and pickup routes</p>
+        <h1 className="text-xl font-bold text-slate-900">Sign Tracker</h1>
+        <p className="text-sm text-slate-500">Field shortcuts for yard sign placement and pickup.</p>
       </div>
-
-      <div className="grid gap-3">
-        <Link href="/app/field/signs/pickup" className="card flex items-center gap-4 p-4 active:scale-[0.99]">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <MapPin className="h-6 w-6" />
-          </div>
+      <div className="space-y-3">
+        <Link href="/app/marketing/sign-tracker/pickup" className="card flex items-center gap-4 p-4 active:scale-[0.99]">
+          <Package className="h-6 w-6 text-teal-700" />
           <div>
             <p className="font-semibold">Sign pickup</p>
-            <p className="text-sm text-muted-foreground">GPS route — closest signs first</p>
+            <p className="text-xs text-muted-foreground">Recover signs by proximity</p>
           </div>
         </Link>
-
-        <Link href="/app/field/signs/add" className="card flex items-center gap-4 p-4 active:scale-[0.99]">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600">
-            <PlusCircle className="h-6 w-6" />
-          </div>
+        <Link href="/app/marketing/sign-tracker/add" className="card flex items-center gap-4 p-4 active:scale-[0.99]">
+          <MapPin className="h-6 w-6 text-teal-700" />
           <div>
             <p className="font-semibold">Add sign location</p>
-            <p className="text-sm text-muted-foreground">GPS + photo at install</p>
+            <p className="text-xs text-muted-foreground">Place a new yard sign</p>
           </div>
         </Link>
-
-        <Link href="/app/field/signs/report" className="card flex items-center gap-4 p-4 active:scale-[0.99]">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600">
-            <Megaphone className="h-6 w-6" />
-          </div>
+        <Link href="/app/marketing/sign-tracker/report" className="card flex items-center gap-4 p-4 active:scale-[0.99]">
+          <AlertTriangle className="h-6 w-6 text-teal-700" />
           <div>
-            <p className="font-semibold">Report sign issue</p>
-            <p className="text-sm text-muted-foreground">Damaged, missing, or stolen signs</p>
+            <p className="font-semibold">Campaign report</p>
+            <p className="text-xs text-muted-foreground">Recovery rates and status breakdown</p>
           </div>
+        </Link>
+        <Link href="/app/marketing/sign-tracker" className="btn-secondary block w-full py-3 text-center">
+          Open Sign Tracker dashboard
         </Link>
       </div>
     </div>

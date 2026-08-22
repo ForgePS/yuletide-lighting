@@ -1,0 +1,2 @@
+import { NumberingPage } from '@/components/settings';
+export default function Page() { return <NumberingPage />; }

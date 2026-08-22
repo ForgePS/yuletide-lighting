@@ -17,7 +17,14 @@ import type {
   Warehouse,
   WarehouseLocation,
 } from '@clcrm/types';
-import { computeAvailable, computeItemValue, DEFAULT_CATEGORY_TREE } from '@clcrm/types';
+import {
+  applyAssignmentTransferUpdate,
+  applyDamageQuantityUpdate,
+  computeAvailable,
+  computeItemValue,
+  DEFAULT_CATEGORY_TREE,
+  hasAvailableQuantity,
+} from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
 import { colCreate, colGet, colList, colUpdate } from './firestore';
@@ -316,36 +323,64 @@ export async function listPurchaseOrders(orgId: string) {
 }
 
 export async function updatePurchaseOrderStatus(orgId: string, poId: string, status: PurchaseOrder['status'], userId?: string | null) {
-  await colUpdate(orgId, 'purchaseOrders', poId, { status, updatedBy: userId });
+  const po = await colGet<PurchaseOrder>(orgId, 'purchaseOrders', poId);
+  if (!po) throw new Error('Purchase order not found');
+
+  // YL-S16: idempotent receive — never double-add stock if already received.
   if (status === 'received') {
-    const po = await colGet<PurchaseOrder>(orgId, 'purchaseOrders', poId);
-    if (po) {
-      for (const line of po.lineItems) {
-        if (line.inventoryItemId) {
-          const item = await getInventoryItem360(orgId, line.inventoryItemId);
-          if (item) {
-            await updateInventoryItem360(orgId, line.inventoryItemId, {
-              quantityOnHand: item.quantityOnHand + line.quantityOrdered,
-            }, userId);
-          }
+    if (po.status === 'received') {
+      return po;
+    }
+    const updatedLines = [...po.lineItems];
+    for (let i = 0; i < updatedLines.length; i++) {
+      const line = updatedLines[i]!;
+      const already = Number(line.quantityReceived ?? 0);
+      const toReceive = Math.max(0, line.quantityOrdered - already);
+      if (toReceive > 0 && line.inventoryItemId) {
+        const item = await getInventoryItem360(orgId, line.inventoryItemId);
+        if (item) {
+          await updateInventoryItem360(orgId, line.inventoryItemId, {
+            quantityOnHand: item.quantityOnHand + toReceive,
+          }, userId);
         }
       }
+      updatedLines[i] = { ...line, quantityReceived: line.quantityOrdered };
     }
+    await colUpdate(orgId, 'purchaseOrders', poId, {
+      status,
+      lineItems: updatedLines,
+      updatedBy: userId,
+    });
+    return colGet<PurchaseOrder>(orgId, 'purchaseOrders', poId);
   }
+
+  await colUpdate(orgId, 'purchaseOrders', poId, { status, updatedBy: userId });
   return colGet<PurchaseOrder>(orgId, 'purchaseOrders', poId);
 }
 
 export async function createTransfer(orgId: string, input: Omit<InventoryTransfer, 'id' | 'organizationId' | 'createdAt' | 'updatedAt' | 'transferredAt' | 'createdBy' | 'updatedBy'>, userId?: string | null, userName?: string | null) {
   const item = await getInventoryItem360(orgId, input.itemId);
   if (!item) throw new Error('Item not found');
-  const available = computeAvailable(item);
-  if (available < input.quantity) throw new Error('Insufficient available quantity');
+  if (!hasAvailableQuantity(item, input.quantity)) throw new Error('Insufficient available quantity');
 
-  await updateInventoryItem360(orgId, input.itemId, {
-    quantityOnHand: item.quantityOnHand - input.quantity,
-    ...(input.toType === 'truck' ? { truckId: input.toLocation, quantityAssigned: item.quantityAssigned + input.quantity } : {}),
-    ...(input.toType === 'customer' ? { customerId: input.toLocation, isCustomerOwned: true, quantityAssigned: item.quantityAssigned + input.quantity } : {}),
-  }, userId);
+  const patch: Partial<InventoryItemRecord> = {};
+  if (input.toType === 'truck') {
+    Object.assign(patch, applyAssignmentTransferUpdate(item, input.quantity), {
+      truckId: input.toLocation,
+    });
+  } else if (input.toType === 'customer') {
+    Object.assign(patch, applyAssignmentTransferUpdate(item, input.quantity), {
+      customerId: input.toLocation,
+      isCustomerOwned: true,
+    });
+  } else if (input.toType === 'warehouse') {
+    patch.locationPath = input.toLocation;
+    patch.truckId = null;
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await updateInventoryItem360(orgId, input.itemId, patch, userId);
+  }
 
   return colCreate(orgId, 'inventoryTransfers', {
     ...input,
@@ -442,11 +477,12 @@ export async function listTrucks(orgId: string) {
 export async function assignToCustomer(orgId: string, input: { customerId: string; itemId: string; quantity: number; storageBin?: string | null; storageLocation?: string | null; storageFeeCents?: number | null; returnDate?: Date | null }, customerName?: string | null, userId?: string | null) {
   const item = await getInventoryItem360(orgId, input.itemId);
   if (!item) throw new Error('Item not found');
+  if (!hasAvailableQuantity(item, input.quantity)) throw new Error('Insufficient available quantity');
 
   await updateInventoryItem360(orgId, input.itemId, {
     customerId: input.customerId,
     isCustomerOwned: true,
-    quantityAssigned: item.quantityAssigned + input.quantity,
+    ...applyAssignmentTransferUpdate(item, input.quantity),
     storageFeeCents: input.storageFeeCents ?? null,
     storageReturnDate: input.returnDate ?? null,
     locationBin: input.storageBin ?? item.locationBin,
@@ -490,7 +526,8 @@ export async function allocateJobMaterial(orgId: string, input: { jobId: string;
     jobId: input.jobId,
     inventoryItemId: input.itemId,
     quantity: input.quantity,
-    status: 'allocated',
+    // YL-S16: align with consumeJobMaterials (status === 'reserved').
+    status: 'reserved',
     organizationId: orgId,
     createdAt: ts(),
     updatedAt: ts(),
@@ -626,13 +663,26 @@ export async function processBarcodeAction(orgId: string, input: { code: string;
       await updateInventoryItem360(orgId, item.id, { quantityOnHand: item.quantityOnHand + input.quantity }, userId);
       break;
     case 'check_out':
-      await updateInventoryItem360(orgId, item.id, { quantityOnHand: Math.max(0, item.quantityOnHand - input.quantity) }, userId);
+      if (!hasAvailableQuantity(item, input.quantity)) {
+        throw new Error('Insufficient available quantity');
+      }
+      await updateInventoryItem360(orgId, item.id, {
+        quantityOnHand: Math.max(0, item.quantityOnHand - input.quantity),
+      }, userId);
       break;
     case 'assign_customer':
       if (input.targetId) await assignToCustomer(orgId, { customerId: input.targetId, itemId: item.id, quantity: input.quantity }, null, userId);
       break;
     case 'assign_truck':
-      if (input.targetId) await updateInventoryItem360(orgId, item.id, { truckId: input.targetId, quantityAssigned: item.quantityAssigned + input.quantity }, userId);
+      if (input.targetId) {
+        if (!hasAvailableQuantity(item, input.quantity)) {
+          throw new Error('Insufficient available quantity');
+        }
+        await updateInventoryItem360(orgId, item.id, {
+          truckId: input.targetId,
+          ...applyAssignmentTransferUpdate(item, input.quantity),
+        }, userId);
+      }
       break;
     default:
       break;
@@ -695,15 +745,21 @@ export async function aiInventoryQuery(orgId: string, question: string): Promise
 export async function markItemDamaged(orgId: string, itemId: string, quantity: number, status: 'repair' | 'replace' | 'dispose', userId?: string | null) {
   const item = await getInventoryItem360(orgId, itemId);
   if (!item) throw new Error('Not found');
+  if (!hasAvailableQuantity(item, quantity)) throw new Error('Insufficient available quantity');
   return updateInventoryItem360(orgId, itemId, {
-    quantityDamaged: item.quantityDamaged + quantity,
-    quantityOnHand: Math.max(0, item.quantityOnHand - quantity),
+    ...applyDamageQuantityUpdate(item, quantity),
     damageStatus: status,
   }, userId);
 }
 
-export async function listLowStockInventory360(orgId: string) {
-  const items = await listInventoryItems360(orgId);
+export async function listLowStockInventory360(
+  orgId: string,
+  opts?: { limit?: number },
+) {
+  const rows = await colList<Record<string, unknown>>(orgId, 'inventoryItems', 'createdAt', {
+    limit: opts?.limit,
+  });
+  const items = rows.map((i) => normalizeItem({ ...i, organizationId: orgId }));
   return items
     .map((item) => ({
       id: item.id,

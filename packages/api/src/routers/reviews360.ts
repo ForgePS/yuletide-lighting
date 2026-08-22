@@ -17,29 +17,36 @@ import {
   submitReviewFeedbackSchema,
   createReferralSchema,
   redeemReferralSchema,
+  publicAccessTokenSchema,
 } from '@clcrm/validators';
-import { router, officeProcedure, publicProcedure } from '../trpc';
+import { router, permissionProcedure, publicProcedure } from '../trpc';
 
 export const reviews360Router = router({
-  dashboard: officeProcedure.query(({ ctx }) => getReviewsDashboard(ctx.auth.organizationId)),
+  dashboard: permissionProcedure('customers', 'view').query(({ ctx }) =>
+    getReviewsDashboard(ctx.auth.organizationId),
+  ),
 
   requests: router({
-    list: officeProcedure.query(({ ctx }) => listReviewRequests360(ctx.auth.organizationId)),
-    send: officeProcedure.input(sendReviewRequestSchema).mutation(async ({ ctx, input }) => {
-      const result = await sendReviewRequest360(
-        ctx.auth.organizationId,
-        {
-          customerId: input.customerId,
-          jobId: input.jobId,
-          channel: input.channel,
-          platform: input.platform,
-        },
-        ctx.auth.userId,
-      );
-      if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Customer not found' });
-      return result;
-    }),
-    triggerForJob: officeProcedure
+    list: permissionProcedure('customers', 'view').query(({ ctx }) =>
+      listReviewRequests360(ctx.auth.organizationId),
+    ),
+    send: permissionProcedure('customers', 'edit')
+      .input(sendReviewRequestSchema)
+      .mutation(async ({ ctx, input }) => {
+        const result = await sendReviewRequest360(
+          ctx.auth.organizationId,
+          {
+            customerId: input.customerId,
+            jobId: input.jobId,
+            channel: input.channel,
+            platform: input.platform,
+          },
+          ctx.auth.userId,
+        );
+        if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Customer not found' });
+        return result;
+      }),
+    triggerForJob: permissionProcedure('customers', 'edit')
       .input(z.object({ jobId: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
         const result = await triggerReviewRequestForJob(
@@ -53,31 +60,35 @@ export const reviews360Router = router({
   }),
 
   referrals: router({
-    list: officeProcedure
+    list: permissionProcedure('customers', 'view')
       .input(z.object({ customerId: z.string().optional() }).optional())
       .query(({ ctx, input }) => listReferrals(ctx.auth.organizationId, input?.customerId)),
-    create: officeProcedure.input(createReferralSchema).mutation(async ({ ctx, input }) => {
-      const result = await createReferralCode(
-        ctx.auth.organizationId,
-        input.customerId,
-        input.rewardAmountCents,
-        input.notes ?? null,
-        ctx.auth.userId,
-      );
-      if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Customer not found' });
-      return result;
-    }),
-    redeem: officeProcedure.input(redeemReferralSchema).mutation(async ({ ctx, input }) => {
-      const result = await redeemReferralCode(
-        ctx.auth.organizationId,
-        input.code,
-        input.referredCustomerId,
-        ctx.auth.userId,
-      );
-      if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Referral code not found or already used' });
-      return result;
-    }),
-    markRewarded: officeProcedure
+    create: permissionProcedure('customers', 'create')
+      .input(createReferralSchema)
+      .mutation(async ({ ctx, input }) => {
+        const result = await createReferralCode(
+          ctx.auth.organizationId,
+          input.customerId,
+          input.rewardAmountCents,
+          input.notes ?? null,
+          ctx.auth.userId,
+        );
+        if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Customer not found' });
+        return result;
+      }),
+    redeem: permissionProcedure('customers', 'edit')
+      .input(redeemReferralSchema)
+      .mutation(async ({ ctx, input }) => {
+        const result = await redeemReferralCode(
+          ctx.auth.organizationId,
+          input.code,
+          input.referredCustomerId,
+          ctx.auth.userId,
+        );
+        if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Referral code not found or already used' });
+        return result;
+      }),
+    markRewarded: permissionProcedure('customers', 'edit')
       .input(z.object({ referralId: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
         const result = await markReferralRewarded(
@@ -91,7 +102,7 @@ export const reviews360Router = router({
   }),
 
   public: router({
-    getByToken: publicProcedure.input(z.object({ token: z.string().min(8) })).query(async ({ input }) => {
+    getByToken: publicProcedure.input(z.object({ token: publicAccessTokenSchema })).query(async ({ input }) => {
       const ctx = await getPublicReviewByToken(input.token);
       if (!ctx) throw new TRPCError({ code: 'NOT_FOUND', message: 'Review link not found' });
       return ctx;

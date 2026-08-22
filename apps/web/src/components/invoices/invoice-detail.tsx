@@ -8,6 +8,7 @@ import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency, statusColor } from '@/lib/invoice-utils';
 import { formatDate } from '@clcrm/ui';
+import { formatInvoiceStatusLabel } from '@clcrm/types';
 import { LoadingState, ErrorState } from '@/components/ui/states';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { InvoiceActivityTimeline } from './invoice-pipeline';
@@ -83,7 +84,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold">{data.invoiceNumber}</h1>
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusColor(data.status)}`}>
-                {data.status.replace(/_/g, ' ')}
+                {formatInvoiceStatusLabel(data.status)}
               </span>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -181,7 +182,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                 <div key={p.id} className="flex items-center justify-between border-b border-border pb-2 text-sm last:border-0">
                   <div>
                     <p className="font-medium">{formatCurrency(p.amountCents)}</p>
-                    <p className="text-xs capitalize text-muted-foreground">{p.paymentMethod.replace(/_/g, ' ')} · {p.paymentType}</p>
+                    <p className="text-xs capitalize text-muted-foreground">{formatInvoiceStatusLabel(p.paymentMethod)} · {p.paymentType}</p>
                   </div>
                   <span className="text-muted-foreground">{formatDate(p.paidAt)}</span>
                 </div>

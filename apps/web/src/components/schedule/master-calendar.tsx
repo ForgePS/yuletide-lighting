@@ -143,7 +143,7 @@ export function CalendarEventModal({ eventId }: { eventId?: string }) {
         <h3 className="font-semibold">{data.title}</h3>
         <WeatherRiskBadge risk={data.weatherRisk} />
       </div>
-      <p className="capitalize text-muted-foreground">{categoryLabel(data.category)} · {data.dispatchStatus.replace(/_/g, ' ')}</p>
+      <p className="capitalize text-muted-foreground">{categoryLabel(data.category)} · {categoryLabel(data.dispatchStatus)}</p>
       {data.customerName && <p className="mt-2">{data.customerName}</p>}
       {data.propertyAddress && <p className="text-muted-foreground">{data.propertyAddress}</p>}
       {data.crewName && <p className="text-muted-foreground">Crew: {data.crewName}</p>}

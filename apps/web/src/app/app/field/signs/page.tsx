@@ -1,5 +1,5 @@
-import { FieldSignsHub } from "@/components/field";
+import { redirect } from 'next/navigation';
 
-export default function FieldSignsPage() {
-  return <FieldSignsHub />;
+export default function FieldSignsLegacyRedirect() {
+  redirect('/app/marketing/sign-tracker');
 }

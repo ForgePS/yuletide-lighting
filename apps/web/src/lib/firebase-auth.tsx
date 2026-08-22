@@ -10,8 +10,8 @@ import {
   type User,
   updateProfile,
 } from 'firebase/auth';
-import { getClientAuth } from '@/lib/firebase';
-import { getCachedAuthToken, setCachedAuthToken, writeAuthCookie, readAuthCookie } from '@/lib/auth-token';
+import { auth } from '@/lib/firebase';
+import { getCachedAuthToken, setCachedAuthToken, writeAuthCookie, clearServerSession, establishServerSession } from '@/lib/auth-token';
 
 type AuthState = {
   user: User | null;
@@ -29,6 +29,8 @@ async function syncSession(user: User, forceRefresh = false) {
   const token = await user.getIdToken(forceRefresh);
   setCachedAuthToken(token);
   writeAuthCookie(token);
+  // Don't block sign-in on the session API — sign-in page establishes it with a timeout.
+  void establishServerSession(token).catch(() => {});
   return token;
 }
 
@@ -38,54 +40,38 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const cached = getCachedAuthToken() ?? readAuthCookie();
-    if (cached) {
-      setCachedAuthToken(cached);
-      setIdToken(cached);
+    if (!auth) {
+      setLoading(false);
+      return;
     }
-  }, []);
 
-  useEffect(() => {
-    let unsub: (() => void) | undefined;
-
-    try {
-      const auth = getClientAuth();
-      if (!auth) {
-        setLoading(false);
-        return;
-      }
-
-      unsub = onIdTokenChanged(auth, async (nextUser) => {
-        setUser(nextUser);
-        try {
-          if (nextUser) {
-            const token = await nextUser.getIdToken(!getCachedAuthToken());
-            setIdToken(token);
-            setCachedAuthToken(token);
-            writeAuthCookie(token);
-          } else {
-            setIdToken(null);
-            setCachedAuthToken(null);
-            writeAuthCookie(null);
-          }
-        } catch {
+    const unsub = onIdTokenChanged(auth, async (nextUser) => {
+      try {
+        if (nextUser) {
+          const token = await nextUser.getIdToken(!getCachedAuthToken());
+          setCachedAuthToken(token);
+          writeAuthCookie(token);
+          setIdToken(token);
+          setUser(nextUser);
+        } else {
           setIdToken(null);
           setCachedAuthToken(null);
           writeAuthCookie(null);
-        } finally {
-          setLoading(false);
+          setUser(null);
         }
-      });
-    } catch (err) {
-      console.error('[FirebaseAuthProvider] failed to initialize Firebase Auth', err);
-      setLoading(false);
-    }
-
-    return () => unsub?.();
+      } catch {
+        setIdToken(null);
+        setCachedAuthToken(null);
+        writeAuthCookie(null);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    });
+    return unsub;
   }, []);
 
   async function signIn(email: string, password: string) {
-    const auth = getClientAuth();
     if (!auth) throw new Error('Auth is not available');
     const credential = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
     const token = await syncSession(credential.user, true);
@@ -95,7 +81,6 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signUp(email: string, password: string, companyName?: string) {
-    const auth = getClientAuth();
     if (!auth) throw new Error('Auth is not available');
     const credential = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
     if (companyName?.trim()) {
@@ -108,16 +93,13 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function resetPassword(email: string) {
-    const auth = getClientAuth();
     if (!auth) throw new Error('Auth is not available');
     await sendPasswordResetEmail(auth, email.trim().toLowerCase());
   }
 
   async function signOut() {
-    const auth = getClientAuth();
     if (!auth) return;
-    setCachedAuthToken(null);
-    writeAuthCookie(null);
+    await clearServerSession();
     await firebaseSignOut(auth);
   }
 

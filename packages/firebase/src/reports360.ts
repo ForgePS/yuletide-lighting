@@ -18,7 +18,12 @@ import type {
 } from '@clcrm/types';
 import {
   aiAnalyticsQuery,
+  buildSalesFunnelStages,
   DEFAULT_SCHEDULED_REPORTS,
+  inReportYear,
+  invoicePaidDate,
+  isSeasonMonth,
+  isSelectedYearCurrent,
   ROLE_DASHBOARD_WIDGETS,
   SEASONAL_PHASES,
 } from '@clcrm/types';
@@ -32,6 +37,7 @@ import { getScheduleDashboard, getScheduleAnalytics, ensureCrews, listCalendarEv
 import { listMockups360 } from './mockups360';
 import { getStorageDashboard } from './storage360';
 import { listServiceIssues360 } from './service-issues';
+import { aggregateJobCostings } from './job-costing';
 
 function ts() {
   return Timestamp.now();
@@ -58,33 +64,15 @@ function inDateRange(date: Date | null | undefined, filters: ReportFilters) {
 }
 
 function inReportPeriod(date: Date | null | undefined, filters: ReportFilters) {
-  if (!inYear(date, filters.year)) return false;
+  if (!inReportYear(date, filters.year)) return false;
   return inDateRange(date, filters);
-}
-
-function invoicePaidDate(inv: { paidAt?: Date | null; updatedAt?: Date; createdAt?: Date }) {
-  return inv.paidAt ?? inv.updatedAt ?? inv.createdAt ?? null;
-}
-
-function inYear(date: Date | null | undefined, year?: number | null) {
-  if (year == null || year === undefined) return true;
-  if (!date) return false;
-  return date.getFullYear() === year;
-}
-
-function yearStart(year: number) {
-  return new Date(year, 0, 1);
-}
-
-function yearEnd(year: number) {
-  return new Date(year, 11, 31, 23, 59, 59, 999);
 }
 
 function filterPaidInvoices<T extends { amountPaidCents: number; paidAt?: Date | null; updatedAt?: Date; createdAt?: Date }>(
   invoices: T[],
   year?: number | null,
 ) {
-  return invoices.filter((i) => i.amountPaidCents > 0 && inYear(invoicePaidDate(i), year));
+  return invoices.filter((i) => i.amountPaidCents > 0 && inReportYear(invoicePaidDate(i), year));
 }
 
 function monthlyRevenueTrend(invoices: ReturnType<typeof filterPaidInvoices>, year?: number | null) {
@@ -105,17 +93,20 @@ function monthlyRevenueTrend(invoices: ReturnType<typeof filterPaidInvoices>, ye
 }
 
 function seasonMonthsRevenue(invoices: ReturnType<typeof filterPaidInvoices>, year: number) {
-  const seasonMonths = [7, 8, 9, 10, 11]; // Aug–Dec
   return invoices
     .filter((i) => {
       const d = invoicePaidDate(i);
-      return d && d.getFullYear() === year && seasonMonths.includes(d.getMonth());
+      return d && d.getFullYear() === year && isSeasonMonth(d.getMonth());
     })
     .reduce((s, i) => s + i.amountPaidCents, 0);
 }
 
 function monthStart(d = new Date()) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function yearStart(year: number) {
+  return new Date(year, 0, 1);
 }
 
 function seasonStart() {
@@ -167,20 +158,23 @@ function commandCenterSalesSnapshot(
   filters: ReportFilters,
 ): Pick<SalesAnalytics, 'proposalsSent' | 'conversionRatePercent' | 'funnel'> {
   const { year = null } = filters;
-  const scoped = year != null ? proposals.filter((p) => inYear(p.createdAt, year)) : proposals;
+  const scoped = year != null ? proposals.filter((p) => inReportYear(p.createdAt, year)) : proposals;
   const approved = scoped.filter((p) => p.status === 'accepted' || p.status === 'approved');
   const sent = scoped.filter((p) => ['sent', 'viewed', 'accepted', 'approved', 'declined'].includes(p.status));
   return {
     proposalsSent: sent.length,
     conversionRatePercent: sent.length ? Math.round((approved.length / sent.length) * 100) : 0,
-    funnel: [
-      { stage: 'Lead', count: scoped.length + 10, valueCents: 0 },
-      { stage: 'Consultation', count: scoped.length, valueCents: scoped.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) },
-      { stage: 'Proposal', count: sent.length, valueCents: sent.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) },
-      { stage: 'Approval', count: approved.length, valueCents: approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) },
-      { stage: 'Scheduled', count: approved.length, valueCents: approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) },
-      { stage: 'Completed', count: Math.floor(approved.length * 0.8), valueCents: Math.round(approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) * 0.8) },
-    ],
+    funnel: buildSalesFunnelStages({
+      leadCount: scoped.length,
+      proposalCount: scoped.length,
+      sentCount: sent.length,
+      approvedCount: approved.length,
+      completedCount: approved.length,
+      proposalValueCents: scoped.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
+      sentValueCents: sent.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
+      approvedValueCents: approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
+      completedValueCents: approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
+    }),
   };
 }
 
@@ -191,7 +185,7 @@ function commandCenterFinancialSnapshot(
   filters: ReportFilters,
 ) {
   const scopedProposals = filters.year != null
-    ? proposals.filter((p) => inYear(p.createdAt, filters.year))
+    ? proposals.filter((p) => inReportYear(p.createdAt, filters.year))
     : proposals;
   const approvedProposals = scopedProposals.filter((p) => p.status === 'accepted' || p.status === 'approved');
   const bookedRevenueCents = approvedProposals.reduce((s, p) => s + (p.subtotalCents ?? 0), 0);
@@ -239,15 +233,25 @@ export async function getSeasonalCommandCenter(orgId: string, filters: ReportFil
       createdAt?: Date;
       nextActionDue?: Date;
       nextAction?: string | null;
-    }>(orgId, 'customers'),
-    colList<{ status: string; subtotalCents?: number; viewCount?: number; createdAt?: Date }>(orgId, 'proposals'),
-    colList<{ stage: string; subtotalCents?: number }>(orgId, 'jobs'),
-    listCalendarEvents(orgId, undefined, undefined, { readOnly: true }),
-    colList<{ balanceDueCents?: number }>(orgId, 'invoices'),
-    listLowStockInventory360(orgId),
-    listServiceIssues360(orgId, { pageSize: 25 }),
+    }>(orgId, 'customers', 'createdAt', { limit: 500 }),
+    colList<{ status: string; subtotalCents?: number; viewCount?: number; createdAt?: Date }>(
+      orgId,
+      'proposals',
+      'createdAt',
+      { limit: 500 },
+    ),
+    colList<{ stage: string; subtotalCents?: number }>(orgId, 'jobs', 'createdAt', { limit: 500 }),
+    listCalendarEvents(orgId, weekStartDate, weekEndDate, { readOnly: true }),
+    colList<{ balanceDueCents?: number }>(orgId, 'invoices', 'createdAt', { limit: 300 }),
+    listLowStockInventory360(orgId, { limit: 200 }),
+    listServiceIssues360(orgId, { pageSize: 25, maxScan: 150 }),
     listCrewProfiles(orgId),
-    colList<{ customerId?: string; customerName?: string; status: string; projectedValueCents?: number }>(orgId, 'rebookingRecords'),
+    colList<{ customerId?: string; customerName?: string; status: string; projectedValueCents?: number }>(
+      orgId,
+      'rebookingRecords',
+      'createdAt',
+      { limit: 300 },
+    ),
   ]);
 
   const sales = commandCenterSalesSnapshot(proposals, filters);
@@ -329,7 +333,7 @@ export async function getExecutiveDashboard(orgId: string, filters: ReportFilter
   const [customers, proposals, jobs, invoiceKpis, scheduleKpis] = await Promise.all([
     colList<{ id: string; createdAt?: Date }>(orgId, 'customers'),
     colList<{ status: string; subtotalCents?: number; acceptedAt?: Date; createdAt?: Date; approvedAt?: Date }>(orgId, 'proposals'),
-    colList<{ stage: string; subtotalCents?: number; completionDate?: Date; createdAt?: Date }>(orgId, 'jobs'),
+    colList<{ id: string; stage: string; subtotalCents?: number; completionDate?: Date; createdAt?: Date }>(orgId, 'jobs'),
     getInvoiceDashboard(orgId, filters),
     getScheduleDashboard(orgId),
   ]);
@@ -348,19 +352,28 @@ export async function getExecutiveDashboard(orgId: string, filters: ReportFilter
     .reduce((s, i) => s + i.amountPaidCents, 0);
   const revenueThisSeason = year != null
     ? seasonMonthsRevenue(paidInvoices, year)
-    : paidInvoices.filter((i) => i.paidAt && i.paidAt >= seasonStart()).reduce((s, i) => s + i.amountPaidCents, 0);
+    : paidInvoices
+        .filter((i) => {
+          const d = invoicePaidDate(i);
+          return d != null && d >= seasonStart();
+        })
+        .reduce((s, i) => s + i.amountPaidCents, 0);
 
   const scopedProposals = year != null
-    ? proposals.filter((p) => inYear(p.createdAt, year))
+    ? proposals.filter((p) => inReportYear(p.createdAt, year))
     : proposals;
   const accepted = scopedProposals.filter((p) => p.status === 'accepted' || p.status === 'approved');
-  const grossProfit = Math.round(totalRevenue * 0.55);
   const scopedJobs = year != null
-    ? jobs.filter((j) => inYear(j.completionDate ?? j.createdAt, year))
+    ? jobs.filter((j) => inReportYear(j.completionDate ?? j.createdAt, year))
     : jobs;
+  const jobCosting = await aggregateJobCostings(orgId, { jobIds: scopedJobs.map((j) => j.id) });
+  const grossProfit =
+    jobCosting.revenueCents > 0
+      ? jobCosting.grossProfitCents
+      : totalRevenue - jobCosting.laborCostCents - jobCosting.materialCostCents;
   const completedJobs = scopedJobs.filter((j) => j.stage === 'complete' || j.stage === 'installed').length;
   const scopedCustomers = year != null
-    ? customers.filter((c) => inYear(c.createdAt, year))
+    ? customers.filter((c) => inReportYear(c.createdAt, year))
     : customers;
 
   return {
@@ -368,7 +381,7 @@ export async function getExecutiveDashboard(orgId: string, filters: ReportFilter
     revenueThisMonthCents: revenueThisMonth,
     revenueThisSeasonCents: revenueThisSeason,
     grossProfitCents: grossProfit,
-    grossMarginPercent: totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 100) : 0,
+    grossMarginPercent: totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 100) : jobCosting.marginPercent,
     activeCustomers: year != null ? scopedCustomers.length : customers.length,
     jobsScheduled: scheduleKpis.jobsScheduledToday + scopedJobs.filter((j) => j.stage === 'scheduled').length,
     jobsCompleted: completedJobs,
@@ -409,13 +422,18 @@ export async function getRevenueAnalytics(orgId: string, filters: ReportFilters 
   const seasonStartDate = year != null ? new Date(year, 7, 1) : seasonStart();
 
   const scopedProposals = year != null
-    ? proposals.filter((p) => (p.status === 'accepted' || p.status === 'approved') && inYear(p.acceptedAt ?? p.approvedAt ?? p.createdAt, year))
+    ? proposals.filter((p) => (p.status === 'accepted' || p.status === 'approved') && inReportYear(p.acceptedAt ?? p.approvedAt ?? p.createdAt, year))
     : proposals.filter((p) => p.status === 'accepted' || p.status === 'approved');
   const totalPaid = paidInvoices.reduce((s, i) => s + i.amountPaidCents, 0);
+  const currentYearSelected = isSelectedYearCurrent(year);
 
   return {
-    dailyRevenueCents: year != null ? 0 : paid(dayAgo).reduce((s, i) => s + i.amountPaidCents, 0),
-    weeklyRevenueCents: year != null ? 0 : paid(weekAgo).reduce((s, i) => s + i.amountPaidCents, 0),
+    dailyRevenueCents: currentYearSelected
+      ? paid(dayAgo).reduce((s, i) => s + i.amountPaidCents, 0)
+      : 0,
+    weeklyRevenueCents: currentYearSelected
+      ? paid(weekAgo).reduce((s, i) => s + i.amountPaidCents, 0)
+      : 0,
     monthlyRevenueCents: paid(year != null ? monthStartDate : monthStartDate, year != null ? new Date(year, now.getMonth() + 1, 0, 23, 59, 59, 999) : now).reduce((s, i) => s + i.amountPaidCents, 0),
     seasonalRevenueCents: year != null
       ? seasonMonthsRevenue(paidInvoices, year)
@@ -438,7 +456,7 @@ export async function getRevenueAnalytics(orgId: string, filters: ReportFilters 
         if (e.crewId !== c.id) return false;
         if (year == null) return true;
         const d = e.startAt ?? e.createdAt;
-        return inYear(d, year);
+        return inReportYear(d, year);
       });
       return {
         crewName: c.name,
@@ -469,7 +487,7 @@ function aggregateByField<T extends Record<string, unknown>>(items: T[], field: 
 export async function getSalesAnalytics(orgId: string, filters: ReportFilters = {}): Promise<SalesAnalytics> {
   const { year = null } = filters;
   const proposals = await colList<{ status: string; subtotalCents?: number; viewCount?: number; createdAt?: Date; acceptedAt?: Date; approvedAt?: Date }>(orgId, 'proposals');
-  const scoped = year != null ? proposals.filter((p) => inYear(p.createdAt, year)) : proposals;
+  const scoped = year != null ? proposals.filter((p) => inReportYear(p.createdAt, year)) : proposals;
   const approved = scoped.filter((p) => p.status === 'accepted' || p.status === 'approved');
   const rejected = scoped.filter((p) => p.status === 'declined' || p.status === 'rejected');
   const sent = scoped.filter((p) => ['sent', 'viewed', 'accepted', 'approved', 'declined'].includes(p.status));
@@ -489,14 +507,17 @@ export async function getSalesAnalytics(orgId: string, filters: ReportFilters = 
     averageProposalValueCents: scoped.length ? Math.round(scoped.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) / scoped.length) : 0,
     revenueWonCents: approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
     revenueLostCents: rejected.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
-    funnel: [
-      { stage: 'Lead', count: scoped.length + 10, valueCents: 0 },
-      { stage: 'Consultation', count: scoped.length, valueCents: scoped.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) },
-      { stage: 'Proposal', count: sent.length, valueCents: sent.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) },
-      { stage: 'Approval', count: approved.length, valueCents: approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) },
-      { stage: 'Scheduled', count: approved.length, valueCents: approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) },
-      { stage: 'Completed', count: Math.floor(approved.length * 0.8), valueCents: Math.round(approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0) * 0.8) },
-    ],
+    funnel: buildSalesFunnelStages({
+      leadCount: scoped.length,
+      proposalCount: scoped.length,
+      sentCount: sent.length,
+      approvedCount: approved.length,
+      completedCount: approved.length,
+      proposalValueCents: scoped.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
+      sentValueCents: sent.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
+      approvedValueCents: approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
+      completedValueCents: approved.reduce((s, p) => s + (p.subtotalCents ?? 0), 0),
+    }),
   };
 }
 
@@ -524,15 +545,25 @@ export async function getCustomerAnalytics(orgId: string, filters: ReportFilters
     .sort((a, b) => b.revenueCents - a.revenueCents)
     .slice(0, 10);
 
+  const jobCosting = await aggregateJobCostings(orgId);
+  const costingByCustomer = new Map<string, { profitCents: number; revenueCents: number }>();
+  for (const row of jobCosting.results) {
+    if (!row.customerId) continue;
+    const cur = costingByCustomer.get(row.customerId) ?? { profitCents: 0, revenueCents: 0 };
+    cur.profitCents += row.grossProfitCents;
+    cur.revenueCents += row.revenueCents;
+    costingByCustomer.set(row.customerId, cur);
+  }
+
   const newCustomers = year != null
-    ? customers.filter((c) => inYear(c.createdAt, year)).length
+    ? customers.filter((c) => inReportYear(c.createdAt, year)).length
     : customers.filter((c) => c.createdAt && c.createdAt >= new Date(new Date().setFullYear(new Date().getFullYear() - 1))).length;
   const returning = year != null
     ? customers.filter((c) => c.createdAt && c.createdAt < yearStart(year)).length
     : customers.length - newCustomers;
 
   return {
-    totalCustomers: year != null ? customers.filter((c) => inYear(c.createdAt, year) || byCustomer.has(c.id)).length : customers.length,
+    totalCustomers: year != null ? customers.filter((c) => inReportYear(c.createdAt, year) || byCustomer.has(c.id)).length : customers.length,
     newCustomers,
     returningCustomers: returning,
     retentionRatePercent: customers.length ? Math.round((returning / customers.length) * 100) : 0,
@@ -540,7 +571,21 @@ export async function getCustomerAnalytics(orgId: string, filters: ReportFilters
     averageLifetimeValueCents: topCustomers.length ? Math.round(topCustomers.reduce((s, c) => s + c.revenueCents, 0) / topCustomers.length) : 0,
     averageSpendCents: paidInvoices.length ? Math.round(paidInvoices.reduce((s, i) => s + i.amountPaidCents, 0) / Math.max(byCustomer.size, 1)) : 0,
     topCustomers,
-    mostProfitable: topCustomers.map((c) => ({ ...c, profitCents: Math.round(c.revenueCents * 0.55), marginPercent: 55 })),
+    mostProfitable: topCustomers.map((c) => {
+      const cost = costingByCustomer.get(c.customerId);
+      if (cost && (cost.revenueCents > 0 || cost.profitCents !== 0)) {
+        const marginPercent =
+          cost.revenueCents > 0 ? Math.round((cost.profitCents / cost.revenueCents) * 100) : 0;
+        return { ...c, profitCents: cost.profitCents, marginPercent };
+      }
+      // No per-job costing yet — apply org-wide margin from job costing aggregates
+      const orgMargin = jobCosting.marginPercent / 100;
+      return {
+        ...c,
+        profitCents: Math.round(c.revenueCents * orgMargin),
+        marginPercent: jobCosting.marginPercent,
+      };
+    }),
     atRiskCustomers: topCustomers.filter((c) => c.jobCount === 1).map((c) => ({
       customerId: c.customerId,
       name: c.name,
@@ -588,7 +633,7 @@ export async function getOperationsAnalytics(orgId: string, filters: ReportFilte
   ]);
 
   const scoped = year != null
-    ? jobs.filter((j) => inYear(j.completionDate ?? j.createdAt, year))
+    ? jobs.filter((j) => inReportYear(j.completionDate ?? j.createdAt, year))
     : jobs;
   const completed = scoped.filter((j) => j.stage === 'complete' || j.stage === 'installed').length;
   const scheduled = scoped.filter((j) => j.stage === 'scheduled').length;
@@ -598,7 +643,8 @@ export async function getOperationsAnalytics(orgId: string, filters: ReportFilte
     jobsCompleted: completed,
     jobsDelayed: Math.floor(scheduled * 0.05),
     jobsRescheduled: Math.floor(scheduled * 0.08),
-    serviceCallsOpen: scoped.filter((j) => j.stage === 'scheduled' && String(j.stage).includes('service')).length,
+    // YL-S19: no inventing service-call jobs from impossible stage predicates.
+    serviceCallsOpen: 0,
     completionRatePercent: scoped.length ? Math.round((completed / scoped.length) * 100) : 0,
     onTimeRatePercent: schedule.onTimeArrivalPercent,
     callbackRatePercent: 3,
@@ -616,7 +662,7 @@ export async function getCrewPerformanceAnalytics(orgId: string, filters: Report
     const crewEvents = events.filter((e) => {
       if (e.crewId !== crew.id) return false;
       if (year == null) return true;
-      return inYear(e.startAt ?? e.createdAt, year);
+      return inReportYear(e.startAt ?? e.createdAt, year);
     });
     const completed = crewEvents.filter((e) => e.dispatchStatus === 'completed').length;
     const revenue = crewEvents.reduce((s, e) => s + e.estimatedRevenueCents, 0);
@@ -634,6 +680,17 @@ export async function getCrewPerformanceAnalytics(orgId: string, filters: Report
   });
 
   const sorted = [...crewData].sort((a, b) => b.revenueProducedCents - a.revenueProducedCents);
+  const scheduledHours = crewData.reduce((s, c) => s + c.laborHours, 0);
+  const jobCosting = await aggregateJobCostings(orgId);
+  const totalHours = jobCosting.actualLaborHours > 0 ? jobCosting.actualLaborHours : scheduledHours;
+  const estimatedLaborFromProposals = jobCosting.results.reduce(
+    (s, r) => s + (r.estimatedLaborCostCents ?? 0),
+    0,
+  );
+  const laborCostCents =
+    jobCosting.laborCostCents > 0
+      ? jobCosting.laborCostCents
+      : estimatedLaborFromProposals;
 
   return {
     crews: crewData,
@@ -644,10 +701,10 @@ export async function getCrewPerformanceAnalytics(orgId: string, filters: Report
       value: c.revenueProducedCents,
     })),
     labor: {
-      totalHours: crewData.reduce((s, c) => s + c.laborHours, 0),
-      overtimeHours: Math.round(crewData.reduce((s, c) => s + c.laborHours, 0) * 0.08),
-      laborCostCents: crewData.reduce((s, c) => s + c.laborHours, 0) * 3500,
-      revenuePerLaborHourCents: schedule.revenuePerDayCents > 0 ? Math.round(schedule.revenuePerDayCents / Math.max(crewData.reduce((s, c) => s + c.laborHours, 0), 1)) : 0,
+      totalHours,
+      overtimeHours: Math.round(totalHours * 0.08),
+      laborCostCents,
+      revenuePerLaborHourCents: schedule.revenuePerDayCents > 0 ? Math.round(schedule.revenuePerDayCents / Math.max(totalHours, 1)) : 0,
       utilizationRatePercent: schedule.capacityUtilizationPercent,
       efficiencyRatePercent: schedule.scheduleEfficiencyPercent,
     },
@@ -700,6 +757,7 @@ export async function getFinancialAnalytics(orgId: string, filters: ReportFilter
       approvedAt?: Date;
     }>(orgId, 'proposals'),
     colList<{
+      id: string;
       stage: string;
       subtotalCents?: number;
       customerId?: string;
@@ -792,13 +850,25 @@ export async function getFinancialAnalytics(orgId: string, filters: ReportFilter
     })
     .reduce((s, i) => s + Math.min(i.amountPaidCents, i.depositCents ?? 0), 0);
 
-  const materialCostEstimateCents = Math.max(
-    Math.round(inventory.totalInventoryValueCents * 0.35),
-    Math.round(revenueCents * 0.32),
-  );
-  const laborCostCents = crewPerf.labor.laborCostCents;
+  const jobCostingMaterials = await aggregateJobCostings(orgId, {
+    jobIds: scopedJobs.map((j) => j.id),
+  });
+  const materialCostEstimateCents =
+    jobCostingMaterials.materialCostCents > 0
+      ? jobCostingMaterials.materialCostCents
+      : Math.max(
+          Math.round(inventory.totalInventoryValueCents * 0.35),
+          Math.round(revenueCents * 0.32),
+        );
+  const laborCostCents =
+    crewPerf.labor.laborCostCents > 0
+      ? crewPerf.labor.laborCostCents
+      : jobCostingMaterials.laborCostCents;
   const expensesCents = materialCostEstimateCents + laborCostCents + Math.round(revenueCents * 0.12);
-  const grossProfitCents = revenueCents - materialCostEstimateCents - laborCostCents;
+  const grossProfitCents =
+    jobCostingMaterials.revenueCents > 0
+      ? jobCostingMaterials.grossProfitCents
+      : revenueCents - materialCostEstimateCents - laborCostCents;
   const grossMarginEstimatePercent = revenueCents > 0 ? Math.round((grossProfitCents / revenueCents) * 100) : 0;
   const netProfitCents = revenueCents - expensesCents;
 

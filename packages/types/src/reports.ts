@@ -33,6 +33,72 @@ export type ReportSeasonPhase =
   | 'january_takedown'
   | 'february_storage';
 
+/** YL-S19 — null-safe report / crew / stage labels. */
+export function formatReportLabel(value: string | null | undefined, fallback = 'Unknown'): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return fallback;
+  return text
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+/** Canonical invoice paid-date for year/season filters (paidAt preferred). */
+export function invoicePaidDate(inv: {
+  paidAt?: Date | null;
+  updatedAt?: Date | null;
+  createdAt?: Date | null;
+}): Date | null {
+  return inv.paidAt ?? inv.updatedAt ?? inv.createdAt ?? null;
+}
+
+export function inReportYear(date: Date | null | undefined, year?: number | null): boolean {
+  if (year == null) return true;
+  if (!date) return false;
+  return date.getFullYear() === year;
+}
+
+/** True when year filter is unset or equals the calendar year of `now`. */
+export function isSelectedYearCurrent(year?: number | null, now = new Date()): boolean {
+  return year == null || year === now.getFullYear();
+}
+
+/** Aug–Dec season months (0-indexed); includes Jan when `includeJanuaryTakedown`. */
+export function isSeasonMonth(monthIndex: number, includeJanuaryTakedown = false): boolean {
+  if (includeJanuaryTakedown && monthIndex === 0) return true;
+  return monthIndex >= 7 && monthIndex <= 11;
+}
+
+export function buildSalesFunnelStages(input: {
+  leadCount: number;
+  proposalCount: number;
+  sentCount: number;
+  approvedCount: number;
+  completedCount: number;
+  leadValueCents?: number;
+  proposalValueCents?: number;
+  sentValueCents?: number;
+  approvedValueCents?: number;
+  completedValueCents?: number;
+}): Array<{ stage: string; count: number; valueCents: number }> {
+  return [
+    { stage: 'Lead', count: input.leadCount, valueCents: input.leadValueCents ?? 0 },
+    {
+      stage: 'Consultation',
+      count: input.proposalCount,
+      valueCents: input.proposalValueCents ?? 0,
+    },
+    { stage: 'Proposal', count: input.sentCount, valueCents: input.sentValueCents ?? 0 },
+    { stage: 'Approval', count: input.approvedCount, valueCents: input.approvedValueCents ?? 0 },
+    { stage: 'Scheduled', count: input.approvedCount, valueCents: input.approvedValueCents ?? 0 },
+    {
+      stage: 'Completed',
+      count: input.completedCount,
+      valueCents: input.completedValueCents ?? 0,
+    },
+  ];
+}
+
 export type ExecutiveKpis = {
   totalRevenueCents: number;
   revenueThisMonthCents: number;

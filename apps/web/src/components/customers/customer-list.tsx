@@ -203,7 +203,7 @@ export function CustomerList() {
       setBulkRep('');
       refetch();
     },
-    onError: (e) => toast(e.message, 'error'),
+    onError: (e: { message: string }) => toast(e.message, 'error'),
   });
   const seedDemo = trpc.customer360.seedDemo.useMutation({
     onSuccess: (result) => {

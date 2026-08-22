@@ -63,6 +63,8 @@ export const optimizeRouteSchema = z.object({
   routeDate: z.coerce.date(),
   crewId: z.string().optional(),
   eventIds: z.array(z.string()).min(1),
+  startLat: z.number().min(-90).max(90).optional(),
+  startLng: z.number().min(-180).max(180).optional(),
 });
 
 export const createResourceReservationSchema = z.object({
@@ -80,6 +82,12 @@ export const aiSchedulingQuerySchema = z.object({
 export const calendarRangeSchema = z.object({
   start: z.coerce.date(),
   end: z.coerce.date(),
+});
+
+/** YL-S11 — map schedule crew profile → Auth user. */
+export const updateCrewAssignedUserSchema = z.object({
+  crewId: z.string().min(1),
+  assignedUserId: z.string().min(1).nullable(),
 });
 
 export const crewSkillLevelSchema = z.enum(['junior', 'mid', 'senior', 'lead']);

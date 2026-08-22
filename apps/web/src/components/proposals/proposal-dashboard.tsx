@@ -59,8 +59,8 @@ export function ProposalDashboard() {
               <tr key={p.id}>
                 <td><Link href={`/app/proposals/${p.id}`} className="font-medium text-primary hover:underline">{p.title}</Link></td>
                 <td className="text-muted-foreground">{p.customerName ?? '—'}</td>
-                <td><span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusClass(p.status)}`}>{p.status.replace(/_/g, ' ')}</span></td>
-                <td>{formatCurrency(p.subtotalCents)}</td>
+                <td><span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusClass(p.status)}`}>{String(p.status ?? '—').replace(/_/g, ' ')}</span></td>
+                <td>{formatCurrency(Number(p.subtotalCents) || 0)}</td>
                 <td className="text-muted-foreground">{p.viewCount ?? 0}</td>
               </tr>
             ))}
@@ -71,6 +71,10 @@ export function ProposalDashboard() {
   );
 }
 
-function statusClass(status: string) {
-  return status.includes('approved') || status === 'deposit_paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-muted-foreground';
+function statusClass(status: string | null | undefined) {
+  // YL-S7 / BACKLOG-003 — null/undefined status must not throw on .includes
+  const value = typeof status === 'string' ? status : '';
+  return value.includes('approved') || value === 'deposit_paid'
+    ? 'bg-emerald-100 text-emerald-800'
+    : 'bg-muted text-muted-foreground';
 }

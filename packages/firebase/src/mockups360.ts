@@ -11,17 +11,16 @@ import type {
   MockupVersion,
 } from '@clcrm/types';
 import {
-  aiGenerateDesign,
   calculateMaterials,
   DEFAULT_DECORATION_LIBRARY,
   DEFAULT_DESIGN_TEMPLATES,
-  mockAiPropertyDetection,
   strandPixelLength,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { randomUUID } from 'crypto';
 import { mapTimestampsFromData } from './firestore-utils';
-import { colCreate, colGet, colList, colUpdate } from './firestore';
+import { colCreate, colGet, colList, colUpdate, generatePublicAccessToken } from './firestore';
+import { parsePublicAccessToken } from '@clcrm/types';
 import { createProposal360 } from './proposals';
 
 function ts() {
@@ -68,8 +67,18 @@ function normalizeMockup(raw: Record<string, unknown>): MockupRecord {
     animationSpeed: Number(raw.animationSpeed ?? 0.5),
     notes: (raw.notes as string) ?? null,
     approvalToken: (raw.approvalToken as string) ?? null,
-    sentForApprovalAt: raw.sentForApprovalAt instanceof Date ? raw.sentForApprovalAt : raw.sentForApprovalAt ? new Date(String(raw.sentForApprovalAt)) : null,
-    approvedAt: raw.approvedAt instanceof Date ? raw.approvedAt : raw.approvedAt ? new Date(String(raw.approvedAt)) : null,
+    sentForApprovalAt:
+      raw.sentForApprovalAt instanceof Date
+        ? raw.sentForApprovalAt
+        : raw.sentForApprovalAt
+          ? new Date(String(raw.sentForApprovalAt))
+          : null,
+    approvedAt:
+      raw.approvedAt instanceof Date
+        ? raw.approvedAt
+        : raw.approvedAt
+          ? new Date(String(raw.approvedAt))
+          : null,
     approvedBy: (raw.approvedBy as string) ?? null,
     revisionNotes: (raw.revisionNotes as string) ?? null,
     linkedProposalId: (raw.linkedProposalId as string) ?? null,
@@ -82,11 +91,19 @@ function normalizeMockup(raw: Record<string, unknown>): MockupRecord {
 
 async function subList<T>(orgId: string, mockupId: string, sub: string): Promise<T[]> {
   const db = getAdminFirestore();
-  const snap = await db.collection(`${orgPath(orgId, 'mockups')}/${mockupId}/${sub}`).orderBy('createdAt', 'asc').get();
+  const snap = await db
+    .collection(`${orgPath(orgId, 'mockups')}/${mockupId}/${sub}`)
+    .orderBy('createdAt', 'asc')
+    .get();
   return snap.docs.map((d) => mapDoc<T>({ id: d.id, ...d.data()! }));
 }
 
-async function subCreate(orgId: string, mockupId: string, sub: string, data: Record<string, unknown>) {
+async function subCreate(
+  orgId: string,
+  mockupId: string,
+  sub: string,
+  data: Record<string, unknown>,
+) {
   const db = getAdminFirestore();
   const ref = db.collection(`${orgPath(orgId, 'mockups')}/${mockupId}/${sub}`).doc();
   const now = ts();
@@ -122,9 +139,13 @@ export async function createMockup360(
   },
   userId?: string | null,
 ) {
-  const prop = await colGet<{ customerId?: string; addressLine1?: string }>(orgId, 'properties', input.propertyId);
+  const prop = await colGet<{ customerId?: string; addressLine1?: string }>(
+    orgId,
+    'properties',
+    input.propertyId,
+  );
 
-  const mockup = await colCreate(orgId, 'mockups', {
+  const mockup = (await colCreate(orgId, 'mockups', {
     organizationId: orgId,
     propertyId: input.propertyId,
     customerId: input.customerId ?? prop?.customerId ?? null,
@@ -147,7 +168,7 @@ export async function createMockup360(
     notes: input.notes ?? null,
     createdBy: userId,
     updatedBy: userId,
-  }) as Record<string, unknown>;
+  })) as Record<string, unknown>;
 
   const id = String(mockup.id);
   await subCreate(orgId, id, 'layers', {
@@ -163,7 +184,12 @@ export async function createMockup360(
   return getMockup360(orgId, id);
 }
 
-export async function updateMockup360(orgId: string, mockupId: string, data: Partial<MockupRecord>, userId?: string | null) {
+export async function updateMockup360(
+  orgId: string,
+  mockupId: string,
+  data: Partial<MockupRecord>,
+  userId?: string | null,
+) {
   const patch: Record<string, unknown> = { ...data, updatedBy: userId };
   if (data.strands) {
     patch.strands = data.strands.map((strand) => ({
@@ -183,22 +209,27 @@ export async function updateMockup360(orgId: string, mockupId: string, data: Par
   return getMockup360(orgId, mockupId);
 }
 
-export async function setMockupScale(orgId: string, mockupId: string, knownFeet: number, pixelLength: number) {
+export async function setMockupScale(
+  orgId: string,
+  mockupId: string,
+  knownFeet: number,
+  pixelLength: number,
+) {
   const scaleFeetPerPixel = knownFeet / pixelLength;
   await colUpdate(orgId, 'mockups', mockupId, { scaleFeetPerPixel });
   return getMockup360(orgId, mockupId);
 }
 
 export async function runAiDetection(orgId: string, mockupId: string, userId?: string | null) {
-  const mockup = await getMockup360(orgId, mockupId);
-  if (!mockup) throw new Error('Mockup not found');
-  const result = mockAiPropertyDetection(mockup.imageUrl);
-  await colUpdate(orgId, 'mockups', mockupId, {
-    aiDetectionComplete: true,
-    detectedFeatures: result.features,
-    updatedBy: userId,
-  });
-  return { ...result, mockup: await getMockup360(orgId, mockupId) };
+  const provider = (process.env.AI_PROVIDER || '').trim();
+  const apiKey = (process.env.AI_API_KEY || '').trim();
+  if (!provider || !apiKey) {
+    throw new Error('AI_PROVIDER_NOT_CONFIGURED');
+  }
+  void orgId;
+  void mockupId;
+  void userId;
+  throw new Error('AI_PROVIDER_NOT_IMPLEMENTED');
 }
 
 export async function generateMaterials(orgId: string, mockupId: string): Promise<MaterialList> {
@@ -207,7 +238,13 @@ export async function generateMaterials(orgId: string, mockupId: string): Promis
   return calculateMaterials(mockup);
 }
 
-export async function createMockupVersion(orgId: string, mockupId: string, revisionNotes?: string, designerName?: string | null, userId?: string | null) {
+export async function createMockupVersion(
+  orgId: string,
+  mockupId: string,
+  revisionNotes?: string,
+  designerName?: string | null,
+  userId?: string | null,
+) {
   const mockup = await getMockup360(orgId, mockupId);
   if (!mockup) throw new Error('Mockup not found');
   const versionNumber = mockup.versionNumber + 1;
@@ -217,7 +254,11 @@ export async function createMockupVersion(orgId: string, mockupId: string, revis
     versionNumber,
     designerName: designerName ?? null,
     revisionNotes: revisionNotes ?? null,
-    snapshotData: { strands: mockup.strands, backgroundBrightness: mockup.backgroundBrightness, scaleFeetPerPixel: mockup.scaleFeetPerPixel },
+    snapshotData: {
+      strands: mockup.strands,
+      backgroundBrightness: mockup.backgroundBrightness,
+      scaleFeetPerPixel: mockup.scaleFeetPerPixel,
+    },
     createdBy: userId,
   });
 
@@ -229,7 +270,12 @@ export async function listMockupVersions(orgId: string, mockupId: string) {
   return subList<MockupVersion>(orgId, mockupId, 'versions');
 }
 
-export async function exportMockup(orgId: string, mockupId: string, exportType: MockupExport['exportType'], userId?: string | null) {
+export async function exportMockup(
+  orgId: string,
+  mockupId: string,
+  exportType: MockupExport['exportType'],
+  userId?: string | null,
+) {
   const mockup = await getMockup360(orgId, mockupId);
   if (!mockup) throw new Error('Mockup not found');
   const materials = calculateMaterials(mockup);
@@ -288,14 +334,22 @@ export async function ensureDecorationLibrary(orgId: string): Promise<Decoration
   return assets;
 }
 
-export async function applyDesignTemplate(orgId: string, mockupId: string, templateId: string, userId?: string | null) {
+export async function applyDesignTemplate(
+  orgId: string,
+  mockupId: string,
+  templateId: string,
+  userId?: string | null,
+) {
   const template = await colGet<DesignTemplate>(orgId, 'designTemplates', templateId);
   const mockup = await getMockup360(orgId, mockupId);
   if (!template || !mockup) throw new Error('Not found');
 
   const strand = {
     id: nanoid(),
-    points: [{ x: 100, y: 150 }, { x: 700, y: 150 }],
+    points: [
+      { x: 100, y: 150 },
+      { x: 700, y: 150 },
+    ],
     color: template.colorScheme.split(',')[0] ?? '#FFD700',
     lightType: template.lightType,
     pattern: template.pattern,
@@ -304,18 +358,33 @@ export async function applyDesignTemplate(orgId: string, mockupId: string, templ
     brightness: 1,
   };
 
-  return updateMockup360(orgId, mockupId, {
-    strands: [strand],
-    name: `${mockup.name} — ${template.name}`,
-  }, userId);
+  return updateMockup360(
+    orgId,
+    mockupId,
+    {
+      strands: [strand],
+      name: `${mockup.name} — ${template.name}`,
+    },
+    userId,
+  );
 }
 
-export async function aiDesignAssistant(orgId: string, style: string, mockupId?: string, userId?: string | null) {
-  const result = aiGenerateDesign(style);
-  if (mockupId) {
-    await updateMockup360(orgId, mockupId, { strands: result.strands, name: result.designName }, userId);
+export async function aiDesignAssistant(
+  orgId: string,
+  style: string,
+  mockupId?: string,
+  userId?: string | null,
+) {
+  const provider = (process.env.AI_PROVIDER || '').trim();
+  const apiKey = (process.env.AI_API_KEY || '').trim();
+  if (!provider || !apiKey) {
+    throw new Error('AI_PROVIDER_NOT_CONFIGURED');
   }
-  return result;
+  void orgId;
+  void style;
+  void mockupId;
+  void userId;
+  throw new Error('AI_PROVIDER_NOT_IMPLEMENTED');
 }
 
 export async function createProposalFromMockup(
@@ -335,16 +404,23 @@ export async function createProposalFromMockup(
     agreementCode: 'STD',
   }));
 
-  const proposal = await createProposal360(orgId, {
-    customerId: input.customerId,
-    propertyId: input.propertyId,
-    title: input.title ?? `${mockup.name} — Proposal`,
-    lineItems,
-    mockupIds: [input.mockupId],
-    notes: `Generated from mockup design. ${materials.totalLinearFeet} linear feet, ~${materials.laborHoursEstimate}h labor.`,
-  }, userId);
+  const proposal = await createProposal360(
+    orgId,
+    {
+      customerId: input.customerId,
+      propertyId: input.propertyId,
+      title: input.title ?? `${mockup.name} — Proposal`,
+      lineItems,
+      mockupIds: [input.mockupId],
+      notes: `Generated from mockup design. ${materials.totalLinearFeet} linear feet, ~${materials.laborHoursEstimate}h labor.`,
+    },
+    userId,
+  );
 
-  await colUpdate(orgId, 'mockups', input.mockupId, { status: 'approved', revenueCents: lineItems.reduce((s, li) => s + li.quantity * li.unitPriceCents, 0) });
+  await colUpdate(orgId, 'mockups', input.mockupId, {
+    status: 'approved',
+    revenueCents: lineItems.reduce((s, li) => s + li.quantity * li.unitPriceCents, 0),
+  });
   return proposal;
 }
 
@@ -359,9 +435,13 @@ export async function getMockupDashboard(orgId: string): Promise<MockupDashboard
     approvedDesigns: approved.length,
     mostViewedDesignId: mostViewed?.id ?? null,
     mostViewedCount: mostViewed?.viewCount ?? 0,
-    designConversionRatePercent: mockups.length ? Math.round((approved.length / mockups.length) * 100) : 0,
+    designConversionRatePercent: mockups.length
+      ? Math.round((approved.length / mockups.length) * 100)
+      : 0,
     revenueGeneratedCents: approved.reduce((s, m) => s + (m.revenueCents ?? 0), 0),
-    averageDesignTimeMinutes: mockups.length ? Math.round(mockups.reduce((s, m) => s + m.designTimeMinutes, 0) / mockups.length) : 0,
+    averageDesignTimeMinutes: mockups.length
+      ? Math.round(mockups.reduce((s, m) => s + m.designTimeMinutes, 0) / mockups.length)
+      : 0,
   };
 }
 
@@ -380,14 +460,14 @@ export async function saveMeasurements(orgId: string, mockupId: string, userId?:
 
   for (const strand of mockup.strands) {
     const px = strandPixelLength(strand);
-    const m = await subCreate(orgId, mockupId, 'measurements', {
+    const m = (await subCreate(orgId, mockupId, 'measurements', {
       mockupId,
       label: `Strand ${strand.id.slice(0, 6)}`,
       pixelLength: px,
       realWorldFeet: Math.round(px * scale * 10) / 10,
       featureType: 'roofline',
       createdBy: userId,
-    }) as MockupMeasurement;
+    })) as MockupMeasurement;
     measurements.push(m);
   }
   return measurements;
@@ -406,24 +486,49 @@ export async function ensureMockupApprovalToken(orgId: string, mockupId: string)
   const mockup = await getMockup360(orgId, mockupId);
   if (!mockup) throw new Error('Mockup not found');
   if (mockup.approvalToken) return mockup.approvalToken;
-  const token = nanoid(32);
+  const token = generatePublicAccessToken();
   await colUpdate(orgId, 'mockups', mockupId, { approvalToken: token });
   return token;
 }
 
-export async function sendMockupForApproval(orgId: string, mockupId: string, userId?: string | null) {
+export async function sendMockupForApproval(
+  orgId: string,
+  mockupId: string,
+  userId?: string | null,
+) {
   const token = await ensureMockupApprovalToken(orgId, mockupId);
   await colUpdate(orgId, 'mockups', mockupId, {
     status: 'in_review',
     sentForApprovalAt: new Date(),
     updatedBy: userId,
   });
+  const mockup = await getMockup360(orgId, mockupId);
+  if (mockup?.customerId) {
+    try {
+      const { notifyPortalCustomer } = await import('./portal360');
+      await notifyPortalCustomer(orgId, mockup.customerId, {
+        category: 'mockups',
+        title: 'Design ready for review',
+        body: `${mockup.name} is ready for your feedback.`,
+        actionUrl: '/mockups',
+      });
+    } catch {
+      // Best-effort
+    }
+  }
   return { token, approvalUrl: mockupApprovalUrl(token) };
 }
 
 export async function getMockupByApprovalToken(token: string) {
+  const parsed = parsePublicAccessToken(token);
+  if (!parsed) return null;
+
   const db = getAdminFirestore();
-  const snap = await db.collectionGroup('mockups').where('approvalToken', '==', token).limit(1).get();
+  const snap = await db
+    .collectionGroup('mockups')
+    .where('approvalToken', '==', parsed)
+    .limit(1)
+    .get();
   if (snap.empty) return null;
   const doc = snap.docs[0]!;
   const orgId = doc.ref.parent.parent?.id ?? String(doc.data().organizationId ?? '');
@@ -431,8 +536,20 @@ export async function getMockupByApprovalToken(token: string) {
   if (!mockup) return null;
   const [organization, property, customer] = await Promise.all([
     import('./firestore').then((m) => m.getOrganization(orgId)),
-    mockup.propertyId ? colGet<{ addressLine1?: string; city?: string; state?: string }>(orgId, 'properties', mockup.propertyId) : null,
-    mockup.customerId ? colGet<{ firstName?: string; lastName?: string; businessName?: string | null }>(orgId, 'customers', mockup.customerId) : null,
+    mockup.propertyId
+      ? colGet<{ addressLine1?: string; city?: string; state?: string }>(
+          orgId,
+          'properties',
+          mockup.propertyId,
+        )
+      : null,
+    mockup.customerId
+      ? colGet<{ firstName?: string; lastName?: string; businessName?: string | null }>(
+          orgId,
+          'customers',
+          mockup.customerId,
+        )
+      : null,
   ]);
   await recordMockupView(orgId, mockup.id);
   return { mockup, organization, property, customer, organizationId: orgId };
@@ -445,6 +562,36 @@ export async function recordCustomerMockupApproval(
   const ctx = await getMockupByApprovalToken(token);
   if (!ctx) throw new Error('Mockup not found');
   const { mockup, organizationId: orgId } = ctx;
+  const current = String(mockup.status ?? '');
+  const visDoc = await colGet<{ visibility?: string }>(orgId, 'mockups', mockup.id);
+  const visibility = String(visDoc?.visibility ?? 'customer_visible');
+  if (visibility === 'staff_only' || visibility === 'internal' || visibility === 'system') {
+    throw new Error('This action is no longer available.');
+  }
+  if (current === 'draft' || current === 'internal') {
+    throw new Error('This action is no longer available.');
+  }
+
+  const target = input.action === 'approved' ? 'approved' : 'revision_requested';
+  // Replay-safe completed states
+  if (input.action === 'approved' && current === 'approved') {
+    return getMockup360(orgId, mockup.id);
+  }
+  if (input.action === 'revision_requested' && current === 'revision_requested') {
+    return getMockup360(orgId, mockup.id);
+  }
+
+  const { canPortalTransition } = await import('./portal-mutation');
+  if (
+    !canPortalTransition({
+      resourceType: 'mockup',
+      currentState: current,
+      targetState: target,
+    })
+  ) {
+    throw new Error('This action is no longer available.');
+  }
+
   const now = new Date();
   const patch: Partial<MockupRecord> = {
     approvedBy: input.customerName ?? null,
@@ -473,7 +620,12 @@ export async function recordCustomerMockupApproval(
   return getMockup360(orgId, mockup.id);
 }
 
-export async function linkMockupToProposal(orgId: string, mockupId: string, proposalId: string, userId?: string | null) {
+export async function linkMockupToProposal(
+  orgId: string,
+  mockupId: string,
+  proposalId: string,
+  userId?: string | null,
+) {
   const [mockup, proposal] = await Promise.all([
     getMockup360(orgId, mockupId),
     colGet<{ mockupIds?: string[] }>(orgId, 'proposals', proposalId),
@@ -487,6 +639,14 @@ export async function linkMockupToProposal(orgId: string, mockupId: string, prop
 
 export async function listProposalsForMockup(orgId: string, mockup: MockupRecord) {
   if (!mockup.customerId) return [];
-  const proposals = await colList<{ id: string; customerId?: string; title?: string; status?: string; mockupIds?: string[] }>(orgId, 'proposals');
-  return proposals.filter((p) => p.customerId === mockup.customerId || (p.mockupIds ?? []).includes(mockup.id));
+  const proposals = await colList<{
+    id: string;
+    customerId?: string;
+    title?: string;
+    status?: string;
+    mockupIds?: string[];
+  }>(orgId, 'proposals');
+  return proposals.filter(
+    (p) => p.customerId === mockup.customerId || (p.mockupIds ?? []).includes(mockup.id),
+  );
 }

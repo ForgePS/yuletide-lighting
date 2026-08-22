@@ -31,7 +31,7 @@ export function ExecutiveDashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">Real-time KPIs · auto-refreshes every 30s</p>
+        <p className="text-sm text-muted-foreground">Real-time KPIs · refreshes every few minutes</p>
         <div className="flex gap-2">
           <ExportButton reportType="executive" format="csv" />
           <ExportButton reportType="executive" format="pdf" />
@@ -63,8 +63,12 @@ export function RevenueAnalyticsPage() {
   return (
     <div className="space-y-8">
       <KpiGrid cards={[
-        { label: year != null ? `${yearLabel} · today` : 'Daily revenue', value: formatCurrency(data.dailyRevenueCents) },
-        { label: year != null ? `${yearLabel} · this week` : 'Weekly revenue', value: formatCurrency(data.weeklyRevenueCents) },
+        ...(year == null || year === new Date().getFullYear()
+          ? [
+              { label: 'Daily revenue', value: formatCurrency(data.dailyRevenueCents) },
+              { label: 'Weekly revenue', value: formatCurrency(data.weeklyRevenueCents) },
+            ]
+          : []),
         { label: year != null ? `${yearLabel} · this month` : 'Monthly revenue', value: formatCurrency(data.monthlyRevenueCents) },
         { label: year != null ? `${yearLabel} · Aug–Dec` : 'Seasonal revenue', value: formatCurrency(data.seasonalRevenueCents) },
         { label: year != null ? `${yearLabel} total` : 'Annual revenue', value: formatCurrency(data.annualRevenueCents) },

@@ -1,18 +1,27 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { JobPhotoCapture } from '@/components/job-photo-capture';
 import { ScreenContainer } from '@/components/screen-container';
 import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
-import { trpcQuery, trpcMutation } from '@/lib/api';
+import { trpcMutation, trpcQuery } from '@/lib/api';
+import { mutateWithOfflineFallback } from '@/lib/offline-queue';
 
 type JobDetail = {
   job: { id: string; title: string; stage: string };
   customer: { firstName: string; lastName: string; phone?: string | null };
   property: { addressLine1: string; city: string; state: string; installNotes?: string | null };
   checklist: Array<{ id: string; label: string; done: boolean }>;
-  materials: Array<{ id: string; name: string; quantity: number }>;
+  materials: Array<{ id: string; name: string; quantity: number; status?: string }>;
+  mockups?: Array<{ id: string; name: string; imageUrl: string }>;
+  scopeSummary?: string | null;
+  safetyNotes?: string | null;
+  accessNotes?: string | null;
+  mockupPhotoUrls?: string[] | null;
+  approvedPackageName?: string | null;
+  installNotes?: string | null;
+  activeTimeEntryId?: string | null;
 };
 
 export default function JobDetailScreen() {
@@ -22,33 +31,74 @@ export default function JobDetailScreen() {
   const [detail, setDetail] = useState<JobDetail | null>(null);
   const [issueTitle, setIssueTitle] = useState('');
   const [issueNotes, setIssueNotes] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [signature, setSignature] = useState('');
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     if (!id) return;
     trpcQuery('crew.getJob', { jobId: id })
       .then(setDetail)
       .catch(() => Alert.alert('Error', 'Could not load job details.'));
   }, [id]);
 
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  async function startJob() {
+    if (!id) return;
+    try {
+      await trpcMutation('crew.startJob', { jobId: id });
+      Alert.alert('Started', 'Job marked in progress.');
+      reload();
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Could not start job.');
+    }
+  }
+
   async function reportIssue() {
     if (!id || !issueTitle.trim()) return;
-    await trpcMutation('crew.reportIssue', {
+    const result = await mutateWithOfflineFallback('crew.reportIssue', {
       jobId: id,
       title: issueTitle.trim(),
       description: issueNotes.trim() || issueTitle.trim(),
       priority: 'normal',
       category: 'other',
     });
-    Alert.alert('Reported', 'Service issue submitted.');
+    Alert.alert(result.queued ? 'Saved offline' : 'Reported', result.queued ? 'Will sync when online.' : 'Service issue submitted.');
     setIssueTitle('');
     setIssueNotes('');
   }
 
   async function markCustomerNotHome() {
     if (!id) return;
-    await trpcMutation('crew.customerNotHome', { jobId: id, notes: 'Customer not home at scheduled time' });
-    Alert.alert('Logged', 'Customer not home note saved.');
+    const result = await mutateWithOfflineFallback('crew.customerNotHome', {
+      jobId: id,
+      notes: 'Customer not home at scheduled time',
+    });
+    Alert.alert(result.queued ? 'Saved offline' : 'Logged', result.queued ? 'Will sync when online.' : 'Customer not home note saved.');
   }
+
+  async function submitSignature() {
+    if (!id || !customerName.trim() || !signature.trim()) {
+      Alert.alert('Required', 'Enter customer name and signature.');
+      return;
+    }
+    const result = await mutateWithOfflineFallback('crew.submitSignature', {
+      jobId: id,
+      customerName: customerName.trim(),
+      signatureData: signature.trim(),
+    });
+    Alert.alert(result.queued ? 'Saved offline' : 'Saved', result.queued ? 'Signature queued for sync.' : 'Customer signature recorded.');
+    setCustomerName('');
+    setSignature('');
+    if (!result.queued) reload();
+  }
+
+  const mockupUrls =
+    detail?.mockupPhotoUrls?.length
+      ? detail.mockupPhotoUrls
+      : (detail?.mockups ?? []).map((m) => m.imageUrl).filter(Boolean);
 
   return (
     <ScreenContainer style={styles.screen}>
@@ -64,10 +114,46 @@ export default function JobDetailScreen() {
             {detail.property.addressLine1}, {detail.property.city}, {detail.property.state}
           </Text>
         )}
+        {detail?.approvedPackageName ? (
+          <Text style={styles.subheading}>Package: {detail.approvedPackageName}</Text>
+        ) : null}
+
+        <TouchableOpacity style={styles.primaryBtn} onPress={startJob}>
+          <Text style={styles.primaryBtnText}>Start job</Text>
+        </TouchableOpacity>
 
         <View style={[styles.body, twoColumn && styles.bodyLandscape]}>
           <View style={[styles.section, twoColumn && styles.column]}>
-            <Text style={styles.sectionTitle}>Checklist</Text>
+            {(detail?.scopeSummary || detail?.installNotes || detail?.accessNotes || detail?.safetyNotes) && (
+              <>
+                <Text style={styles.sectionTitle}>Scope</Text>
+                {detail?.scopeSummary ? (
+                  <Text style={styles.text}>{detail.scopeSummary}</Text>
+                ) : null}
+                {detail?.installNotes ? (
+                  <Text style={styles.text}>Install notes: {detail.installNotes}</Text>
+                ) : null}
+                {detail?.accessNotes ? (
+                  <Text style={styles.text}>Access: {detail.accessNotes}</Text>
+                ) : null}
+                {detail?.safetyNotes ? (
+                  <Text style={styles.text}>Safety: {detail.safetyNotes}</Text>
+                ) : null}
+              </>
+            )}
+
+            {mockupUrls.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Mockups</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mockupRow}>
+                  {mockupUrls.map((url) => (
+                    <Image key={url} source={{ uri: url }} style={styles.mockupImage} />
+                  ))}
+                </ScrollView>
+              </>
+            )}
+
+            <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Checklist</Text>
             {detail?.checklist.map((item) => (
               <View key={item.id} style={styles.checkRow}>
                 <Text style={[styles.checkMark, item.done && styles.checkDone]}>{item.done ? '✓' : '○'}</Text>
@@ -83,10 +169,31 @@ export default function JobDetailScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Materials</Text>
               {detail?.materials.length ? detail.materials.map((m) => (
-                <Text key={m.id} style={styles.text}>• {m.name} ×{m.quantity}</Text>
+                <Text key={m.id} style={styles.text}>
+                  • {m.name} ×{m.quantity}{m.status ? ` (${m.status})` : ''}
+                </Text>
               )) : (
                 <Text style={styles.text}>Material pick list loads from job reservation.</Text>
               )}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Customer signature</Text>
+              <TextInput
+                placeholder="Customer full name"
+                value={customerName}
+                onChangeText={setCustomerName}
+                style={styles.input}
+              />
+              <TextInput
+                placeholder="Type name as signature"
+                value={signature}
+                onChangeText={setSignature}
+                style={styles.input}
+              />
+              <TouchableOpacity style={styles.btnOutline} onPress={submitSignature}>
+                <Text style={styles.btnOutlineText}>Submit signature</Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.section}>
@@ -130,6 +237,8 @@ const styles = StyleSheet.create({
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkMark: { fontSize: 16, color: '#94A3B8', width: 20 },
   checkDone: { color: '#16A34A' },
+  mockupRow: { gap: 8 },
+  mockupImage: { width: 140, height: 100, borderRadius: 8, backgroundColor: '#E2E8F0' },
   input: {
     borderWidth: 1,
     borderColor: '#CBD5E1',
@@ -148,4 +257,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnOutlineText: { color: '#475569', fontWeight: '600', fontSize: 14 },
+  primaryBtn: {
+    backgroundColor: '#DC2626',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  primaryBtnText: { color: '#FFF', fontWeight: '600', fontSize: 14 },
 });

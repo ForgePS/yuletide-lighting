@@ -315,9 +315,9 @@ export function ProposalSettingsPage() {
     defaultTerms: '',
     defaultTemplateId: '',
     packageDefaults: {
-      good: { label: 'Good', markupPercent: 15 },
-      better: { label: 'Better', markupPercent: 25 },
-      best: { label: 'Best', markupPercent: 35 },
+      good: { label: 'Good', markupPercent: 15, description: '', inclusions: [] as string[] },
+      better: { label: 'Better', markupPercent: 25, description: '', inclusions: [] as string[] },
+      best: { label: 'Best', markupPercent: 35, description: '', inclusions: [] as string[] },
     },
     layout: {
       style: 'modern' as 'classic' | 'modern' | 'compact',
@@ -338,7 +338,26 @@ export function ProposalSettingsPage() {
         defaultDepositPercent: data.defaultDepositPercent,
         defaultTerms: data.defaultTerms,
         defaultTemplateId: data.defaultTemplateId ?? '',
-        packageDefaults: data.packageDefaults,
+        packageDefaults: {
+          good: {
+            label: data.packageDefaults.good.label,
+            markupPercent: data.packageDefaults.good.markupPercent,
+            description: data.packageDefaults.good.description ?? '',
+            inclusions: data.packageDefaults.good.inclusions ?? [],
+          },
+          better: {
+            label: data.packageDefaults.better.label,
+            markupPercent: data.packageDefaults.better.markupPercent,
+            description: data.packageDefaults.better.description ?? '',
+            inclusions: data.packageDefaults.better.inclusions ?? [],
+          },
+          best: {
+            label: data.packageDefaults.best.label,
+            markupPercent: data.packageDefaults.best.markupPercent,
+            description: data.packageDefaults.best.description ?? '',
+            inclusions: data.packageDefaults.best.inclusions ?? [],
+          },
+        },
         layout: data.layout,
       });
     }
@@ -363,15 +382,84 @@ export function ProposalSettingsPage() {
         <FormField label="Default terms"><textarea className="input mt-4 w-full" rows={4} value={form.defaultTerms} onChange={(e) => setForm({ ...form, defaultTerms: e.target.value })} /></FormField>
       </SettingsSection>
       <SettingsSection title="Package defaults">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <p className="mb-4 text-sm text-muted-foreground">
+          Prefill Good / Better / Best on each new proposal (still editable there). Filled packages set
+          the proposal total and take precedence over line items.
+        </p>
+        <div className="grid gap-4 lg:grid-cols-3">
           {(['good', 'better', 'best'] as const).map((tier) => (
-            <div key={tier} className="rounded-lg border p-4 space-y-2">
+            <div key={tier} className="space-y-3 rounded-lg border p-4">
               <p className="font-medium capitalize">{tier}</p>
               <FormField label="Label">
-                <input className="input w-full text-sm" value={form.packageDefaults[tier].label} onChange={(e) => setForm({ ...form, packageDefaults: { ...form.packageDefaults, [tier]: { ...form.packageDefaults[tier], label: e.target.value } } })} />
+                <input
+                  className="input w-full text-sm"
+                  value={form.packageDefaults[tier].label}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      packageDefaults: {
+                        ...form.packageDefaults,
+                        [tier]: { ...form.packageDefaults[tier], label: e.target.value },
+                      },
+                    })
+                  }
+                />
               </FormField>
               <FormField label="Markup %">
-                <input className="input w-full text-sm" type="number" value={form.packageDefaults[tier].markupPercent} onChange={(e) => setForm({ ...form, packageDefaults: { ...form.packageDefaults, [tier]: { ...form.packageDefaults[tier], markupPercent: Number(e.target.value) } } })} />
+                <input
+                  className="input w-full text-sm"
+                  type="number"
+                  value={form.packageDefaults[tier].markupPercent}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      packageDefaults: {
+                        ...form.packageDefaults,
+                        [tier]: { ...form.packageDefaults[tier], markupPercent: Number(e.target.value) },
+                      },
+                    })
+                  }
+                />
+              </FormField>
+              <FormField label="Description">
+                <textarea
+                  className="input w-full text-sm"
+                  rows={3}
+                  value={form.packageDefaults[tier].description}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      packageDefaults: {
+                        ...form.packageDefaults,
+                        [tier]: { ...form.packageDefaults[tier], description: e.target.value },
+                      },
+                    })
+                  }
+                  placeholder="What this package is for the customer"
+                />
+              </FormField>
+              <FormField label="What's included (one per line)">
+                <textarea
+                  className="input w-full text-sm"
+                  rows={5}
+                  value={form.packageDefaults[tier].inclusions.join('\n')}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      packageDefaults: {
+                        ...form.packageDefaults,
+                        [tier]: {
+                          ...form.packageDefaults[tier],
+                          inclusions: e.target.value
+                            .split('\n')
+                            .map((line) => line.trim())
+                            .filter(Boolean),
+                        },
+                      },
+                    })
+                  }
+                  placeholder={'Roofline LED installation\nTimer setup\nSeasonal takedown'}
+                />
               </FormField>
             </div>
           ))}
@@ -568,33 +656,96 @@ export function InventorySettingsPage() {
 
 export function CustomerPortalSettingsPage() {
   const { data, isLoading, refetch } = trpc.settings360.portal.useQuery();
+  const { data: features } = trpc.portal360.features.useQuery();
   const saveHandlers = useSettingsSave(() => refetch());
   const update = trpc.settings360.updatePortal.useMutation(saveHandlers);
-  const [form, setForm] = useState({ enabled: true, allowSelfScheduling: false, allowOnlinePayments: true, allowServiceRequests: true, viewProposals: true, viewInvoices: true, approveDesigns: true, requestService: true });
+  const [form, setForm] = useState({
+    enabled: true,
+    allowSelfScheduling: false,
+    allowOnlinePayments: true,
+    allowServiceRequests: true,
+    viewProposals: true,
+    viewInvoices: true,
+    approveDesigns: true,
+    requestService: true,
+    enabledFeatures: [] as string[],
+  });
 
   useEffect(() => {
     if (data) setForm({
-      enabled: data.enabled, allowSelfScheduling: data.allowSelfScheduling, allowOnlinePayments: data.allowOnlinePayments, allowServiceRequests: data.allowServiceRequests,
-      viewProposals: data.permissions.viewProposals, viewInvoices: data.permissions.viewInvoices, approveDesigns: data.permissions.approveDesigns, requestService: data.permissions.requestService,
+      enabled: data.enabled,
+      allowSelfScheduling: data.allowSelfScheduling,
+      allowOnlinePayments: data.allowOnlinePayments,
+      allowServiceRequests: data.allowServiceRequests,
+      viewProposals: data.permissions.viewProposals,
+      viewInvoices: data.permissions.viewInvoices,
+      approveDesigns: data.permissions.approveDesigns,
+      requestService: data.permissions.requestService,
+      enabledFeatures: data.enabledFeatures ?? features?.enabled ?? [],
     });
-  }, [data]);
+  }, [data, features?.enabled]);
   if (isLoading) return <SettingsLoading />;
   if (!data) return null;
+
+  const available = features?.available ?? form.enabledFeatures;
+
+  function toggleFeature(key: string) {
+    if (!available.includes(key as never) && !(features?.available ?? []).includes(key as never)) return;
+    setForm((prev) => ({
+      ...prev,
+      enabledFeatures: prev.enabledFeatures.includes(key)
+        ? prev.enabledFeatures.filter((k) => k !== key)
+        : [...prev.enabledFeatures, key],
+    }));
+  }
 
   return (
     <form className="space-y-6" onSubmit={(e) => {
       e.preventDefault();
       update.mutate({
-        enabled: form.enabled, allowSelfScheduling: form.allowSelfScheduling, allowOnlinePayments: form.allowOnlinePayments, allowServiceRequests: form.allowServiceRequests,
-        permissions: { viewProposals: form.viewProposals, viewInvoices: form.viewInvoices, approveDesigns: form.approveDesigns, requestService: form.requestService },
+        enabled: form.enabled,
+        allowSelfScheduling: form.allowSelfScheduling,
+        allowOnlinePayments: form.allowOnlinePayments,
+        allowServiceRequests: form.allowServiceRequests,
+        enabledFeatures: form.enabledFeatures as never,
+        permissions: {
+          viewProposals: form.viewProposals,
+          viewInvoices: form.viewInvoices,
+          approveDesigns: form.approveDesigns,
+          requestService: form.requestService,
+        },
       });
     }}>
       <SettingsSection title="Portal access">
+        <p className="mb-3 text-sm text-muted-foreground">
+          Manage org-wide QR codes and scan analytics in{' '}
+          <Link href="/app/settings/portal-qr" className="text-primary hover:underline">Portal QR</Link>
+          {' '}or bulk-generate from{' '}
+          <Link href="/app/customers/portal-qr" className="text-primary hover:underline">Customers → Bulk portal QR</Link>.
+        </p>
         <div className="space-y-2">
           <ToggleField label="Portal enabled" checked={form.enabled} onChange={(v) => setForm({ ...form, enabled: v })} />
           <ToggleField label="Self scheduling" checked={form.allowSelfScheduling} onChange={(v) => setForm({ ...form, allowSelfScheduling: v })} />
           <ToggleField label="Online payments" checked={form.allowOnlinePayments} onChange={(v) => setForm({ ...form, allowOnlinePayments: v })} />
           <ToggleField label="Service requests" checked={form.allowServiceRequests} onChange={(v) => setForm({ ...form, allowServiceRequests: v })} />
+        </div>
+      </SettingsSection>
+      <SettingsSection title="Portal features" description="Only features allowed by the platform Creator can be enabled.">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(features?.available ?? []).map((key) => {
+            const meta = PORTAL_FEATURE_LABELS[key] ?? key;
+            return (
+              <ToggleField
+                key={key}
+                label={meta}
+                checked={form.enabledFeatures.includes(key)}
+                onChange={() => toggleFeature(key)}
+              />
+            );
+          })}
+          {(features?.available?.length ?? 0) === 0 && (
+            <p className="text-sm text-muted-foreground">No portal features available from Creator.</p>
+          )}
         </div>
       </SettingsSection>
       <SettingsSection title="Customer permissions">
@@ -609,6 +760,28 @@ export function CustomerPortalSettingsPage() {
     </form>
   );
 }
+
+const PORTAL_FEATURE_LABELS: Record<string, string> = {
+  dashboard: 'Dashboard',
+  properties: 'Properties',
+  consultations: 'Consultations',
+  mockups: 'Designs & mockups',
+  proposals: 'Proposals',
+  agreements: 'Agreements',
+  e_sign: 'E-sign',
+  billing: 'Billing',
+  online_payments: 'Online payments',
+  scheduling: 'Scheduling',
+  install_tracking: 'Install tracking',
+  service_requests: 'Service requests',
+  takedowns: 'Takedowns',
+  storage: 'Storage',
+  messaging: 'Messaging',
+  documents: 'Documents',
+  reviews: 'Reviews',
+  referrals: 'Referrals',
+  rebooking: 'Rebooking',
+};
 
 export function AiSettingsPage() {
   const { data, isLoading, refetch } = trpc.settings360.ai.useQuery();
@@ -755,10 +928,69 @@ export function ReportsSettingsPage() {
 
 const TEMPLATE_LINKS = [
   { href: '/app/settings/proposals', title: 'Proposal terms & layout', description: 'Default terms, deposit %, expiration, and PDF layout.' },
+  { href: '/app/settings/agreements', title: 'Agreement terms', description: 'Customer-facing terms shown when signing multi-year agreements.' },
   { href: '/app/settings/invoices', title: 'Invoice layout', description: 'Payment terms, tax rate, deposit rules, and invoice PDF layout.' },
   { href: '/app/settings/branding', title: 'Branding & logos', description: 'Company colors and logos used on proposals, invoices, and portal.' },
-  { href: '/app/messages/templates', title: 'Email & SMS templates', description: 'Customer messaging templates for campaigns and automations.' },
+  { href: '/app/messages/templates', title: 'Email & SMS templates', description: 'Edit customer messaging templates for campaigns and automations.' },
+  { href: '/app/invoices/settings', title: 'Invoice reminder copy', description: 'Edit collection reminder subjects and bodies by stage.' },
+  { href: '/app/proposals/templates', title: 'Proposal starter templates', description: 'Edit residential, commercial, and HOA proposal starters.' },
+  { href: '/app/messages/automations', title: 'Message automations', description: 'Edit automation message bodies, delays, and enable/disable rules.' },
 ] as const;
+
+export function AgreementSettingsPage() {
+  const { data, isLoading, refetch } = trpc.settings360.agreements.useQuery();
+  const saveHandlers = useSettingsSave(() => refetch());
+  const update = trpc.settings360.updateAgreements.useMutation(saveHandlers);
+  const [form, setForm] = useState({ termsBody: '', termsVersion: '2026.1' });
+
+  useEffect(() => {
+    if (data) {
+      setForm({
+        termsBody: data.termsBody,
+        termsVersion: data.termsVersion,
+      });
+    }
+  }, [data]);
+
+  if (isLoading) return <SettingsLoading />;
+  if (!data) return null;
+
+  return (
+    <form
+      className="space-y-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        update.mutate(form);
+      }}
+    >
+      <SettingsSection
+        title="Agreement terms"
+        description="These terms appear on the public agreement signing page. Use {{companyName}} to insert your company name."
+      >
+        <div className="grid gap-4">
+          <FormField label="Terms version">
+            <input
+              className="input w-full max-w-xs"
+              value={form.termsVersion}
+              onChange={(e) => setForm({ ...form, termsVersion: e.target.value })}
+              required
+            />
+          </FormField>
+          <FormField label="Terms & conditions">
+            <textarea
+              className="input mt-1 w-full font-mono text-sm"
+              rows={12}
+              value={form.termsBody}
+              onChange={(e) => setForm({ ...form, termsBody: e.target.value })}
+              required
+            />
+          </FormField>
+        </div>
+      </SettingsSection>
+      <SaveButton saving={update.isPending} />
+    </form>
+  );
+}
 
 export function TemplatesSettingsPage() {
   const { data: proposals, isLoading: proposalsLoading } = trpc.settings360.proposals.useQuery();
@@ -838,6 +1070,11 @@ export function SeasonSettingsPage() {
     defaultInstallLeadDays: 14,
     defaultRemovalLeadDays: 7,
     blackoutWeeks: '',
+    installCutoffDate: '',
+    takedownStartDate: '',
+    rebookingStartDate: '',
+    publicMarketingYear: '' as number | '',
+    bookingOpen: true,
   });
 
   useEffect(() => {
@@ -853,6 +1090,11 @@ export function SeasonSettingsPage() {
         defaultInstallLeadDays: data.defaultInstallLeadDays,
         defaultRemovalLeadDays: data.defaultRemovalLeadDays,
         blackoutWeeks: (data.blackoutWeeks ?? []).join(', '),
+        installCutoffDate: data.installCutoffDate ?? '',
+        takedownStartDate: data.takedownStartDate ?? '',
+        rebookingStartDate: data.rebookingStartDate ?? '',
+        publicMarketingYear: data.publicMarketingYear ?? '',
+        bookingOpen: data.bookingOpen ?? true,
       });
     }
   }, [data]);
@@ -878,6 +1120,12 @@ export function SeasonSettingsPage() {
         defaultInstallLeadDays: form.defaultInstallLeadDays,
         defaultRemovalLeadDays: form.defaultRemovalLeadDays,
         blackoutWeeks,
+        installCutoffDate: form.installCutoffDate.trim() || null,
+        takedownStartDate: form.takedownStartDate.trim() || null,
+        rebookingStartDate: form.rebookingStartDate.trim() || null,
+        publicMarketingYear:
+          form.publicMarketingYear === '' ? null : Number(form.publicMarketingYear),
+        bookingOpen: form.bookingOpen,
       });
     }}>
       <SettingsSection title="Season calendar" description="Defaults used when creating proposals and planning install/removal windows.">
@@ -901,6 +1149,45 @@ export function SeasonSettingsPage() {
         <FormField label="Blackout weeks (comma-separated ISO week numbers)">
           <input className="input mt-4 w-full" value={form.blackoutWeeks} onChange={(e) => setForm({ ...form, blackoutWeeks: e.target.value })} placeholder="e.g. 47, 48, 51" />
         </FormField>
+      </SettingsSection>
+      <SettingsSection title="Public seasonal dates" description="Shown on the marketing site and customer-facing copy via season placeholders.">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <FormField label="Install cutoff date">
+            <input className="input w-full" type="date" value={form.installCutoffDate} onChange={(e) => setForm({ ...form, installCutoffDate: e.target.value })} />
+          </FormField>
+          <FormField label="Takedown start date">
+            <input className="input w-full" type="date" value={form.takedownStartDate} onChange={(e) => setForm({ ...form, takedownStartDate: e.target.value })} />
+          </FormField>
+          <FormField label="Rebooking start date">
+            <input className="input w-full" type="date" value={form.rebookingStartDate} onChange={(e) => setForm({ ...form, rebookingStartDate: e.target.value })} />
+          </FormField>
+          <FormField label="Public marketing year">
+            <input
+              className="input w-full"
+              type="number"
+              min={2020}
+              max={2100}
+              value={form.publicMarketingYear}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  publicMarketingYear: e.target.value === '' ? '' : Number(e.target.value),
+                })
+              }
+              placeholder="Defaults to season year"
+            />
+          </FormField>
+          <FormField label="Booking open">
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.bookingOpen}
+                onChange={(e) => setForm({ ...form, bookingOpen: e.target.checked })}
+              />
+              Accepting new bookings
+            </label>
+          </FormField>
+        </div>
       </SettingsSection>
       <SaveButton saving={update.isPending} />
     </form>

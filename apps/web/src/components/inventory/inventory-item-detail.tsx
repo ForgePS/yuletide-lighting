@@ -5,14 +5,19 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency, formatMultiPrice } from '@/lib/inventory-utils';
-import { LoadingState } from '@/components/ui/states';
+import { LoadingState, ErrorState } from '@/components/ui/states';
 import { InventoryEditDialog } from './inventory-table';
 import { QRGenerator } from './warehouse-map';
-import { computeAvailable } from '@clcrm/types';
+import { computeAvailable, formatInventoryLabel, hasPermission } from '@clcrm/types';
+import { useAuth } from '@/lib/firebase-auth';
 
 export function InventoryItemDetail({ itemId }: { itemId: string }) {
   const { toast } = useToast();
-  const { data, isLoading, refetch } = trpc.inventory360.items.getById.useQuery({ itemId });
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = !authLoading && !!idToken;
+  const { data: myPermissions } = trpc.settings360.myPermissions.useQuery(undefined, { enabled: ready });
+  const canEdit = myPermissions ? hasPermission(myPermissions, 'inventory', 'edit') : false;
+  const { data, isLoading, isError, error, refetch } = trpc.inventory360.items.getById.useQuery({ itemId });
   const markDamaged = trpc.inventory360.items.markDamaged.useMutation({
     onSuccess: () => { toast('Damage recorded', 'success'); refetch(); setDamageQty(''); },
     onError: () => toast('Could not record damage', 'error'),
@@ -21,7 +26,15 @@ export function InventoryItemDetail({ itemId }: { itemId: string }) {
   const [damageQty, setDamageQty] = useState('');
   const [damageStatus, setDamageStatus] = useState<'repair' | 'replace' | 'dispose'>('repair');
 
-  if (isLoading || !data) return <LoadingState message="Loading item..." />;
+  if (isLoading) return <LoadingState message="Loading item..." />;
+  if (isError || !data) {
+    return (
+      <ErrorState
+        message={error?.message ?? 'Could not load this inventory item.'}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
 
   const { item, allocations } = data;
   const available = computeAvailable(item);
@@ -35,7 +48,9 @@ export function InventoryItemDetail({ itemId }: { itemId: string }) {
           <p className="font-mono text-sm text-muted-foreground">{item.sku}</p>
           {item.categoryName && <p className="text-sm text-muted-foreground">{item.categoryName}</p>}
         </div>
-        <button type="button" className="btn-secondary" onClick={() => setShowEdit(true)}>Edit item</button>
+        {canEdit ? (
+          <button type="button" className="btn-secondary" onClick={() => setShowEdit(true)}>Edit item</button>
+        ) : null}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -75,9 +90,12 @@ export function InventoryItemDetail({ itemId }: { itemId: string }) {
         <QRGenerator sku={item.sku} qrCode={item.qrCode} />
       </div>
 
+      {canEdit ? (
       <div className="card p-6">
         <h2 className="font-semibold">Record damage</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Move units from on-hand to damaged inventory.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Mark units as damaged (carve-out from available; on-hand physical count unchanged).
+        </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <input type="number" min={1} placeholder="Qty" value={damageQty} onChange={(e) => setDamageQty(e.target.value)} className="input w-24" />
           <select value={damageStatus} onChange={(e) => setDamageStatus(e.target.value as typeof damageStatus)} className="input w-auto">
@@ -95,6 +113,7 @@ export function InventoryItemDetail({ itemId }: { itemId: string }) {
           </button>
         </div>
       </div>
+      ) : null}
 
       <div className="card overflow-hidden">
         <div className="border-b p-4">
@@ -111,7 +130,7 @@ export function InventoryItemDetail({ itemId }: { itemId: string }) {
                   <Link href={`/app/jobs/${a.jobId}`} className="text-primary hover:underline">{a.jobId.slice(0, 8)}…</Link>
                 </td>
                 <td>{a.quantity}</td>
-                <td className="capitalize">{a.status}</td>
+                <td className="capitalize">{formatInventoryLabel(a.status)}</td>
                 <td className="text-muted-foreground">{a.warehouseLocation ?? item.locationBin ?? '—'}</td>
               </tr>
             ))}

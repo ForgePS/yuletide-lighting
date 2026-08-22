@@ -56,3 +56,7 @@ export function getClientAuth(): Auth | null {
     return null;
   }
 }
+
+/** Browser-only Auth singleton for Firebase Auth hooks and TRPC headers. */
+export const auth: Auth | null =
+  typeof window === 'undefined' ? null : getClientAuth();

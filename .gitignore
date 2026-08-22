@@ -4,8 +4,22 @@ node_modules
 dist
 .env
 .env.local
+.env.staging
 .env.*.local
-.firebase-deploy-sa.json
+apps/web/.env.deploy-backup
+firebase.json.deploy-backup
+build-theme-check.txt
+turbo-web-ok.txt
+docs/production-cleanup/organization-module-audit.json
+docs/production-cleanup/organization-module-audit.csv
+docs/production-cleanup/organization-module-migration-rollback-*.json
+docs/production-cleanup/*-production-check.txt
+docs/production-cleanup/module-migration-emulator-dry-run.txt
+docs/production-cleanup/.audit-private/
+secrets/
+*-firebase-adminsdk*.json
+e2e/.auth/
+playwright/.auth/
 *.log
 .DS_Store
 .expo
@@ -14,6 +28,9 @@ deploy-log.txt
 **/.expo-export-test2*/
 coverage
 drizzle/meta
+playwright-report/
+test-results/
+blob-report/
 
 # Firebase Hosting (Next.js web app)
 .firebase/
@@ -24,7 +41,3 @@ apps/web/package.json.workspace-backup
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
-
-# TinaCMS build output
-apps/web/tina/__generated__/
-apps/web/public/admin/

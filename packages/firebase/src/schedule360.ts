@@ -22,7 +22,9 @@ import {
   DEFAULT_VEHICLES,
   detectConflicts,
   EVENT_CATEGORY_COLORS,
-  mockWeatherForecast,
+  jobStageFromAppointmentComplete,
+  normalizeOptionalId,
+  resolveJobCrewAssignment,
   SEASON_PLAN,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
@@ -30,6 +32,7 @@ import { mapTimestampsFromData } from './firestore-utils';
 import { colCreate, colDelete, colGet, colList, colUpdate } from './firestore';
 import { triggerAutomation } from './messages360';
 import { syncCustomerPipelineFromAppointment, syncCustomerPipelineFromJob } from './jobs360';
+import { haversineMiles, nearestNeighborOrder, pathDistanceMiles, travelMinutesFromMiles } from './geo';
 
 function ts() {
   return Timestamp.now();
@@ -132,11 +135,17 @@ export async function listCalendarEvents(
   end?: Date,
   opts?: { readOnly?: boolean },
 ): Promise<CalendarEvent[]> {
-  const rows = await colList<Record<string, unknown>>(orgId, 'calendarEvents');
+  const rows = await colList<Record<string, unknown>>(orgId, 'calendarEvents', 'createdAt', {
+    limit: opts?.readOnly ? 400 : undefined,
+  });
   let events = rows.map((r) => normalizeEvent({ ...r, organizationId: orgId }));
+  const hadAnyEvents = events.length > 0;
+  // YL-S10: do not drop in-progress events with startAt before the window (overlap filter below).
+  if (start && !end) events = events.filter((e) => e.endAt >= start);
+  if (end && !start) events = events.filter((e) => e.startAt <= end);
 
-  // Migrate legacy scheduleBlocks (skip on read-only dashboard paths to avoid timeouts)
-  if (!events.length) {
+  // Migrate legacy scheduleBlocks (never on read-only dashboard — that path must stay fast)
+  if (!hadAnyEvents && !opts?.readOnly) {
     const blocks = await colList<{ id: string; jobId: string; startAt: Date; endAt: Date }>(orgId, 'scheduleBlocks');
     if (blocks.length) {
       const jobs = await colList<{ id: string; title?: string; customerId?: string }>(orgId, 'jobs');
@@ -222,8 +231,9 @@ export async function createCalendarEvent(
 
   let customerName: string | null = null;
   let propertyAddress: string | null = null;
-  if (input.customerId) {
-    const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', input.customerId);
+  const resolvedCustomerId = normalizeOptionalId(input.customerId);
+  if (resolvedCustomerId) {
+    const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', resolvedCustomerId);
     customerName = customer ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() : null;
   }
   if (input.propertyId) {
@@ -233,15 +243,19 @@ export async function createCalendarEvent(
 
   const crews = await ensureCrews(orgId);
   const crew = input.crewId ? crews.find((c) => c.id === input.crewId) : null;
-  const weather = mockWeatherForecast(1)[0]!;
-  const weatherRisk = weather.riskLevel === 'high';
+  const crewAssignment = resolveJobCrewAssignment(
+    crew ? { id: crew.id, assignedUserId: crew.assignedUserId } : input.crewId ? { id: input.crewId } : null,
+  );
+  // Weather risk requires a live provider — never fabricate from mock forecasts.
+  const weatherRisk = false;
+  const customerId = resolvedCustomerId ?? null;
 
   const allEvents = await listCalendarEvents(orgId);
   const draft = {
     id: 'new',
     crewId: input.crewId ?? null,
     vehicleId: input.vehicleId ?? null,
-    customerId: input.customerId ?? null,
+    customerId,
     propertyId: input.propertyId ?? null,
     startAt: input.startAt,
     endAt,
@@ -253,7 +267,7 @@ export async function createCalendarEvent(
     title: input.title,
     appointmentType: input.appointmentType,
     category,
-    customerId: input.customerId ?? null,
+    customerId,
     customerName,
     propertyId: input.propertyId ?? null,
     propertyAddress,
@@ -278,29 +292,33 @@ export async function createCalendarEvent(
   const normalized = normalizeEvent({ ...event, organizationId: orgId });
 
   if (input.jobId) {
-    await colUpdate(orgId, 'jobs', input.jobId, {
+    const jobPatch: Record<string, unknown> = {
       scheduledStart: input.startAt,
       scheduledEnd: endAt,
       stage: 'scheduled',
-      assignedCrewUserId: input.crewId ?? null,
-    });
+      assignedCrewId: crewAssignment.assignedCrewId,
+    };
+    // YL-S10: never write crewSchedules profile id into assignedCrewUserId.
+    if (crewAssignment.assignedCrewUserId) {
+      jobPatch.assignedCrewUserId = crewAssignment.assignedCrewUserId;
+    } else if (!input.crewId) {
+      jobPatch.assignedCrewUserId = null;
+    }
+    await colUpdate(orgId, 'jobs', input.jobId, jobPatch);
     await colCreate(orgId, 'scheduleBlocks', { jobId: input.jobId, startAt: input.startAt, endAt });
   }
 
-  if (input.customerId) {
-    await syncCustomerPipelineFromAppointment(orgId, input.customerId, input.appointmentType, 'scheduled', userId);
+  if (customerId) {
+    await syncCustomerPipelineFromAppointment(orgId, customerId, input.appointmentType, 'scheduled', userId);
   }
 
   await syncDispatchBoard(orgId);
-  if (input.customerId) {
-    await triggerAutomation(orgId, 'job_scheduled', input.customerId, {
-      appointmentDate: input.startAt.toLocaleDateString(),
-      address: propertyAddress ?? '',
-    }, userId).catch(() => {});
+  if (customerId) {
+    // YL-S21: single path via automation360 (messaging fallback inside fireAutomationTrigger).
     try {
       const { fireAutomationTrigger } = await import('./automation360');
       await fireAutomationTrigger(orgId, 'job_scheduled', {
-        customerId: input.customerId,
+        customerId,
         jobId: input.jobId,
         vars: {
           appointmentDate: input.startAt.toLocaleDateString(),
@@ -321,8 +339,8 @@ export async function createEventFromJob(orgId: string, input: { jobId: string; 
   return createCalendarEvent(orgId, {
     title: String(job.title ?? 'Job'),
     appointmentType: input.appointmentType,
-    customerId: String(job.customerId ?? ''),
-    propertyId: (job.propertyId as string) ?? undefined,
+    customerId: normalizeOptionalId(job.customerId as string | null | undefined),
+    propertyId: normalizeOptionalId(job.propertyId as string | null | undefined),
     jobId: input.jobId,
     crewId: input.crewId,
     startAt: input.startAt,
@@ -332,34 +350,67 @@ export async function createEventFromJob(orgId: string, input: { jobId: string; 
 }
 
 export async function updateCalendarEvent(orgId: string, eventId: string, data: Partial<CalendarEvent>, userId?: string | null) {
+  const existing = await getCalendarEvent(orgId, eventId);
   await colUpdate(orgId, 'calendarEvents', eventId, { ...data, updatedBy: userId });
+  const updated = await getCalendarEvent(orgId, eventId);
+  if (existing?.jobId && updated) {
+    const shouldSyncJob =
+      data.startAt !== undefined ||
+      data.endAt !== undefined ||
+      data.crewId !== undefined;
+    if (shouldSyncJob) {
+      await syncJobFromCalendarEvent(orgId, existing.jobId, updated);
+    }
+  }
   await syncDispatchBoard(orgId);
-  return getCalendarEvent(orgId, eventId);
+  return updated;
 }
 
 export async function moveCalendarEvent(orgId: string, input: { eventId: string; startAt: Date; endAt: Date; crewId?: string }, userId?: string | null) {
   const event = await getCalendarEvent(orgId, input.eventId);
   if (!event) throw new Error('Event not found');
   const crews = await ensureCrews(orgId);
-  const crew = input.crewId ? crews.find((c) => c.id === input.crewId) : null;
+  const nextCrewId = input.crewId ?? event.crewId ?? undefined;
+  const crew = nextCrewId ? crews.find((c) => c.id === nextCrewId) : null;
   const allEvents = await listCalendarEvents(orgId);
   const conflicts = detectConflicts(allEvents, { ...event, ...input, id: input.eventId });
 
   await colUpdate(orgId, 'calendarEvents', input.eventId, {
     startAt: input.startAt,
     endAt: input.endAt,
-    crewId: input.crewId ?? event.crewId,
-    crewName: crew?.name ?? event.crewName,
+    crewId: nextCrewId ?? null,
+    crewName: crew?.name ?? (input.crewId ? null : event.crewName),
     updatedBy: userId,
   });
 
   if (event.jobId) {
-    await colUpdate(orgId, 'jobs', event.jobId, { scheduledStart: input.startAt, scheduledEnd: input.endAt });
+    const updated = await getCalendarEvent(orgId, input.eventId);
+    if (updated) await syncJobFromCalendarEvent(orgId, event.jobId, updated);
   }
 
   await syncDispatchBoard(orgId);
   const updated = await getCalendarEvent(orgId, input.eventId);
   return { event: updated, conflicts };
+}
+
+/** YL-S10 — keep linked job times/crew in sync with calendar event edits. */
+async function syncJobFromCalendarEvent(orgId: string, jobId: string, event: CalendarEvent) {
+  const crews = event.crewId ? await ensureCrews(orgId) : [];
+  const crew = event.crewId ? crews.find((c) => c.id === event.crewId) : null;
+  const assignment = resolveJobCrewAssignment(
+    crew ? { id: crew.id, assignedUserId: crew.assignedUserId } : event.crewId ? { id: event.crewId } : null,
+  );
+  const jobPatch: Record<string, unknown> = {
+    scheduledStart: event.startAt,
+    scheduledEnd: event.endAt,
+    assignedCrewId: assignment.assignedCrewId,
+  };
+  if (assignment.assignedCrewUserId) {
+    jobPatch.assignedCrewUserId = assignment.assignedCrewUserId;
+  } else if (!event.crewId) {
+    jobPatch.assignedCrewUserId = null;
+  }
+  await colUpdate(orgId, 'jobs', jobId, jobPatch);
 }
 
 export async function duplicateCalendarEvent(orgId: string, eventId: string, startAt: Date, userId?: string | null) {
@@ -610,6 +661,23 @@ export async function ensureCrews(orgId: string): Promise<CrewProfile[]> {
   return crews;
 }
 
+/** YL-S11 — link a schedule crew profile to a Firebase Auth user for field assignment. */
+export async function updateCrewProfileAssignedUser(
+  orgId: string,
+  crewId: string,
+  assignedUserId: string | null,
+  userId?: string | null,
+) {
+  await ensureCrews(orgId);
+  const existing = await colGet<CrewProfile>(orgId, 'crewSchedules', crewId);
+  if (!existing) throw new Error('Crew profile not found');
+  const normalized = typeof assignedUserId === 'string' ? assignedUserId.trim() : '';
+  return colUpdate(orgId, 'crewSchedules', crewId, {
+    assignedUserId: normalized || null,
+    updatedBy: userId ?? null,
+  }) as Promise<CrewProfile>;
+}
+
 async function recalcCrewUtilization(orgId: string, crews: CrewProfile[]) {
   const events = await listCalendarEvents(orgId);
   const weekStart = new Date();
@@ -713,7 +781,7 @@ export async function updateDispatchStatus(orgId: string, dispatchId: string, st
       await triggerAutomation(orgId, 'job_completed', event.customerId, {}, userId).catch(() => {});
       await syncCustomerPipelineFromAppointment(orgId, event.customerId, event.appointmentType, 'completed', userId);
       if (event.jobId) {
-        const jobStage = event.appointmentType === 'takedown' ? 'removed' : 'installed';
+        const jobStage = jobStageFromAppointmentComplete(event.appointmentType) ?? 'installed';
         await colUpdate(orgId, 'jobs', event.jobId, {
           stage: jobStage,
           ...(jobStage === 'installed' ? { installedAt: new Date() } : { removedAt: new Date() }),
@@ -724,32 +792,158 @@ export async function updateDispatchStatus(orgId: string, dispatchId: string, st
   return colGet<DispatchBoardEntry>(orgId, 'dispatchBoard', dispatchId);
 }
 
-export async function optimizeRoute(orgId: string, input: { routeDate: Date; crewId?: string; eventIds: string[] }, userId?: string | null) {
-  const events = await Promise.all(input.eventIds.map((id) => getCalendarEvent(orgId, id)));
-  const valid = events.filter(Boolean) as CalendarEvent[];
-  const stops = valid.map((e, i) => ({
-    id: nanoid(),
-    eventId: e.id,
-    customerName: e.customerName,
-    address: e.propertyAddress,
-    arrivalAt: new Date(input.routeDate.getTime() + i * 45 * 60000),
-    travelMinutes: i === 0 ? 0 : 25,
-    order: i + 1,
-  }));
+export async function optimizeRoute(
+  orgId: string,
+  input: { routeDate: Date; crewId?: string; eventIds: string[]; startLat?: number; startLng?: number },
+  userId?: string | null,
+) {
+  const rawEvents = await Promise.all(
+    input.eventIds.map(async (id) => {
+      const raw = await colGet<Record<string, unknown>>(orgId, 'calendarEvents', id);
+      if (!raw) return null;
+      return { id, raw, event: normalizeEvent({ ...raw, id, organizationId: orgId }) };
+    }),
+  );
+  const valid = rawEvents.filter(Boolean) as Array<{
+    id: string;
+    raw: Record<string, unknown>;
+    event: CalendarEvent;
+  }>;
 
-  const totalTravel = stops.reduce((s, st) => s + st.travelMinutes, 0);
-  const route = await colCreate(orgId, 'routes', {
+  const propertyIds = [...new Set(valid.map((v) => v.event.propertyId).filter(Boolean))] as string[];
+  const properties = await Promise.all(
+    propertyIds.map((id) =>
+      colGet<{ id: string; latitude?: number | null; longitude?: number | null; addressLine1?: string; city?: string; state?: string }>(
+        orgId,
+        'properties',
+        id,
+      ),
+    ),
+  );
+  const propertyById = new Map(properties.filter(Boolean).map((p) => [p!.id, p!]));
+
+  type StopPoint = {
+    eventId: string;
+    event: CalendarEvent;
+    lat: number;
+    lng: number;
+    address?: string | null;
+  };
+
+  const withCoords: StopPoint[] = [];
+  const withoutCoords: Array<{ eventId: string; event: CalendarEvent; address?: string | null }> = [];
+
+  for (const row of valid) {
+    const e = row.event;
+    const rawLat = Number(row.raw.latitude ?? row.raw.lat ?? row.raw.startLat);
+    const rawLng = Number(row.raw.longitude ?? row.raw.lng ?? row.raw.startLng);
+    const property = e.propertyId ? propertyById.get(e.propertyId) : undefined;
+    const propLat = typeof property?.latitude === 'number' ? property.latitude : NaN;
+    const propLng = typeof property?.longitude === 'number' ? property.longitude : NaN;
+    const lat = Number.isFinite(rawLat) ? rawLat : propLat;
+    const lng = Number.isFinite(rawLng) ? rawLng : propLng;
+    const address =
+      e.propertyAddress ??
+      (property?.addressLine1
+        ? `${property.addressLine1}${property.city ? `, ${property.city}` : ''}${property.state ? ` ${property.state}` : ''}`
+        : null);
+
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      withCoords.push({ eventId: e.id, event: e, lat, lng, address });
+    } else {
+      withoutCoords.push({ eventId: e.id, event: e, address });
+    }
+  }
+
+  const start =
+    input.startLat != null && input.startLng != null
+      ? { lat: input.startLat, lng: input.startLng }
+      : undefined;
+
+  const originalPoints = withCoords.map((p) => ({ id: p.eventId, lat: p.lat, lng: p.lng }));
+  const orderedPoints = nearestNeighborOrder(originalPoints, start);
+  const orderedWithCoords = orderedPoints
+    .map((p) => withCoords.find((w) => w.eventId === p.id)!)
+    .filter(Boolean);
+
+  const originalTourMiles = start
+    ? pathDistanceMiles(originalPoints, start)
+    : pathDistanceMiles(originalPoints);
+  const optimizedTourMiles = start
+    ? pathDistanceMiles(
+        orderedWithCoords.map((p) => ({ lat: p.lat, lng: p.lng })),
+        start,
+      )
+    : pathDistanceMiles(orderedWithCoords.map((p) => ({ lat: p.lat, lng: p.lng })));
+
+  const orderedStops = [...orderedWithCoords, ...withoutCoords];
+  const stops: RoutePlan['stops'] = [];
+  let prev: { lat: number; lng: number } | undefined = start;
+  let totalDistanceMiles = 0;
+  let totalTravelMinutes = 0;
+  let arrivalCursor = input.routeDate.getTime();
+
+  for (let i = 0; i < orderedStops.length; i++) {
+    const stop = orderedStops[i]!;
+    const hasCoords = 'lat' in stop && typeof (stop as StopPoint).lat === 'number';
+    let segmentMiles = 0;
+    let travelMinutes = 0;
+
+    if (hasCoords) {
+      const point = stop as StopPoint;
+      if (prev) {
+        segmentMiles = haversineMiles(prev.lat, prev.lng, point.lat, point.lng);
+        travelMinutes = travelMinutesFromMiles(segmentMiles);
+      } else if (i > 0) {
+        travelMinutes = 15;
+      }
+      prev = { lat: point.lat, lng: point.lng };
+    } else if (i > 0) {
+      travelMinutes = 25;
+    }
+
+    totalDistanceMiles += segmentMiles;
+    totalTravelMinutes += travelMinutes;
+    arrivalCursor += travelMinutes * 60_000;
+
+    const point = hasCoords ? (stop as StopPoint) : null;
+    stops.push({
+      id: nanoid(),
+      eventId: stop.eventId,
+      customerName: stop.event.customerName,
+      address: stop.address,
+      latitude: point?.lat ?? null,
+      longitude: point?.lng ?? null,
+      arrivalAt: new Date(arrivalCursor),
+      travelMinutes,
+      order: i + 1,
+    });
+
+    // Assume ~45 min on-site before next departure
+    arrivalCursor += 45 * 60_000;
+  }
+
+  if (totalDistanceMiles <= 0 && optimizedTourMiles > 0) {
+    totalDistanceMiles = optimizedTourMiles;
+  }
+  totalDistanceMiles = Math.round(totalDistanceMiles * 100) / 100;
+
+  const improvement =
+    originalTourMiles > 0.01 ? Math.max(0, (originalTourMiles - optimizedTourMiles) / originalTourMiles) : 0;
+  const efficiencyScore = Math.round(Math.min(100, Math.max(0, 55 + improvement * 90 - withoutCoords.length * 2)));
+
+  const route = (await colCreate(orgId, 'routes', {
     organizationId: orgId,
     routeDate: input.routeDate,
     crewId: input.crewId ?? null,
-    crewName: valid[0]?.crewName ?? null,
+    crewName: valid[0]?.event.crewName ?? null,
     stops,
-    totalDistanceMiles: stops.length * 8,
-    totalTravelMinutes: totalTravel,
-    efficiencyScore: Math.max(60, 100 - stops.length * 3),
+    totalDistanceMiles,
+    totalTravelMinutes,
+    efficiencyScore,
     createdBy: userId,
     updatedBy: userId,
-  }) as RoutePlan;
+  })) as RoutePlan;
 
   return route;
 }
@@ -818,8 +1012,26 @@ export async function getScheduleAnalytics(orgId: string): Promise<ScheduleAnaly
   };
 }
 
-export async function getWeatherForecast(_orgId: string, days = 5): Promise<WeatherForecast[]> {
-  return mockWeatherForecast(days);
+export async function getWeatherForecast(
+  _orgId: string,
+  _days = 5,
+): Promise<{ available: false; reason: string; forecasts: [] }> {
+  // Production must never fabricate weather. Enable only when a real provider is configured.
+  const provider = (process.env.WEATHER_PROVIDER || '').trim();
+  const apiKey = (process.env.WEATHER_API_KEY || '').trim();
+  if (!provider || !apiKey) {
+    return {
+      available: false,
+      reason: 'Weather provider not configured',
+      forecasts: [],
+    };
+  }
+  // Provider adapters can be added without changing schedule UI contracts.
+  return {
+    available: false,
+    reason: `Weather provider "${provider}" is not implemented yet`,
+    forecasts: [],
+  };
 }
 
 export async function getSeasonPlan() {

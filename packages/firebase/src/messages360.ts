@@ -18,11 +18,12 @@ import {
   DEFAULT_INTERNAL_CHANNELS,
   DEFAULT_MESSAGE_TEMPLATES,
   renderMessageTemplate,
+  resolveOutboundMessageStatus,
 } from '@clcrm/types';
-import { nanoid } from 'nanoid';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
-import { colCreate, colDelete, colGet, colList, colUpdate } from './firestore';
+import { colCreate, colGet, colList, colUpdate } from './firestore';
 
 function ts() {
   return Timestamp.now();
@@ -42,75 +43,29 @@ function startOfToday() {
   return d;
 }
 
-function appBaseUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app').replace(/\/$/, '');
-}
-
-async function ensurePortalAccessUrlForCustomer(orgId: string, customerId: string) {
-  const customer = await colGet<{ portalToken?: string | null; portalEnabled?: boolean }>(orgId, 'customers', customerId);
-  if (!customer) return `${appBaseUrl()}/portal/login`;
-  let portalToken = customer.portalToken ?? null;
-  const updates: Record<string, unknown> = {};
-  if (!portalToken) {
-    portalToken = nanoid(32);
-    updates.portalToken = portalToken;
-  }
-  if (!customer.portalEnabled) {
-    updates.portalEnabled = true;
-    updates.portalInviteSentAt = new Date();
-  }
-  if (Object.keys(updates).length > 0) {
-    await colUpdate(orgId, 'customers', customerId, updates);
-  }
-  return portalToken ? `${appBaseUrl()}/portal/${portalToken}` : `${appBaseUrl()}/portal/login`;
-}
-
-function hasPortalPlaceholder(text?: string | null) {
-  if (!text) return false;
-  return (
-    /%7Btoken%7D/i.test(text)
-    || /\{\{\s*token\s*\}\}/i.test(text)
-    || /\{\s*token\s*\}/i.test(text)
-    || /\{\{\s*portal(?:_|)link\s*\}\}/i.test(text)
-    || /\{\s*portal(?:_|)link\s*\}/i.test(text)
-    || /\{\{\s*portal(?:_|)url\s*\}\}/i.test(text)
-    || /\{\s*portal(?:_|)url\s*\}/i.test(text)
-    || /\/portal\/(%7Btoken%7D|\{token\})/i.test(text)
-  );
-}
-
-async function replacePortalPlaceholders(
-  orgId: string,
-  customerId: string,
-  text?: string | null,
-) {
-  if (!text) return text ?? undefined;
-  if (!hasPortalPlaceholder(text)) return text;
-  const portalAccessUrl = await ensurePortalAccessUrlForCustomer(orgId, customerId);
-  return text
-    .replace(/\/portal\/(%7Btoken%7D|\{token\})/gi, portalAccessUrl)
-    .replace(/portal\/(%7Btoken%7D|\{token\})/gi, portalAccessUrl)
-    .replace(/%7Btoken%7D/gi, portalAccessUrl)
-    .replace(/\{\{\s*token\s*\}\}/gi, portalAccessUrl)
-    .replace(/\{\s*token\s*\}/gi, portalAccessUrl)
-    .replace(/\{\{\s*portal(?:_|)link\s*\}\}/gi, portalAccessUrl)
-    .replace(/\{\s*portal(?:_|)link\s*\}/gi, portalAccessUrl)
-    .replace(/\{\{\s*portal(?:_|)url\s*\}\}/gi, portalAccessUrl)
-    .replace(/\{\s*portal(?:_|)url\s*\}/gi, portalAccessUrl);
-}
-
 async function msgCreate(orgId: string, conversationId: string, data: Record<string, unknown>) {
   const db = getAdminFirestore();
   const ref = db.collection(`${orgPath(orgId, 'conversations')}/${conversationId}/messages`).doc();
   const now = ts();
   await ref.set({ ...data, createdAt: now, updatedAt: now });
-  return mapDoc<ConversationMessage>({ id: ref.id, conversationId, ...data, createdAt: now, updatedAt: now });
+  return mapDoc<ConversationMessage>({
+    id: ref.id,
+    conversationId,
+    ...data,
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 async function msgList(orgId: string, conversationId: string) {
   const db = getAdminFirestore();
-  const snap = await db.collection(`${orgPath(orgId, 'conversations')}/${conversationId}/messages`).orderBy('createdAt', 'asc').get();
-  return snap.docs.map((d) => mapDoc<ConversationMessage>({ id: d.id, conversationId, ...d.data()! }));
+  const snap = await db
+    .collection(`${orgPath(orgId, 'conversations')}/${conversationId}/messages`)
+    .orderBy('createdAt', 'asc')
+    .get();
+  return snap.docs.map((d) =>
+    mapDoc<ConversationMessage>({ id: d.id, conversationId, ...d.data()! }),
+  );
 }
 
 export async function ensureConversation(
@@ -119,11 +74,21 @@ export async function ensureConversation(
   opts?: { propertyId?: string; source?: Conversation['source'] },
 ): Promise<Conversation> {
   const db = getAdminFirestore();
-  const snap = await db.collection(orgPath(orgId, 'conversations')).where('customerId', '==', customerId).limit(1).get();
+  const snap = await db
+    .collection(orgPath(orgId, 'conversations'))
+    .where('customerId', '==', customerId)
+    .limit(1)
+    .get();
   if (!snap.empty) return mapDoc<Conversation>({ id: snap.docs[0]!.id, ...snap.docs[0]!.data()! });
 
-  const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', customerId);
-  const customerName = customer ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() : null;
+  const customer = await colGet<{ firstName?: string; lastName?: string }>(
+    orgId,
+    'customers',
+    customerId,
+  );
+  const customerName = customer
+    ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim()
+    : null;
   const now = new Date();
 
   const created = await colCreate(orgId, 'conversations', {
@@ -148,15 +113,26 @@ export async function ensureConversation(
 
 export async function listConversations(orgId: string): Promise<Conversation[]> {
   const db = getAdminFirestore();
-  const snap = await db.collection(orgPath(orgId, 'conversations')).orderBy('lastActivityAt', 'desc').get();
+  const snap = await db
+    .collection(orgPath(orgId, 'conversations'))
+    .orderBy('lastActivityAt', 'desc')
+    .get();
   if (!snap.empty) return snap.docs.map((d) => mapDoc<Conversation>({ id: d.id, ...d.data()! }));
 
   // Migrate legacy messageThreads
-  const threads = await colList<{ id: string; customerId: string; unreadCount?: number; lastMessageAt?: Date }>(orgId, 'messageThreads');
+  const threads = await colList<{
+    id: string;
+    customerId: string;
+    unreadCount?: number;
+    lastMessageAt?: Date;
+  }>(orgId, 'messageThreads');
   for (const thread of threads) {
     await ensureConversation(orgId, thread.customerId);
   }
-  const refreshed = await db.collection(orgPath(orgId, 'conversations')).orderBy('lastActivityAt', 'desc').get();
+  const refreshed = await db
+    .collection(orgPath(orgId, 'conversations'))
+    .orderBy('lastActivityAt', 'desc')
+    .get();
   return refreshed.docs.map((d) => mapDoc<Conversation>({ id: d.id, ...d.data()! }));
 }
 
@@ -166,7 +142,12 @@ export async function getConversation(orgId: string, conversationId: string) {
   return mapDoc<Conversation>({ id: conversationId, ...raw });
 }
 
-export async function updateConversation(orgId: string, conversationId: string, data: Partial<Conversation>, userId?: string | null) {
+export async function updateConversation(
+  orgId: string,
+  conversationId: string,
+  data: Partial<Conversation>,
+  userId?: string | null,
+) {
   await colUpdate(orgId, 'conversations', conversationId, { ...data, updatedBy: userId });
   return getConversation(orgId, conversationId);
 }
@@ -181,29 +162,48 @@ export async function sendMessage360(
     subject?: string;
     attachmentUrls?: string[];
     scheduledAt?: Date;
+    /** Staff notification trigger; defaults to manual_outbound. */
+    notificationTrigger?: string;
+    /** When true, skip the staff notifications row (automation writes its own). */
+    skipStaffNotification?: boolean;
   },
   userId?: string | null,
   userName?: string | null,
 ) {
-  const body = (await replacePortalPlaceholders(orgId, input.customerId, input.body)) ?? input.body;
-  const subject = (await replacePortalPlaceholders(orgId, input.customerId, input.subject)) ?? input.subject;
+  if (input.channel === 'sms') {
+    const customer = await findCustomerForSms(orgId, { customerId: input.customerId });
+    if (!customer) throw new Error('Customer not found');
+    if (customer.smsOptIn === false) {
+      throw new Error('Customer is opted out of SMS');
+    }
+  }
+
   const conversation = input.conversationId
     ? await getConversation(orgId, input.conversationId)
-    : await ensureConversation(orgId, input.customerId, { source: input.channel === 'portal' ? 'portal' : input.channel as Conversation['source'] });
+    : await ensureConversation(orgId, input.customerId, {
+        source: input.channel === 'portal' ? 'portal' : (input.channel as Conversation['source']),
+      });
 
   if (!conversation) throw new Error('Conversation not found');
 
-  const classification = classifyMessage(body);
+  const classification = classifyMessage(input.body);
   const now = new Date();
+  // YL-S14: no Twilio/Resend adapter in messages360 yet — never claim provider delivery.
+  const status = resolveOutboundMessageStatus({
+    channel: input.channel,
+    scheduledAt: input.scheduledAt ?? null,
+    now,
+    providerAdapterActive: false,
+  });
   const message = await msgCreate(orgId, conversation.id, {
     channel: input.channel,
     direction: 'outbound',
-    body,
-    subject: subject ?? null,
-    status: input.scheduledAt && input.scheduledAt > now ? 'sent' : 'delivered',
+    body: input.body,
+    subject: input.subject ?? null,
+    status,
     sentByUserId: userId ?? null,
     sentByUserName: userName ?? null,
-    deliveredAt: input.scheduledAt && input.scheduledAt > now ? null : now,
+    deliveredAt: status === 'recorded' || status === 'sent' ? now : null,
     readAt: null,
     openedAt: null,
     attachmentUrls: input.attachmentUrls ?? [],
@@ -214,36 +214,41 @@ export async function sendMessage360(
 
   await colUpdate(orgId, 'conversations', conversation.id, {
     lastActivityAt: now,
-    lastMessagePreview: body.slice(0, 120),
+    lastMessagePreview: input.body.slice(0, 120),
     status: 'waiting_on_customer',
     category: classification.category,
     priority: classification.priority,
     updatedBy: userId,
   });
 
-  // Legacy compat
-  await colCreate(orgId, 'messages', {
-    threadId: conversation.id,
-    customerId: input.customerId,
-    channel: input.channel,
-    direction: 'outbound',
-    subject,
-    body,
-    sentByUserId: userId,
-    isRead: false,
-    status: 'delivered',
-  });
+  // Legacy flat `messages` dual-write removed (P0.2B write freeze).
 
-  await colCreate(orgId, 'notifications', {
-    organizationId: orgId,
-    customerId: input.customerId,
-    trigger: 'proposal_sent',
-    channel: input.channel,
-    title: subject ?? 'Message sent',
-    body: body.slice(0, 200),
-    status: 'delivered',
-    sentAt: now,
-  });
+  if (!input.skipStaffNotification) {
+    await colCreate(orgId, 'notifications', {
+      organizationId: orgId,
+      customerId: input.customerId,
+      trigger: input.notificationTrigger ?? 'manual_outbound',
+      channel: input.channel,
+      title: input.subject ?? 'Message sent',
+      body: input.body.slice(0, 200),
+      status,
+      sentAt: now,
+    });
+  }
+
+  if (input.channel === 'portal') {
+    try {
+      const { notifyPortalCustomer } = await import('./portal360');
+      await notifyPortalCustomer(orgId, input.customerId, {
+        category: 'messaging',
+        title: input.subject ?? 'New message',
+        body: input.body.slice(0, 160),
+        actionUrl: '/messages',
+      });
+    } catch {
+      // Best-effort
+    }
+  }
 
   return { conversation, message };
 }
@@ -279,10 +284,12 @@ async function findCustomerForSms(
     mobilePhone?: string | null;
     smsOptIn?: boolean;
   }>(orgId, 'customers');
-  return customers.find((customer) => {
-    const numbers = [customer.mobilePhone, customer.phone].map(normalizePhone).filter(Boolean);
-    return numbers.some((number) => number.endsWith(phone) || phone.endsWith(number));
-  }) ?? null;
+  return (
+    customers.find((customer) => {
+      const numbers = [customer.mobilePhone, customer.phone].map(normalizePhone).filter(Boolean);
+      return numbers.some((number) => number.endsWith(phone) || phone.endsWith(number));
+    }) ?? null
+  );
 }
 
 export async function sendBulkSms360(
@@ -292,10 +299,14 @@ export async function sendBulkSms360(
   userName?: string | null,
 ) {
   const uniqueCustomerIds = Array.from(new Set(input.customerIds));
-  const results: Array<{ customerId: string; status: 'sent' | 'skipped' | 'failed'; reason?: string }> = [];
+  const results: Array<{
+    customerId: string;
+    status: 'sent' | 'skipped' | 'failed';
+    reason?: string;
+  }> = [];
   let deliveredCount = 0;
 
-  const campaign = await colCreate(orgId, 'campaigns', {
+  const campaign = (await colCreate(orgId, 'campaigns', {
     organizationId: orgId,
     name: input.name,
     campaignType: 'sms',
@@ -313,7 +324,7 @@ export async function sendBulkSms360(
     revenueCents: 0,
     createdBy: userId,
     updatedBy: userId,
-  }) as unknown as Campaign;
+  })) as unknown as Campaign;
 
   for (const customerId of uniqueCustomerIds) {
     const customer = await findCustomerForSms(orgId, { customerId });
@@ -331,11 +342,20 @@ export async function sendBulkSms360(
     }
 
     try {
-      await sendMessage360(orgId, { customerId, channel: 'sms', body: input.body }, userId, userName ?? 'Bulk SMS');
+      await sendMessage360(
+        orgId,
+        { customerId, channel: 'sms', body: input.body },
+        userId,
+        userName ?? 'Bulk SMS',
+      );
       deliveredCount += 1;
       results.push({ customerId, status: 'sent' });
     } catch (error) {
-      results.push({ customerId, status: 'failed', reason: error instanceof Error ? error.message : 'Send failed' });
+      results.push({
+        customerId,
+        status: 'failed',
+        reason: error instanceof Error ? error.message : 'Send failed',
+      });
     }
   }
 
@@ -356,9 +376,122 @@ export async function sendBulkSms360(
   };
 }
 
+function normalizePhoneDigits(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
+export function phonesMatchForTwilio(configured: string, inbound: string): boolean {
+  const configuredDigits = normalizePhoneDigits(configured);
+  const digits = normalizePhoneDigits(inbound);
+  if (configuredDigits.length < 7 || digits.length < 7) return false;
+  return (
+    configuredDigits === digits ||
+    configuredDigits.endsWith(digits) ||
+    digits.endsWith(configuredDigits)
+  );
+}
+
+/** YL-S26 — collect all org ids whose configured Twilio number matches inbound To. */
+export function collectTwilioPhoneOrgMatches(
+  orgs: Array<{ id: string; twilioPhoneNumber?: string | null }>,
+  toPhone: string,
+): string[] {
+  const digits = normalizePhoneDigits(toPhone);
+  if (digits.length < 7) return [];
+  const matches: string[] = [];
+  for (const org of orgs) {
+    if (typeof org.twilioPhoneNumber !== 'string') continue;
+    if (phonesMatchForTwilio(org.twilioPhoneNumber, toPhone)) {
+      matches.push(org.id);
+    }
+  }
+  return matches;
+}
+
+/**
+ * Resolve tenant from Twilio inbound "To" number. Fail closed — never trust client organizationId.
+ * YL-S26: return orgId only when exactly one org matches; collisions → null.
+ */
+export async function resolveOrganizationIdByTwilioToPhone(
+  toPhone: string,
+): Promise<string | null> {
+  const digits = normalizePhoneDigits(toPhone);
+  if (digits.length < 7) return null;
+
+  const db = getAdminFirestore();
+  const snap = await db.collection('organizations').where('twilioPhoneNumber', '!=', null).get();
+  const orgs = snap.docs.map((doc) => ({
+    id: doc.id,
+    twilioPhoneNumber: doc.data()?.twilioPhoneNumber as string | null | undefined,
+  }));
+  const matches = collectTwilioPhoneOrgMatches(orgs, toPhone);
+  if (matches.length !== 1) return null;
+  return matches[0]!;
+}
+
+/**
+ * YL-S26 — refuse assigning a Twilio number already used by another organization.
+ */
+export async function assertTwilioPhoneUnique(orgId: string, phone: string): Promise<void> {
+  const digits = normalizePhoneDigits(phone);
+  if (digits.length < 7) {
+    throw new Error('Twilio phone number is invalid');
+  }
+  const db = getAdminFirestore();
+  const snap = await db.collection('organizations').where('twilioPhoneNumber', '!=', null).get();
+  const orgs = snap.docs.map((doc) => ({
+    id: doc.id,
+    twilioPhoneNumber: doc.data()?.twilioPhoneNumber as string | null | undefined,
+  }));
+  const matches = collectTwilioPhoneOrgMatches(orgs, phone).filter((id) => id !== orgId);
+  if (matches.length > 0) {
+    throw new Error('This Twilio phone number is already assigned to another organization');
+  }
+}
+
+/**
+ * YL-S14 — Twilio webhook signature check (HMAC-SHA1).
+ * Fail closed when auth token or signature is missing.
+ */
+export function verifyTwilioRequestSignature(input: {
+  authToken?: string | null;
+  signature?: string | null;
+  url: string;
+  params: Record<string, string>;
+}): { ok: boolean; reason?: string } {
+  const token = typeof input.authToken === 'string' ? input.authToken.trim() : '';
+  if (!token) return { ok: false, reason: 'TWILIO_AUTH_TOKEN_MISSING' };
+  const signature = typeof input.signature === 'string' ? input.signature.trim() : '';
+  if (!signature) return { ok: false, reason: 'SIGNATURE_MISSING' };
+  const url = typeof input.url === 'string' ? input.url.trim() : '';
+  if (!url) return { ok: false, reason: 'WEBHOOK_URL_MISSING' };
+
+  const data =
+    url +
+    Object.keys(input.params)
+      .sort()
+      .reduce((acc, key) => acc + key + String(input.params[key] ?? ''), '');
+  const expected = createHmac('sha1', token).update(Buffer.from(data, 'utf-8')).digest('base64');
+  try {
+    const a = Buffer.from(expected);
+    const b = Buffer.from(signature);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      return { ok: false, reason: 'SIGNATURE_MISMATCH' };
+    }
+  } catch {
+    return { ok: false, reason: 'SIGNATURE_MISMATCH' };
+  }
+  return { ok: true };
+}
+
 export async function receiveSms360(
   orgId: string,
-  input: { customerId?: string | null; fromPhone?: string | null; body: string; providerMessageId?: string | null },
+  input: {
+    customerId?: string | null;
+    fromPhone?: string | null;
+    body: string;
+    providerMessageId?: string | null;
+  },
 ) {
   const customer = await findCustomerForSms(orgId, input);
   if (!customer) throw new Error('Could not match inbound SMS to a customer');
@@ -366,7 +499,9 @@ export async function receiveSms360(
   const conversation = await ensureConversation(orgId, customer.id, { source: 'sms' });
   const classification = classifyMessage(input.body);
   const now = new Date();
-  const customerDisplayName = customer.businessName ?? (`${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || null);
+  const customerDisplayName =
+    customer.businessName ??
+    (`${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || null);
   const message = await msgCreate(orgId, conversation.id, {
     channel: 'sms',
     direction: 'inbound',
@@ -395,17 +530,7 @@ export async function receiveSms360(
     priority: classification.priority,
   });
 
-  await colCreate(orgId, 'messages', {
-    threadId: conversation.id,
-    customerId: customer.id,
-    channel: 'sms',
-    direction: 'inbound',
-    subject: null,
-    body: input.body,
-    sentByUserId: null,
-    isRead: false,
-    status: 'delivered',
-  });
+  // Legacy flat `messages` dual-write removed (P0.2B write freeze).
 
   return { conversation, message };
 }
@@ -447,36 +572,55 @@ export async function receivePortalMessage(
 
 export async function markMessageRead(orgId: string, conversationId: string, messageId: string) {
   const db = getAdminFirestore();
-  await db.doc(`${orgPath(orgId, 'conversations')}/${conversationId}/messages/${messageId}`).update({
-    status: 'read',
-    readAt: ts(),
-    updatedAt: ts(),
-  });
   const conversation = await getConversation(orgId, conversationId);
-  if (conversation && (conversation.unreadCount ?? 0) > 0) {
+  await db
+    .doc(`${orgPath(orgId, 'conversations')}/${conversationId}/messages/${messageId}`)
+    .update({
+      status: 'read',
+      readAt: ts(),
+      updatedAt: ts(),
+    });
+  if (conversation) {
     await colUpdate(orgId, 'conversations', conversationId, {
       unreadCount: Math.max(0, (conversation.unreadCount ?? 0) - 1),
     });
   }
 }
 
-export async function getCustomerTimeline(orgId: string, customerId: string): Promise<TimelineEvent[]> {
+export async function getCustomerTimeline(
+  orgId: string,
+  customerId: string,
+): Promise<TimelineEvent[]> {
   const conversation = await ensureConversation(orgId, customerId);
   const messages = await msgList(orgId, conversation.id);
   const events: TimelineEvent[] = messages.map((m) => ({
     id: m.id,
-    type: m.channel === 'sms'
-      ? (m.direction === 'outbound' ? 'sms_sent' : 'sms_received')
-      : m.channel === 'email'
-        ? (m.direction === 'outbound' ? 'email_sent' : 'email_opened')
-        : 'portal_message',
-    title: m.direction === 'outbound' ? `${m.channel.toUpperCase()} sent` : `${m.channel.toUpperCase()} received`,
+    type:
+      m.channel === 'sms'
+        ? m.direction === 'outbound'
+          ? 'sms_sent'
+          : 'sms_received'
+        : m.channel === 'email'
+          ? m.direction === 'outbound'
+            ? 'email_sent'
+            : 'email_opened'
+          : 'portal_message',
+    title:
+      m.direction === 'outbound'
+        ? `${m.channel.toUpperCase()} sent`
+        : `${m.channel.toUpperCase()} received`,
     description: m.body.slice(0, 200),
     occurredAt: m.createdAt,
     channel: m.channel,
   }));
 
-  const notifications = await colList<{ id: string; customerId?: string; title: string; sentAt?: Date; createdAt: Date }>(orgId, 'notifications');
+  const notifications = await colList<{
+    id: string;
+    customerId?: string;
+    title: string;
+    sentAt?: Date;
+    createdAt: Date;
+  }>(orgId, 'notifications');
   for (const a of notifications.filter((n) => n.customerId === customerId)) {
     events.push({
       id: a.id,
@@ -494,13 +638,26 @@ export async function ensureMessageTemplates(orgId: string): Promise<MessageTemp
   const snap = await db.collection(orgPath(orgId, 'templates')).get();
   if (!snap.empty) return snap.docs.map((d) => mapDoc<MessageTemplate>({ id: d.id, ...d.data()! }));
 
-  const legacy = await colList<{ id: string; name: string; body: string }>(orgId, 'messageTemplates');
+  const legacy = await colList<{ id: string; name: string; body: string }>(
+    orgId,
+    'messageTemplates',
+  );
   if (legacy.length) {
-    return legacy.map((t) => mapDoc<MessageTemplate>({
-      id: t.id, organizationId: orgId, name: t.name, category: 'proposal_follow_up',
-      channel: 'email', subject: null, body: t.body, variables: [], isActive: true,
-      createdAt: new Date(), updatedAt: new Date(),
-    }));
+    return legacy.map((t) =>
+      mapDoc<MessageTemplate>({
+        id: t.id,
+        organizationId: orgId,
+        name: t.name,
+        category: 'proposal_follow_up',
+        channel: 'email',
+        subject: null,
+        body: t.body,
+        variables: [],
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    );
   }
 
   const now = ts();
@@ -514,24 +671,56 @@ export async function ensureMessageTemplates(orgId: string): Promise<MessageTemp
   return templates;
 }
 
-export async function createMessageTemplate(orgId: string, input: Omit<MessageTemplate, keyof import('@clcrm/types').MessageAuditFields | 'id' | 'organizationId' | 'variables'>, userId?: string | null) {
-  const created = await colCreate(orgId, 'templates', { organizationId: orgId, ...input, variables: [], createdBy: userId, updatedBy: userId });
+export async function createMessageTemplate(
+  orgId: string,
+  input: Omit<
+    MessageTemplate,
+    keyof import('@clcrm/types').MessageAuditFields | 'id' | 'organizationId' | 'variables'
+  >,
+  userId?: string | null,
+) {
+  const variables = extractTemplateVariables(input.subject, input.body);
+  const created = await colCreate(orgId, 'templates', {
+    organizationId: orgId,
+    ...input,
+    variables,
+    createdBy: userId,
+    updatedBy: userId,
+  });
   return mapDoc<MessageTemplate>(created as Record<string, unknown>);
 }
 
 export async function updateMessageTemplate(
   orgId: string,
   templateId: string,
-  input: Partial<MessageTemplate>,
+  input: Partial<{
+    name: string;
+    category: MessageTemplate['category'];
+    channel: MessageTemplate['channel'];
+    subject: string | null;
+    body: string;
+    isActive: boolean;
+  }>,
   userId?: string | null,
 ) {
-  await colUpdate(orgId, 'templates', templateId, { ...input, updatedBy: userId });
+  const patch: Record<string, unknown> = { ...input, updatedBy: userId ?? null };
+  if (input.body !== undefined || input.subject !== undefined) {
+    const current = await colGet<MessageTemplate>(orgId, 'templates', templateId);
+    patch.variables = extractTemplateVariables(
+      input.subject !== undefined ? input.subject : current?.subject,
+      input.body !== undefined ? input.body : (current?.body ?? ''),
+    );
+  }
+  await colUpdate(orgId, 'templates', templateId, patch);
   return colGet<MessageTemplate>(orgId, 'templates', templateId);
 }
 
-export async function deleteMessageTemplate(orgId: string, templateId: string) {
-  await colDelete(orgId, 'templates', templateId);
-  return { success: true as const };
+function extractTemplateVariables(
+  subject: string | null | undefined,
+  body: string | null | undefined,
+) {
+  const text = `${subject ?? ''}\n${body ?? ''}`;
+  return [...new Set([...text.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1]))];
 }
 
 export async function ensureAutomations(orgId: string): Promise<Automation[]> {
@@ -553,27 +742,46 @@ export async function ensureAutomations(orgId: string): Promise<Automation[]> {
   return automations;
 }
 
-export async function createAutomation(orgId: string, input: Omit<Automation, keyof import('@clcrm/types').MessageAuditFields | 'id' | 'organizationId' | 'sentCount'>, userId?: string | null) {
-  return colCreate(orgId, 'automations', { organizationId: orgId, ...input, sentCount: 0, createdBy: userId, updatedBy: userId }) as Promise<Automation>;
+export async function createAutomation(
+  orgId: string,
+  input: Omit<
+    Automation,
+    keyof import('@clcrm/types').MessageAuditFields | 'id' | 'organizationId' | 'sentCount'
+  >,
+  userId?: string | null,
+) {
+  return colCreate(orgId, 'automations', {
+    organizationId: orgId,
+    ...input,
+    sentCount: 0,
+    createdBy: userId,
+    updatedBy: userId,
+  }) as Promise<Automation>;
+}
+
+export async function toggleAutomation(
+  orgId: string,
+  automationId: string,
+  isActive: boolean,
+  userId?: string | null,
+) {
+  await colUpdate(orgId, 'automations', automationId, { isActive, updatedBy: userId });
+  return colGet<Automation>(orgId, 'automations', automationId);
 }
 
 export async function updateAutomation(
   orgId: string,
   automationId: string,
-  input: Partial<Automation>,
+  input: Partial<{
+    name: string;
+    subject: string | null;
+    body: string;
+    delayDays: number;
+    isActive: boolean;
+  }>,
   userId?: string | null,
 ) {
-  await colUpdate(orgId, 'automations', automationId, { ...input, updatedBy: userId });
-  return colGet<Automation>(orgId, 'automations', automationId);
-}
-
-export async function deleteAutomation(orgId: string, automationId: string) {
-  await colDelete(orgId, 'automations', automationId);
-  return { success: true as const };
-}
-
-export async function toggleAutomation(orgId: string, automationId: string, isActive: boolean, userId?: string | null) {
-  await colUpdate(orgId, 'automations', automationId, { isActive, updatedBy: userId });
+  await colUpdate(orgId, 'automations', automationId, { ...input, updatedBy: userId ?? null });
   return colGet<Automation>(orgId, 'automations', automationId);
 }
 
@@ -584,7 +792,9 @@ export async function triggerAutomation(
   vars: Record<string, string> = {},
   userId?: string | null,
 ) {
-  const automations = (await ensureAutomations(orgId)).filter((a) => a.trigger === trigger && a.isActive);
+  const automations = (await ensureAutomations(orgId)).filter(
+    (a) => a.trigger === trigger && a.isActive,
+  );
   const results = [];
 
   for (const auto of automations) {
@@ -598,12 +808,19 @@ export async function triggerAutomation(
         await sendInternalMessage(orgId, dispatch.id, body, userId ?? 'system', 'Automation');
       }
     } else {
-      const result = await sendMessage360(orgId, {
-        customerId,
-        channel: auto.channel,
-        body,
-        subject,
-      }, userId, 'Automation');
+      const result = await sendMessage360(
+        orgId,
+        {
+          customerId,
+          channel: auto.channel,
+          body,
+          subject,
+          notificationTrigger: trigger,
+          skipStaffNotification: true,
+        },
+        userId,
+        'Automation',
+      );
       results.push(result);
     }
 
@@ -615,7 +832,7 @@ export async function triggerAutomation(
       channel: auto.channel,
       title: auto.name,
       body: body.slice(0, 200),
-      status: 'sent',
+      status: 'recorded',
       sentAt: new Date(),
     });
   }
@@ -629,7 +846,18 @@ export async function listCampaigns(orgId: string) {
 
 export async function createCampaign(
   orgId: string,
-  input: Omit<Campaign, keyof import('@clcrm/types').MessageAuditFields | 'id' | 'organizationId' | 'sentAt' | 'status' | 'recipientCount' | 'deliveredCount' | 'openedCount' | 'revenueCents'>,
+  input: Omit<
+    Campaign,
+    | keyof import('@clcrm/types').MessageAuditFields
+    | 'id'
+    | 'organizationId'
+    | 'sentAt'
+    | 'status'
+    | 'recipientCount'
+    | 'deliveredCount'
+    | 'openedCount'
+    | 'revenueCents'
+  >,
   userId?: string | null,
 ) {
   const customers = await colList<{ id: string; tags?: string[] }>(orgId, 'customers');
@@ -657,9 +885,20 @@ export async function sendCampaign(orgId: string, campaignId: string, userId?: s
   let delivered = 0;
 
   for (const customer of customers.slice(0, 50)) {
-    const channels: Array<'sms' | 'email'> = campaign.campaignType === 'mixed' ? ['sms', 'email'] : [campaign.campaignType];
+    const channels: Array<'sms' | 'email'> =
+      campaign.campaignType === 'mixed' ? ['sms', 'email'] : [campaign.campaignType];
     for (const channel of channels) {
-      await sendMessage360(orgId, { customerId: customer.id, channel, body: campaign.body, subject: campaign.subject ?? undefined }, userId, 'Campaign');
+      await sendMessage360(
+        orgId,
+        {
+          customerId: customer.id,
+          channel,
+          body: campaign.body,
+          subject: campaign.subject ?? undefined,
+        },
+        userId,
+        'Campaign',
+      );
       delivered++;
     }
   }
@@ -672,26 +911,6 @@ export async function sendCampaign(orgId: string, campaignId: string, userId?: s
   });
 
   return colGet<Campaign>(orgId, 'campaigns', campaignId);
-}
-
-export async function updateCampaign(
-  orgId: string,
-  campaignId: string,
-  input: Partial<Campaign>,
-  userId?: string | null,
-) {
-  await colUpdate(orgId, 'campaigns', campaignId, { ...input, updatedBy: userId });
-  return colGet<Campaign>(orgId, 'campaigns', campaignId);
-}
-
-export async function deleteCampaign(orgId: string, campaignId: string) {
-  await colDelete(orgId, 'campaigns', campaignId);
-  return { success: true as const };
-}
-
-export async function deleteConversation(orgId: string, conversationId: string) {
-  await colDelete(orgId, 'conversations', conversationId);
-  return { success: true as const };
 }
 
 export async function ensureInternalChannels(orgId: string): Promise<InternalChannel[]> {
@@ -756,7 +975,10 @@ export async function sendInternalMessage(
 
 export async function listInternalMessages(orgId: string, channelId: string) {
   const db = getAdminFirestore();
-  const snap = await db.collection(`${orgPath(orgId, 'internalChannels')}/${channelId}/messages`).orderBy('createdAt', 'asc').get();
+  const snap = await db
+    .collection(`${orgPath(orgId, 'internalChannels')}/${channelId}/messages`)
+    .orderBy('createdAt', 'asc')
+    .get();
   return snap.docs.map((d) => mapDoc<InternalMessage>({ id: d.id, channelId, ...d.data()! }));
 }
 
@@ -766,13 +988,24 @@ export async function listReviewRequests(orgId: string) {
 
 export async function createReviewRequest(
   orgId: string,
-  input: { customerId: string; jobId?: string; channel: ReviewRequest['channel']; reviewUrl?: string },
+  input: {
+    customerId: string;
+    jobId?: string;
+    channel: ReviewRequest['channel'];
+    reviewUrl?: string;
+  },
   userId?: string | null,
 ) {
-  const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', input.customerId);
-  const customerName = customer ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() : null;
+  const customer = await colGet<{ firstName?: string; lastName?: string }>(
+    orgId,
+    'customers',
+    input.customerId,
+  );
+  const customerName = customer
+    ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim()
+    : null;
 
-  const request = await colCreate(orgId, 'reviewRequests', {
+  const request = (await colCreate(orgId, 'reviewRequests', {
     organizationId: orgId,
     customerId: input.customerId,
     customerName,
@@ -785,13 +1018,18 @@ export async function createReviewRequest(
     submittedAt: null,
     createdBy: userId,
     updatedBy: userId,
-  }) as ReviewRequest;
+  })) as ReviewRequest;
 
-  await sendMessage360(orgId, {
-    customerId: input.customerId,
-    channel: input.channel,
-    body: `Hi ${customerName ?? 'there'}! Thank you for choosing us. We'd love a review: ${input.reviewUrl ?? 'https://g.page/review'}`,
-  }, userId, 'Review Engine');
+  await sendMessage360(
+    orgId,
+    {
+      customerId: input.customerId,
+      channel: input.channel,
+      body: `Hi ${customerName ?? 'there'}! Thank you for choosing us. We'd love a review: ${input.reviewUrl ?? 'https://g.page/review'}`,
+    },
+    userId,
+    'Review Engine',
+  );
 
   await colUpdate(orgId, 'reviewRequests', request.id, { status: 'sent', sentAt: new Date() });
   return colGet<ReviewRequest>(orgId, 'reviewRequests', request.id);
@@ -814,7 +1052,8 @@ export async function getMessagingDashboard(orgId: string): Promise<MessagingDas
     const msgs = await msgList(orgId, conv.id);
     for (const m of msgs) {
       if (m.createdAt >= today && m.direction === 'outbound') messagesSentToday++;
-      if (m.status === 'delivered' || m.status === 'read' || m.status === 'opened') messagesDelivered++;
+      if (m.status === 'delivered' || m.status === 'read' || m.status === 'opened')
+        messagesDelivered++;
       if (m.status === 'opened' || m.openedAt) messagesOpened++;
       if (m.channel === 'sms' && m.direction === 'inbound') smsResponses++;
       if (m.channel === 'email' && m.direction === 'inbound') emailResponses++;

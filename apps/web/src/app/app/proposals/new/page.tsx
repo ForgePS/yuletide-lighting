@@ -11,7 +11,9 @@ export default function NewProposalPage() {
       <div className="page-header">
         <Link href="/app/proposals" className="text-sm text-primary hover:underline">← Proposals</Link>
         <h1 className="page-title mt-2">New proposal</h1>
-        <p className="page-subtitle">Fill in customer, scope, and pricing — all on one page</p>
+        <p className="page-subtitle">
+          Customer, Good / Better / Best package deals, and scope — packages set the price when filled in
+        </p>
       </div>
       <div className="mt-6">
         <Suspense fallback={<LoadingState message="Loading..." />}>

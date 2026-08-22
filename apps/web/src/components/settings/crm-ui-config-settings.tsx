@@ -108,7 +108,8 @@ export function CrmUiConfigSettingsPage() {
       <div className="card space-y-3 p-5">
         <h2 className="font-semibold">Label overrides</h2>
         <p className="text-sm text-muted-foreground">
-          Optional key → display string map for CRM copy (e.g. <code>customer.singular</code> → Client).
+          Optional key → display string map. Use <code>nav.customers</code> (etc.) to rename sidebar
+          items; other keys are stored for future CRM copy surfaces.
         </p>
         <div className="flex flex-wrap gap-2">
           <input

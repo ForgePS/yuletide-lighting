@@ -40,8 +40,19 @@ service cloud.firestore {
         && isOrgLifecycleActive(orgId);
     }
 
+    // YL-S6 / BACKLOG-007 — prefer settingsRole mapped to legacy buckets; fall back to users.role.
+    // Keep in sync with packages/types mapSettingsRoleToLegacyRole / resolveLegacyRoleForRules.
+    function effectiveLegacyRole() {
+      return userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole == 'owner' ? 'owner'
+        : userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole == 'administrator' ? 'admin'
+        : userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole in ['sales_manager', 'sales_rep', 'operations_manager', 'dispatcher', 'office_staff'] ? 'office'
+        : userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole in ['crew_leader', 'installer', 'warehouse_staff'] ? 'crew'
+        : userDoc().data.keys().hasAny(['settingsRole']) && userDoc().data.settingsRole == 'read_only' ? 'read_only'
+        : userDoc().data.role;
+    }
+
     function hasRole(orgId, roles) {
-      return belongsToOrg(orgId) && userDoc().data.role in roles;
+      return belongsToOrg(orgId) && effectiveLegacyRole() in roles;
     }
 
     match /users/{userId} {
@@ -389,7 +400,8 @@ service cloud.firestore {
       }
     }
 
-    // Public token mirrors — Admin SDK serves portal; client SDK must not open-read
+    // Public token mirrors — Admin SDK serves public pages; client SDK must not open-read.
+    // YL-S22: secrecy is enforced in getByPublicToken / publicAccessTokenSchema (len+charset).
     match /publicProposals/{token} {
       allow read, write: if false;
     }

@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel } from '@clcrm/types';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { PortalSplitView, PortalStatusPill } from '@/components/portal/portal-mobile';
 import { LoadingState } from '@/components/ui/states';
@@ -38,7 +39,7 @@ function PropertiesBody() {
       <p className="text-xl font-bold text-stone-900">{selected.propertyName}</p>
       {selected.propertyType && (
         <div className="mt-2">
-          <PortalStatusPill>{selected.propertyType.replace(/_/g, ' ')}</PortalStatusPill>
+          <PortalStatusPill>{formatPortalStatusLabel(selected.propertyType)}</PortalStatusPill>
         </div>
       )}
       <p className="mt-3 text-base text-stone-600">

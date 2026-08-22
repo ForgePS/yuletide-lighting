@@ -1,6 +1,10 @@
 import { nanoid } from 'nanoid';
 import type { UserRole } from '@clcrm/validators';
 import type { CustomerStage } from '@clcrm/types';
+import {
+  parsePublicAccessToken,
+  PUBLIC_ACCESS_TOKEN_GENERATED_LENGTH,
+} from '@clcrm/types';
 import { getAdminFirestore, FieldValue, Timestamp, docToData } from './admin';
 import { stripUndefined, stripUndefinedDeep } from './firestore-utils';
 
@@ -506,15 +510,44 @@ export async function getByPublicToken<T>(
   collection: 'proposals' | 'invoices' | 'multiYearAgreements',
   token: string,
 ): Promise<T | null> {
+  const parsed = parsePublicAccessToken(token);
+  if (!parsed) return null;
+
   const db = getAdminFirestore();
   const groupSnap = await db
     .collectionGroup(collection)
-    .where('publicToken', '==', token)
+    .where('publicToken', '==', parsed)
     .limit(1)
     .get();
   if (groupSnap.empty) return null;
   const doc = groupSnap.docs[0]!;
   return mapTimestamps({ id: doc.id, ...doc.data()! }) as T;
+}
+
+/** YL-S22 — canonical CRM public access token generator. */
+export function generatePublicAccessToken(
+  length = PUBLIC_ACCESS_TOKEN_GENERATED_LENGTH,
+): string {
+  return nanoid(length);
+}
+
+/**
+ * YL-S22 — rotate a record's publicToken; old links stop resolving.
+ */
+export async function rotateRecordPublicToken(
+  orgId: string,
+  collection: 'proposals' | 'invoices' | 'multiYearAgreements',
+  id: string,
+  userId?: string | null,
+): Promise<{ publicToken: string } | null> {
+  const existing = await colGet(orgId, collection, id);
+  if (!existing) return null;
+  const publicToken = generatePublicAccessToken();
+  await colUpdate(orgId, collection, id, {
+    publicToken,
+    updatedBy: userId ?? null,
+  });
+  return { publicToken };
 }
 
 export { nanoid, FieldValue, Timestamp };

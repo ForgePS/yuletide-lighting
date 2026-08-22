@@ -16,6 +16,10 @@ import {
 import { buildScopeFromProperty, labelInstallComplexity } from '@/lib/property-profile-utils';
 import { ProposalLineItemsEditor } from './proposal-line-items-editor';
 import type { ProposalLineItem, Property } from '@clcrm/types';
+import {
+  buildPackageEditorDraftsFromProposalPackages,
+  proposalPackagesAreFilled,
+} from '@clcrm/types';
 import { LoadingState } from '@/components/ui/states';
 
 type PricingMode = 'packages' | 'line_items';
@@ -55,19 +59,6 @@ type FormState = {
   pricingMode: PricingMode;
   packages: PackageDraft[];
 };
-
-const EMPTY_PACKAGES: PackageDraft[] = [
-  { key: 'good', tier: 'basic', label: 'Good', description: '', inclusions: [], markupPercent: 15, isRecommended: false },
-  { key: 'better', tier: 'recommended', label: 'Better', description: '', inclusions: [], markupPercent: 25, isRecommended: true },
-  { key: 'best', tier: 'premium', label: 'Best', description: '', inclusions: [], markupPercent: 35, isRecommended: false },
-];
-
-/** Packages count as filled when any tier has a label plus description or inclusions. */
-function packagesAreFilled(packages: PackageDraft[]): boolean {
-  return packages.some(
-    (pkg) => pkg.label.trim().length > 0 && (pkg.description.trim().length > 0 || pkg.inclusions.length > 0),
-  );
-}
 
 function pricingForPackageTier(
   base: {
@@ -127,6 +118,21 @@ function dollarsFromCents(cents: unknown): string {
 }
 
 function defaultForm(initial?: Record<string, unknown>, prefillCustomerId?: string): FormState {
+  const packagesRaw = initial?.packages as
+    | Array<{
+        tier: 'basic' | 'recommended' | 'premium';
+        label?: string;
+        name?: string;
+        description?: string | null;
+        products?: string[];
+        isRecommended?: boolean;
+        pricing?: { linearFootage?: number };
+      }>
+    | undefined;
+  const pricing = initial?.pricing as { linearFootage?: number } | undefined;
+  const drafts = buildPackageEditorDraftsFromProposalPackages(packagesRaw, pricing);
+  const filled = proposalPackagesAreFilled(drafts);
+  const lineItems = (initial?.lineItems as ProposalLineItem[]) ?? [];
   return {
     customerId: prefillCustomerId || String(initial?.customerId ?? ''),
     propertyId: String(initial?.propertyId ?? ''),
@@ -143,13 +149,13 @@ function defaultForm(initial?: Record<string, unknown>, prefillCustomerId?: stri
     financingOption: String(initial?.financingOption ?? 'deposit_50'),
     depositPercent: Number(initial?.depositPercent ?? 50),
     notes: String(initial?.notes ?? ''),
-    lineItems: (initial?.lineItems as ProposalLineItem[]) ?? [],
+    lineItems,
     proposalPriceDollars: dollarsFromCents(initial?.subtotalCents),
     installDate: dateInputValue(initial?.installDate),
     removalDate: dateInputValue(initial?.removalDate),
     termsAndConditions: String(initial?.termsAndConditions ?? DEFAULT_PROPOSAL_TERMS),
-    pricingMode: 'packages',
-    packages: EMPTY_PACKAGES,
+    pricingMode: filled || lineItems.length === 0 ? 'packages' : 'line_items',
+    packages: drafts,
   };
 }
 
@@ -257,7 +263,7 @@ export function ProposalForm({ proposalId, initial }: { proposalId?: string; ini
       laborCostCents: 0,
     };
     const typedCents = Math.round(parseFloat(form.proposalPriceDollars || '0') * 100);
-    const filledPackages = packagesAreFilled(form.packages);
+    const filledPackages = proposalPackagesAreFilled(form.packages);
     // Filled Good/Better/Best deals always win over line items / manual totals.
     const preferPackages = form.pricingMode === 'packages' || filledPackages;
     const packagesPayload = preferPackages

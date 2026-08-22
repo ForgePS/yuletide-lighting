@@ -37,21 +37,22 @@ import {
   createProposalFromMockupSchema,
   linkMockupProposalSchema,
   mockupCustomerApprovalSchema,
+  publicAccessTokenSchema,
 } from '@clcrm/validators';
-import { router, officeProcedure, publicProcedure } from '../trpc';
+import { router, publicProcedure, permissionProcedure } from '../trpc';
 
 export const mockups360Router = router({
-  dashboard: officeProcedure.query(({ ctx }) => getMockupDashboard(ctx.auth.organizationId)),
+  dashboard: permissionProcedure('mockups', 'view').query(({ ctx }) => getMockupDashboard(ctx.auth.organizationId)),
 
-  list: officeProcedure.query(({ ctx }) => listMockups360(ctx.auth.organizationId)),
+  list: permissionProcedure('mockups', 'view').query(({ ctx }) => listMockups360(ctx.auth.organizationId)),
 
-  getById: officeProcedure.input(z.object({ mockupId: z.string() })).query(async ({ ctx, input }) => {
+  getById: permissionProcedure('mockups', 'view').input(z.object({ mockupId: z.string() })).query(async ({ ctx, input }) => {
     const mockup = await getMockup360(ctx.auth.organizationId, input.mockupId);
     if (!mockup) throw new TRPCError({ code: 'NOT_FOUND' });
     return mockup;
   }),
 
-  create: officeProcedure.input(createMockup360Schema).mutation(({ ctx, input }) =>
+  create: permissionProcedure('mockups', 'create').input(createMockup360Schema).mutation(({ ctx, input }) =>
     createMockup360(ctx.auth.organizationId, {
       ...input,
       optimizedImageUrl: input.optimizedImageUrl ?? undefined,
@@ -59,23 +60,23 @@ export const mockups360Router = router({
     }, ctx.auth.userId),
   ),
 
-  update: officeProcedure.input(updateMockup360Schema).mutation(({ ctx, input }) => {
+  update: permissionProcedure('mockups', 'edit').input(updateMockup360Schema).mutation(({ ctx, input }) => {
     const { mockupId, ...data } = input;
     return updateMockup360(ctx.auth.organizationId, mockupId, data as never, ctx.auth.userId);
   }),
 
-  recordView: officeProcedure.input(z.object({ mockupId: z.string() })).mutation(({ ctx, input }) =>
+  recordView: permissionProcedure('mockups', 'view').input(z.object({ mockupId: z.string() })).mutation(({ ctx, input }) =>
     recordMockupView(ctx.auth.organizationId, input.mockupId),
   ),
 
   scale: router({
-    set: officeProcedure.input(setScaleSchema).mutation(({ ctx, input }) =>
+    set: permissionProcedure('mockups', 'edit').input(setScaleSchema).mutation(({ ctx, input }) =>
       setMockupScale(ctx.auth.organizationId, input.mockupId, input.knownFeet, input.pixelLength),
     ),
   }),
 
   ai: router({
-    detect: officeProcedure.input(z.object({ mockupId: z.string() })).mutation(async ({ ctx, input }) => {
+    detect: permissionProcedure('mockups', 'edit').input(z.object({ mockupId: z.string() })).mutation(async ({ ctx, input }) => {
       try {
         return await runAiDetection(ctx.auth.organizationId, input.mockupId, ctx.auth.userId);
       } catch (err) {
@@ -86,7 +87,7 @@ export const mockups360Router = router({
         });
       }
     }),
-    design: officeProcedure.input(aiDesignSchema).mutation(async ({ ctx, input }) => {
+    design: permissionProcedure('mockups', 'edit').input(aiDesignSchema).mutation(async ({ ctx, input }) => {
       try {
         return await aiDesignAssistant(ctx.auth.organizationId, input.style, input.mockupId, ctx.auth.userId);
       } catch (err) {
@@ -100,69 +101,69 @@ export const mockups360Router = router({
   }),
 
   materials: router({
-    generate: officeProcedure.input(z.object({ mockupId: z.string() })).query(({ ctx, input }) =>
+    generate: permissionProcedure('mockups', 'view').input(z.object({ mockupId: z.string() })).query(({ ctx, input }) =>
       generateMaterials(ctx.auth.organizationId, input.mockupId),
     ),
   }),
 
   measurements: router({
-    list: officeProcedure.input(z.object({ mockupId: z.string() })).query(({ ctx, input }) =>
+    list: permissionProcedure('mockups', 'view').input(z.object({ mockupId: z.string() })).query(({ ctx, input }) =>
       listMeasurements(ctx.auth.organizationId, input.mockupId),
     ),
-    save: officeProcedure.input(z.object({ mockupId: z.string() })).mutation(({ ctx, input }) =>
+    save: permissionProcedure('mockups', 'edit').input(z.object({ mockupId: z.string() })).mutation(({ ctx, input }) =>
       saveMeasurements(ctx.auth.organizationId, input.mockupId, ctx.auth.userId),
     ),
   }),
 
   versions: router({
-    list: officeProcedure.input(z.object({ mockupId: z.string() })).query(({ ctx, input }) =>
+    list: permissionProcedure('mockups', 'view').input(z.object({ mockupId: z.string() })).query(({ ctx, input }) =>
       listMockupVersions(ctx.auth.organizationId, input.mockupId),
     ),
-    create: officeProcedure.input(createVersionSchema).mutation(({ ctx, input }) =>
+    create: permissionProcedure('mockups', 'create').input(createVersionSchema).mutation(({ ctx, input }) =>
       createMockupVersion(ctx.auth.organizationId, input.mockupId, input.revisionNotes, ctx.auth.email, ctx.auth.userId),
     ),
   }),
 
   exports: router({
-    list: officeProcedure.input(z.object({ mockupId: z.string() })).query(({ ctx, input }) =>
+    list: permissionProcedure('mockups', 'view').input(z.object({ mockupId: z.string() })).query(({ ctx, input }) =>
       listMockupExports(ctx.auth.organizationId, input.mockupId),
     ),
-    create: officeProcedure.input(exportMockupSchema).mutation(({ ctx, input }) =>
+    create: permissionProcedure('mockups', 'export').input(exportMockupSchema).mutation(({ ctx, input }) =>
       exportMockup(ctx.auth.organizationId, input.mockupId, input.exportType, ctx.auth.userId),
     ),
   }),
 
   templates: router({
-    list: officeProcedure.query(({ ctx }) => ensureDesignTemplates(ctx.auth.organizationId)),
-    applyTemplate: officeProcedure.input(z.object({ mockupId: z.string(), templateId: z.string() })).mutation(({ ctx, input }) =>
+    list: permissionProcedure('mockups', 'view').query(({ ctx }) => ensureDesignTemplates(ctx.auth.organizationId)),
+    applyTemplate: permissionProcedure('mockups', 'edit').input(z.object({ mockupId: z.string(), templateId: z.string() })).mutation(({ ctx, input }) =>
       applyDesignTemplate(ctx.auth.organizationId, input.mockupId, input.templateId, ctx.auth.userId),
     ),
   }),
 
   library: router({
-    list: officeProcedure.query(({ ctx }) => ensureDecorationLibrary(ctx.auth.organizationId)),
+    list: permissionProcedure('mockups', 'view').query(({ ctx }) => ensureDecorationLibrary(ctx.auth.organizationId)),
   }),
 
   proposals: router({
-    createFromMockup: officeProcedure.input(createProposalFromMockupSchema).mutation(({ ctx, input }) =>
+    createFromMockup: permissionProcedure('mockups', 'create').input(createProposalFromMockupSchema).mutation(({ ctx, input }) =>
       createProposalFromMockup(ctx.auth.organizationId, input, ctx.auth.userId),
     ),
-    link: officeProcedure.input(linkMockupProposalSchema).mutation(({ ctx, input }) =>
+    link: permissionProcedure('mockups', 'edit').input(linkMockupProposalSchema).mutation(({ ctx, input }) =>
       linkMockupToProposal(ctx.auth.organizationId, input.mockupId, input.proposalId, ctx.auth.userId),
     ),
-    listForMockup: officeProcedure.input(z.object({ mockupId: z.string().min(1) })).query(async ({ ctx, input }) => {
+    listForMockup: permissionProcedure('mockups', 'view').input(z.object({ mockupId: z.string().min(1) })).query(async ({ ctx, input }) => {
       const mockup = await getMockup360(ctx.auth.organizationId, input.mockupId);
       if (!mockup) throw new TRPCError({ code: 'NOT_FOUND' });
       return listProposalsForMockup(ctx.auth.organizationId, mockup);
     }),
   }),
 
-  sendForApproval: officeProcedure.input(z.object({ mockupId: z.string().min(1) })).mutation(({ ctx, input }) =>
+  sendForApproval: permissionProcedure('mockups', 'edit').input(z.object({ mockupId: z.string().min(1) })).mutation(({ ctx, input }) =>
     sendMockupForApproval(ctx.auth.organizationId, input.mockupId, ctx.auth.userId),
   ),
 
   public: router({
-    getByToken: publicProcedure.input(z.object({ token: z.string().min(8) })).query(async ({ input }) => {
+    getByToken: publicProcedure.input(z.object({ token: publicAccessTokenSchema })).query(async ({ input }) => {
       const data = await getMockupByApprovalToken(input.token);
       if (!data) throw new TRPCError({ code: 'NOT_FOUND' });
       return data;

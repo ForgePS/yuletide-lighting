@@ -83,3 +83,9 @@ export const calendarRangeSchema = z.object({
   start: z.coerce.date(),
   end: z.coerce.date(),
 });
+
+/** YL-S11 — map schedule crew profile → Auth user. */
+export const updateCrewAssignedUserSchema = z.object({
+  crewId: z.string().min(1),
+  assignedUserId: z.string().min(1).nullable(),
+});

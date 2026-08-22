@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { formatDate } from '@clcrm/ui';
+import { formatMessageLabel } from '@clcrm/types';
 import { useToast } from '@/lib/toast';
 import { LoadingState, EmptyState } from '@/components/ui/states';
+import { CmsRichTextEditor } from '@/components/cms/cms-rich-text-editor';
 
 export function CampaignManager() {
   const { toast } = useToast();
@@ -86,7 +88,7 @@ export function TemplateManager() {
             <div key={t.id} className="card space-y-3 p-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-medium">{t.name}</p>
-                <span className="text-xs capitalize text-muted-foreground">{t.category.replace(/_/g, ' ')} · {t.channel}</span>
+                <span className="text-xs capitalize text-muted-foreground">{formatMessageLabel(t.category)} · {formatMessageLabel(t.channel)}</span>
               </div>
               {editing ? (
                 <>
@@ -104,12 +106,19 @@ export function TemplateManager() {
                       placeholder="Subject"
                     />
                   ) : null}
-                  <textarea
-                    className="input min-h-[140px] font-mono text-sm"
-                    value={draft.body}
-                    onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-                    placeholder="Message body"
-                  />
+                  {t.channel !== 'sms' ? (
+                    <CmsRichTextEditor
+                      value={draft.body}
+                      onChange={(html) => setDraft({ ...draft, body: html })}
+                    />
+                  ) : (
+                    <textarea
+                      className="input min-h-[140px] font-mono text-sm"
+                      value={draft.body}
+                      onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                      placeholder="Message body"
+                    />
+                  )}
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -192,7 +201,7 @@ export function AutomationBuilder() {
                 <div>
                   <p className="font-medium">{a.name}</p>
                   <p className="text-sm text-muted-foreground capitalize">
-                    {a.trigger.replace(/_/g, ' ')} · {a.channel} · {a.delayDays}d delay · {a.sentCount} sent
+                    {formatMessageLabel(a.trigger)} · {formatMessageLabel(a.channel)} · {a.delayDays}d delay · {a.sentCount} sent
                   </p>
                 </div>
                 <div className="flex gap-2">

@@ -1,8 +1,8 @@
 import type { MultiYearAgreement, MultiYearAgreementStatus } from '@clcrm/types';
-import { isAgreementSignedStatus } from '@clcrm/types';
+import { isAgreementSignedStatus, parsePublicAccessToken } from '@clcrm/types';
 import type { MultiYearAgreementInput, UpdateMultiYearAgreementInput } from '@clcrm/validators';
 import { getAdminFirestore, Timestamp } from './admin';
-import { getByPublicToken, getOrganization, nanoid } from './firestore';
+import { getByPublicToken, getOrganization, generatePublicAccessToken } from './firestore';
 import { mapTimestampsFromData, stripUndefined } from './firestore-utils';
 
 export const AGREEMENT_TERMS_VERSION = '2026.1';
@@ -208,7 +208,7 @@ export async function sendAgreementForSignature360(
     return agreement;
   }
 
-  const publicToken = agreement.publicToken?.trim() || nanoid(32);
+  const publicToken = parsePublicAccessToken(agreement.publicToken) || generatePublicAccessToken();
   let termsVersion = agreement.termsVersion ?? AGREEMENT_TERMS_VERSION;
   try {
     const { getAgreementSettings } = await import('./settings360');
@@ -236,7 +236,7 @@ export async function sendAgreementForSignature360(
         category: 'agreements',
         title: 'Agreement ready to sign',
         body: `${agreement.title} is ready for your signature.`,
-        actionUrl: '/sign',
+        actionUrl: `/a/${publicToken}`,
       });
     } catch {
       // Best-effort
@@ -326,7 +326,8 @@ export async function recordAgreementSignature(
   if (isAgreementSignedStatus(agreement.status)) {
     return getAgreementByPublicToken(token);
   }
-  if (agreement.status !== 'awaiting_signature' && agreement.status !== 'draft') {
+  // YL-S8: require explicit send — draft tokens are not freely signable.
+  if (agreement.status !== 'awaiting_signature') {
     throw new Error('Agreement is not available for signature');
   }
 
@@ -341,7 +342,7 @@ export async function recordAgreementSignature(
     if (current.status === 'active' || current.status === 'signed') {
       return;
     }
-    if (current.status !== 'awaiting_signature' && current.status !== 'draft') {
+    if (current.status !== 'awaiting_signature') {
       throw new Error('Agreement is not available for signature');
     }
     const now = ts();

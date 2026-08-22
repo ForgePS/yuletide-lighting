@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel, invoicePayableCents, normalizeInvoiceStatus } from '@clcrm/types';
 import { formatCurrency, formatDate } from '@clcrm/ui';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import {
@@ -36,17 +37,30 @@ function BillingBody() {
     );
   }
 
-  const open = data.filter(
-    (i) => i.status !== 'paid' && i.status !== 'void' && i.status !== 'cancelled',
-  );
-  const balanceDue = open.reduce(
-    (sum, i) => sum + Math.max(0, i.subtotalCents - i.amountPaidCents),
-    0,
-  );
+  const open = data.filter((i) => {
+    const status = normalizeInvoiceStatus(String(i.status ?? 'draft'));
+    return status !== 'paid' && status !== 'cancelled' && status !== 'refunded' && status !== 'draft';
+  });
+  const balanceDue = open.reduce((sum, i) => {
+    const payable = invoicePayableCents({
+      status: i.status,
+      subtotalCents: i.subtotalCents,
+      amountPaidCents: i.amountPaidCents,
+      depositCents: (i as { depositCents?: number }).depositCents,
+    });
+    return sum + (payable.payable ? payable.amountCents : Math.max(0, i.subtotalCents - i.amountPaidCents));
+  }, 0);
   const canPay = Boolean(dash?.settings.allowOnlinePayments);
-  const primaryPay = open.find(
-    (i) => i.publicToken && Math.max(0, i.subtotalCents - i.amountPaidCents) > 0,
-  );
+  const primaryPay = open.find((i) => {
+    if (!i.publicToken) return false;
+    const payable = invoicePayableCents({
+      status: i.status,
+      subtotalCents: i.subtotalCents,
+      amountPaidCents: i.amountPaidCents,
+      depositCents: (i as { depositCents?: number }).depositCents,
+    });
+    return payable.payable && payable.amountCents > 0;
+  });
 
   return (
     <>
@@ -82,14 +96,26 @@ function BillingBody() {
             header: 'Status',
             cell: (inv) => (
               <PortalStatusPill tone={inv.status === 'paid' ? 'success' : 'warn'}>
-                {inv.status.replace(/_/g, ' ')}
+                {formatPortalStatusLabel(inv.status)}
               </PortalStatusPill>
             ),
           },
           {
             key: 'due',
             header: 'Amount due',
-            cell: (inv) => formatCurrency(Math.max(0, inv.subtotalCents - inv.amountPaidCents)),
+            cell: (inv) => {
+              const payable = invoicePayableCents({
+                status: inv.status,
+                subtotalCents: inv.subtotalCents,
+                amountPaidCents: inv.amountPaidCents,
+                depositCents: (inv as { depositCents?: number }).depositCents,
+              });
+              return formatCurrency(
+                payable.payable
+                  ? payable.amountCents
+                  : Math.max(0, inv.subtotalCents - inv.amountPaidCents),
+              );
+            },
           },
           {
             key: 'date',
@@ -101,28 +127,41 @@ function BillingBody() {
             header: '',
             className: 'text-right',
             cell: (inv) => {
-              const remaining = Math.max(0, inv.subtotalCents - inv.amountPaidCents);
+              const payable = invoicePayableCents({
+                status: inv.status,
+                subtotalCents: inv.subtotalCents,
+                amountPaidCents: inv.amountPaidCents,
+                depositCents: (inv as { depositCents?: number }).depositCents,
+              });
               if (!inv.publicToken) return null;
-              const pay = canPay && inv.status !== 'paid' && remaining > 0;
+              const pay = canPay && payable.payable && payable.amountCents > 0;
               return (
                 <Link
                   href={`/pay/${inv.publicToken}`}
                   className={pay ? 'btn-primary text-sm' : 'btn-secondary text-sm'}
                 >
-                  {pay ? 'Pay' : 'View'}
+                  {pay ? `Pay ${formatCurrency(payable.amountCents)}` : 'View'}
                 </Link>
               );
             },
           },
         ]}
         mobileCard={(inv) => {
-          const remaining = Math.max(0, inv.subtotalCents - inv.amountPaidCents);
+          const payable = invoicePayableCents({
+            status: inv.status,
+            subtotalCents: inv.subtotalCents,
+            amountPaidCents: inv.amountPaidCents,
+            depositCents: (inv as { depositCents?: number }).depositCents,
+          });
+          const remaining = payable.payable
+            ? payable.amountCents
+            : Math.max(0, inv.subtotalCents - inv.amountPaidCents);
           return (
             <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-lg font-semibold text-stone-900">{inv.invoiceNumber}</p>
                 <PortalStatusPill tone={inv.status === 'paid' ? 'success' : 'warn'}>
-                  {inv.status.replace(/_/g, ' ')}
+                  {formatPortalStatusLabel(inv.status)}
                 </PortalStatusPill>
               </div>
               <p className="mt-2 text-base text-stone-700">
@@ -132,9 +171,9 @@ function BillingBody() {
               {inv.publicToken && (
                 <Link
                   href={`/pay/${inv.publicToken}`}
-                  className={`${canPay && inv.status !== 'paid' && remaining > 0 ? 'btn-primary' : 'btn-secondary'} mt-4 inline-flex min-h-11 w-full items-center justify-center text-base`}
+                  className={`${canPay && payable.payable && payable.amountCents > 0 ? 'btn-primary' : 'btn-secondary'} mt-4 inline-flex min-h-11 w-full items-center justify-center text-base`}
                 >
-                  {canPay && inv.status !== 'paid' && remaining > 0 ? 'Pay now' : 'View invoice'}
+                  {canPay && payable.payable && payable.amountCents > 0 ? 'Pay now' : 'View invoice'}
                 </Link>
               )}
             </div>

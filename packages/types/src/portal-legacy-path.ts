@@ -5,6 +5,21 @@
 
 export const PORTAL_APP_BASE = '/portal/app';
 
+/** YL-S12 — post-invite claim destination (session cookie already minted). */
+export function portalInviteSuccessPath(): string {
+  return PORTAL_APP_BASE;
+}
+
+/** YL-S12 — null-safe portal status / stage / type labels. */
+export function formatPortalStatusLabel(value: string | null | undefined): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return 'Unknown';
+  return text
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
 const KNOWN_SEGMENTS = new Set([
   '',
   'schedule',

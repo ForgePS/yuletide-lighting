@@ -24,6 +24,7 @@ import {
   colGet,
   colList,
   colUpdate,
+  generatePublicAccessToken,
   getByPublicToken,
   getOrganization,
   updateCustomer,
@@ -240,6 +241,47 @@ async function subCreate<T extends Record<string, unknown>>(
   return mapTimestampsFromData({ id: snap.id, ...snap.data()! }) as T & { id: string };
 }
 
+async function subDeleteAll(orgId: string, proposalId: string, sub: string) {
+  const db = getAdminFirestore();
+  const snap = await db.collection(subPath(orgId, proposalId, sub)).get();
+  if (snap.empty) return;
+  const batch = db.batch();
+  for (const doc of snap.docs) batch.delete(doc.ref);
+  await batch.commit();
+}
+
+/** YL-S7 — replace proposal packages subcollection (authoritative store for G/B/B deals). */
+export async function replaceProposalPackages360(
+  orgId: string,
+  proposalId: string,
+  packages: Array<
+    Omit<
+      ProposalPackage,
+      | 'id'
+      | 'proposalId'
+      | 'createdAt'
+      | 'updatedAt'
+      | 'createdBy'
+      | 'updatedBy'
+      | 'subtotalCents'
+      | 'materialCostCents'
+      | 'laborCostCents'
+      | 'grossProfitCents'
+      | 'grossMarginPercent'
+    >
+  >,
+  userId?: string | null,
+): Promise<ProposalPackage[]> {
+  await subDeleteAll(orgId, proposalId, 'packages');
+  const created: ProposalPackage[] = [];
+  for (const pkg of packages) {
+    const built = packageFromInput(proposalId, pkg as never);
+    const saved = await subCreate(orgId, proposalId, 'packages', built, userId);
+    created.push(saved as ProposalPackage);
+  }
+  return created;
+}
+
 export async function listProposals360(orgId: string): Promise<ProposalListItem[]> {
   const proposals = await colList<ProposalRecord>(orgId, 'proposals');
   const customers = await colList<{
@@ -281,6 +323,7 @@ export function normalizeProposalRecord(p: ProposalRecord): ProposalRecord {
     depositAmountCents: p.depositAmountCents ?? 0,
     depositStatus: p.depositStatus ?? 'pending',
     followUpAutomationEnabled: p.followUpAutomationEnabled ?? true,
+    followUpLastSentAt: p.followUpLastSentAt ?? null,
     upsellSuggestions: p.upsellSuggestions ?? [],
     upsellPotentialCents: p.upsellPotentialCents ?? 0,
     lineItems: p.lineItems ?? [],
@@ -406,7 +449,7 @@ export async function createProposal360(
     subtotalCents,
     notes: input.notes ?? null,
     validUntil,
-    publicToken: nanoid(32),
+    publicToken: generatePublicAccessToken(),
     viewCount: 0,
     mockupIds: input.mockupIds ?? [],
     designId: input.designId ?? null,
@@ -531,7 +574,36 @@ export async function updateProposal360(
       'Accepted proposals cannot be edited. Create a revision or change order instead.',
     );
   }
-  const patch: Record<string, unknown> = { ...data, updatedBy: userId ?? null };
+
+  // YL-S7 / BACKLOG-002 — packages live in subcollection; never embed on proposal doc.
+  const packagesProvided = Object.prototype.hasOwnProperty.call(data, 'packages');
+  const packagesInput = packagesProvided
+    ? ((data.packages as Array<
+        Omit<
+          ProposalPackage,
+          | 'id'
+          | 'proposalId'
+          | 'createdAt'
+          | 'updatedAt'
+          | 'createdBy'
+          | 'updatedBy'
+          | 'subtotalCents'
+          | 'materialCostCents'
+          | 'laborCostCents'
+          | 'grossProfitCents'
+          | 'grossMarginPercent'
+        >
+      > | undefined) ?? [])
+    : undefined;
+  const preferPackagesFlag =
+    typeof data.preferPackages === 'boolean' ? data.preferPackages : undefined;
+
+  const {
+    packages: _packages,
+    preferPackages: _preferPackages,
+    ...rest
+  } = data;
+  const patch: Record<string, unknown> = { ...rest, updatedBy: userId ?? null };
   const lineItems = Array.isArray(data.lineItems)
     ? (data.lineItems as Array<{ quantity: number; unitPriceCents: number }>)
     : undefined;
@@ -566,6 +638,37 @@ export async function updateProposal360(
     );
   }
   await colUpdate(orgId, 'proposals', proposalId, patch);
+
+  if (packagesInput) {
+    const createdPackages = await replaceProposalPackages360(
+      orgId,
+      proposalId,
+      packagesInput,
+      userId,
+    );
+    const packagesFilled = packagesInput.some((pkg) => {
+      const label = String(pkg.label ?? pkg.name ?? '').trim();
+      const description = String(pkg.description ?? '').trim();
+      const products = Array.isArray(pkg.products) ? pkg.products : [];
+      return label.length > 0 && (description.length > 0 || products.length > 0);
+    });
+    const preferPackages =
+      preferPackagesFlag === true ||
+      (preferPackagesFlag !== false && packagesFilled);
+    const recommended = createdPackages.find((p) => p.isRecommended) ?? createdPackages[1] ?? createdPackages[0];
+    if (recommended && preferPackages) {
+      const depositPercent =
+        typeof data.depositPercent === 'number' ? data.depositPercent : existing.depositPercent ?? 50;
+      await colUpdate(orgId, 'proposals', proposalId, {
+        selectedPackageId: recommended.id,
+        subtotalCents: recommended.subtotalCents,
+        depositAmountCents: Math.round(recommended.subtotalCents * (depositPercent / 100)),
+      });
+    } else if (createdPackages.length === 0) {
+      await colUpdate(orgId, 'proposals', proposalId, { selectedPackageId: null });
+    }
+  }
+
   return getProposal360(orgId, proposalId);
 }
 
@@ -680,8 +783,7 @@ export async function updateProposalStatus(
     };
     if (normalized === 'sent') await fireAutomationTrigger(orgId, 'proposal_sent', ctx, userId);
     if (normalized === 'viewed') await fireAutomationTrigger(orgId, 'proposal_viewed', ctx, userId);
-    if (normalized === 'approved')
-      await fireAutomationTrigger(orgId, 'proposal_accepted', ctx, userId);
+    // YL-S8: proposal_accepted fires once inside runProposalAcceptedWorkflow (not here).
   } catch {
     // Best-effort automations
   }
@@ -937,16 +1039,7 @@ export async function recordPublicApproval(
     } catch (err) {
       console.error('[recordPublicApproval] acceptance workflow failed', proposal.id, err);
     }
-    try {
-      const { fireAutomationTrigger } = await import('./automation360');
-      await fireAutomationTrigger(orgId, 'proposal_accepted', {
-        customerId: proposal.customerId,
-        customerName: input.customerName,
-        proposalId: proposal.id,
-      });
-    } catch {
-      /* best-effort */
-    }
+    // YL-S8: proposal_accepted fires once inside runProposalAcceptedWorkflow (not here).
   } else if (input.action === 'rejected') {
     await syncCustomerPipelineFromProposal(orgId, proposal.customerId, 'rejected');
   }

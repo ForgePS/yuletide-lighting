@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, statusColor } from '@/lib/invoice-utils';
 import { formatDate } from '@clcrm/ui';
+import { formatInvoiceStatusLabel } from '@clcrm/types';
 import { LoadingState } from '@/components/ui/states';
 import { InvoiceCreateForm } from './invoice-create-form';
 import { useAnalyticsYear } from '@/lib/analytics-year-context';
@@ -110,7 +111,7 @@ function InvoiceTable({
               </td>
               <td>
                 <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusColor(inv.status)}`}>
-                  {inv.status.replace(/_/g, ' ')}
+                  {formatInvoiceStatusLabel(inv.status)}
                 </span>
               </td>
               <td>{formatCurrency(inv.subtotalCents)}</td>

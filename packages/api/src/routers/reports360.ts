@@ -29,65 +29,76 @@ import {
   dashboardRoleSchema,
   reportFilterSchema,
 } from '@clcrm/validators';
-import { router, officeProcedure, protectedProcedure } from '../trpc';
+import { router, protectedProcedure, requireModule, requirePermission } from '../trpc';
 import { colCreate } from '@yuletide/firebase';
 
 const reportInput = reportFilterSchema.optional();
+const reportsModule = requireModule('reports');
+/** YL-S19: module + reports RBAC (replaces officeProcedure-only / unprotected commandCenter). */
+const reportsView = protectedProcedure.use(reportsModule).use(requirePermission('reports', 'view'));
+const reportsCreate = protectedProcedure.use(reportsModule).use(requirePermission('reports', 'create'));
+const reportsExport = protectedProcedure.use(reportsModule).use(requirePermission('reports', 'export'));
 
 export const reports360Router = router({
-  executive: officeProcedure.input(reportInput).query(({ ctx, input }) =>
+  executive: reportsView.input(reportInput).query(({ ctx, input }) =>
     getExecutiveDashboard(ctx.auth.organizationId, input ?? {}),
   ),
 
-  revenue: officeProcedure.input(reportInput).query(({ ctx, input }) =>
+  revenue: reportsView.input(reportInput).query(({ ctx, input }) =>
     getRevenueAnalytics(ctx.auth.organizationId, input ?? {}),
   ),
 
-  sales: officeProcedure.input(reportInput).query(({ ctx, input }) =>
+  sales: reportsView.input(reportInput).query(({ ctx, input }) =>
     getSalesAnalytics(ctx.auth.organizationId, input ?? {}),
   ),
 
-  customers: officeProcedure.input(reportInput).query(({ ctx, input }) =>
+  customers: reportsView.input(reportInput).query(({ ctx, input }) =>
     getCustomerAnalytics(ctx.auth.organizationId, input ?? {}),
   ),
 
-  geographic: officeProcedure.input(reportInput).query(({ ctx, input }) =>
+  geographic: reportsView.input(reportInput).query(({ ctx, input }) =>
     getGeographicAnalytics(ctx.auth.organizationId, input ?? {}),
   ),
 
-  operations: officeProcedure.input(reportInput).query(({ ctx, input }) =>
+  operations: reportsView.input(reportInput).query(({ ctx, input }) =>
     getOperationsAnalytics(ctx.auth.organizationId, input ?? {}),
   ),
 
-  crews: officeProcedure.input(reportInput).query(({ ctx, input }) =>
+  crews: reportsView.input(reportInput).query(({ ctx, input }) =>
     getCrewPerformanceAnalytics(ctx.auth.organizationId, input ?? {}),
   ),
 
-  inventory: officeProcedure.query(({ ctx }) => getInventoryReportAnalytics(ctx.auth.organizationId)),
+  inventory: reportsView.input(reportInput).query(({ ctx }) =>
+    getInventoryReportAnalytics(ctx.auth.organizationId),
+  ),
 
-  financial: officeProcedure.input(reportInput).query(({ ctx, input }) =>
+  financial: reportsView.input(reportInput).query(({ ctx, input }) =>
     getFinancialAnalytics(ctx.auth.organizationId, input ?? {}),
   ),
 
-  receivables: officeProcedure.query(({ ctx }) => getReceivablesAnalytics(ctx.auth.organizationId)),
+  receivables: reportsView.input(reportInput).query(({ ctx }) =>
+    getReceivablesAnalytics(ctx.auth.organizationId),
+  ),
 
-  seasonal: officeProcedure.input(reportInput).query(({ ctx, input }) =>
+  seasonal: reportsView.input(reportInput).query(({ ctx, input }) =>
     getSeasonalAnalytics(ctx.auth.organizationId, input ?? {}),
   ),
 
-  commandCenter: protectedProcedure.input(reportInput).query(({ ctx, input }) =>
+  commandCenter: reportsView.input(reportInput).query(({ ctx, input }) =>
     getSeasonalCommandCenter(ctx.auth.organizationId, input ?? {}),
   ),
 
-  forecasts: officeProcedure.query(({ ctx }) => generateReportForecasts(ctx.auth.organizationId)),
+  forecasts: reportsView.input(reportInput).query(({ ctx }) =>
+    generateReportForecasts(ctx.auth.organizationId),
+  ),
 
-  aiQuery: officeProcedure.input(aiAnalyticsQuerySchema).query(({ ctx, input }) =>
+  aiQuery: reportsView.input(aiAnalyticsQuerySchema).query(({ ctx, input }) =>
     aiBusinessIntelligence(ctx.auth.organizationId, input.question),
   ),
 
-  scheduledReports: officeProcedure.query(({ ctx }) => ensureScheduledReports(ctx.auth.organizationId)),
+  scheduledReports: reportsView.query(({ ctx }) => ensureScheduledReports(ctx.auth.organizationId)),
 
-  createScheduledReport: officeProcedure.input(createScheduledReportSchema).mutation(({ ctx, input }) =>
+  createScheduledReport: reportsCreate.input(createScheduledReportSchema).mutation(({ ctx, input }) =>
     colCreate(ctx.auth.organizationId, 'scheduledReports', {
       organizationId: ctx.auth.organizationId,
       ...input,
@@ -98,20 +109,24 @@ export const reports360Router = router({
     }),
   ),
 
-  runScheduledReport: officeProcedure
+  runScheduledReport: reportsCreate
     .input(z.object({ reportId: z.string() }))
-    .mutation(({ ctx, input }) => runScheduledReport(ctx.auth.organizationId, input.reportId, ctx.auth.userId)),
+    .mutation(({ ctx, input }) =>
+      runScheduledReport(ctx.auth.organizationId, input.reportId, ctx.auth.userId),
+    ),
 
-  customDashboards: officeProcedure
+  customDashboards: reportsView
     .input(z.object({ role: dashboardRoleSchema.optional() }).optional())
     .query(({ ctx, input }) => listCustomDashboards(ctx.auth.organizationId, input?.role)),
 
-  createDashboard: officeProcedure.input(createCustomDashboardSchema).mutation(({ ctx, input }) =>
+  createDashboard: reportsCreate.input(createCustomDashboardSchema).mutation(({ ctx, input }) =>
     createCustomDashboard(ctx.auth.organizationId, input, ctx.auth.userId),
   ),
 
-  export: officeProcedure.input(exportReportSchema).query(async ({ ctx, input }) => {
-    const content = await exportReport(ctx.auth.organizationId, input.reportType, input.format, { year: input.year ?? null });
+  export: reportsExport.input(exportReportSchema).query(async ({ ctx, input }) => {
+    const content = await exportReport(ctx.auth.organizationId, input.reportType, input.format, {
+      year: input.year ?? null,
+    });
     if (!content) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Export failed' });
     return { content, format: input.format, reportType: input.reportType };
   }),

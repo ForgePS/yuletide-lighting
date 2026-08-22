@@ -15,7 +15,10 @@
 | `FIRESTORE_EMULATOR_HOST` set     | Emulator evidence runs                         |
 | `FIREBASE_AUTH_EMULATOR_HOST` set | Emulator evidence runs                         |
 | `STRIPE_SECRET_KEY` missing       | Fail closed                                    |
-| Key starts with `sk_live`         | Never charge live from P2 portal checkout path |
+| `sk_live` without `PORTAL_ALLOW_LIVE_PAYMENTS=1` | YL-S26: live keys stay safe until explicit opt-in |
+| (not) `sk_test` alone             | YL-S26: test keys may charge outside emulator  |
+
+**YL-S26 cutover:** set `STRIPE_SECRET_KEY=sk_live_…` and `PORTAL_ALLOW_LIVE_PAYMENTS=1`, and ensure `PORTAL_PAYMENT_SAFE_MODE` is unset. Emulator hosts still force safe mode.
 
 Integration tests set `PORTAL_PAYMENT_SAFE_MODE=1` in `beforeAll`.
 

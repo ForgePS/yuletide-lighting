@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publicAccessTokenSchema } from './public-token';
 
 export const proposalStatusSchema = z.enum([
   'draft',
@@ -123,7 +124,7 @@ export const updateProposalStatusSchema = z.object({
 });
 
 export const publicApprovalSchema = z.object({
-  token: z.string().min(1),
+  token: publicAccessTokenSchema,
   action: approvalActionSchema,
   customerName: z.string().min(1).max(200),
   signatureData: z.string().max(50000).optional().or(z.literal('')),
@@ -145,7 +146,7 @@ export const createProposalTemplateSchema = z.object({
 export const updateProposalTemplateSchema = createProposalTemplateSchema.partial();
 
 export const recordProposalViewSchema = z.object({
-  token: z.string().min(1),
+  token: publicAccessTokenSchema,
   durationSeconds: z.number().optional(),
   device: z.string().optional(),
   userAgent: z.string().optional(),

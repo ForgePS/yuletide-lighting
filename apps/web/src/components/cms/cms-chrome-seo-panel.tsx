@@ -68,6 +68,8 @@ export function CmsChromeSeoNoticesPanel() {
           {(
             [
               ['companyName', 'Company name'],
+              ['primaryLogoUrl', 'Primary logo URL'],
+              ['faviconUrl', 'Favicon URL'],
               ['primaryColor', 'Primary color'],
               ['secondaryColor', 'Secondary color'],
               ['accentColor', 'Accent color'],
@@ -93,10 +95,34 @@ export function CmsChromeSeoNoticesPanel() {
             </label>
           ))}
         </div>
+        {(chrome.branding.primaryLogoUrl || chrome.header.logoUrl) ? (
+          <div className="rounded border border-border bg-muted/30 p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={chrome.header.logoUrl || chrome.branding.primaryLogoUrl || '/logo.png'}
+              alt="Logo preview"
+              className="h-14 w-auto object-contain"
+            />
+          </div>
+        ) : null}
       </section>
 
       <section className="card space-y-3 p-4">
         <h3 className="font-semibold">Header navigation</h3>
+        <label className="text-sm sm:col-span-2">
+          <span className="mb-1 block font-medium">Header logo URL</span>
+          <input
+            className="w-full rounded border px-2 py-1.5"
+            value={chrome.header.logoUrl ?? ''}
+            placeholder="/logo.png or uploaded media URL"
+            onChange={(e) =>
+              setChrome({
+                ...chrome,
+                header: { ...chrome.header, logoUrl: e.target.value || null },
+              })
+            }
+          />
+        </label>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -244,6 +270,158 @@ export function CmsChromeSeoNoticesPanel() {
           }}
         >
           <Save className="h-4 w-4" /> Save chrome & branding
+        </button>
+      </section>
+
+      <NamedFootersSection />
+
+      <section className="card space-y-3 p-4">
+        <h3 className="font-semibold">Marketing tags</h3>
+        <p className="text-xs text-muted-foreground">
+          Optional GTM / Meta Pixel. Prefer Custom CSS/JS for arbitrary scripts.
+        </p>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">GTM container ID</span>
+          <input
+            className="w-full rounded border px-2 py-1.5 font-mono text-sm"
+            placeholder="GTM-XXXX"
+            value={chrome.gtmContainerId ?? ''}
+            onChange={(e) => setChrome({ ...chrome, gtmContainerId: e.target.value || null })}
+          />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">Meta Pixel ID</span>
+          <input
+            className="w-full rounded border px-2 py-1.5 font-mono text-sm"
+            value={chrome.metaPixelId ?? ''}
+            onChange={(e) => setChrome({ ...chrome, metaPixelId: e.target.value || null })}
+          />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">Theme mode</span>
+          <select
+            className="w-full rounded border px-2 py-1.5 text-sm"
+            value={chrome.themeMode ?? 'light'}
+            onChange={(e) =>
+              setChrome({
+                ...chrome,
+                themeMode: e.target.value as NonNullable<CmsSiteGlobals['themeMode']>,
+              })
+            }
+          >
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="system">System</option>
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">Theme preset</span>
+          <select
+            className="w-full rounded border px-2 py-1.5 text-sm"
+            value={chrome.themePreset ?? 'default'}
+            onChange={(e) =>
+              setChrome({
+                ...chrome,
+                themePreset: e.target.value as NonNullable<CmsSiteGlobals['themePreset']>,
+              })
+            }
+          >
+            <option value="default">Default</option>
+            <option value="midnight">Midnight</option>
+            <option value="forest">Forest</option>
+            <option value="snow">Snow</option>
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">Layout template</span>
+          <select
+            className="w-full rounded border px-2 py-1.5 text-sm"
+            value={chrome.layoutTemplate ?? 'classic'}
+            onChange={(e) =>
+              setChrome({
+                ...chrome,
+                layoutTemplate: e.target.value as NonNullable<CmsSiteGlobals['layoutTemplate']>,
+              })
+            }
+          >
+            <option value="classic">Classic</option>
+            <option value="centered">Centered</option>
+            <option value="minimal">Minimal</option>
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">Default locale</span>
+          <input
+            className="w-full rounded border px-2 py-1.5 text-sm"
+            value={chrome.defaultLocale ?? 'en'}
+            onChange={(e) => setChrome({ ...chrome, defaultLocale: e.target.value || 'en' })}
+          />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">Available locales (comma-separated)</span>
+          <input
+            className="w-full rounded border px-2 py-1.5 text-sm"
+            value={(chrome.availableLocales ?? ['en']).join(', ')}
+            onChange={(e) =>
+              setChrome({
+                ...chrome,
+                availableLocales: e.target.value
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </label>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => {
+            const { updatedAt: _u, ...rest } = chrome;
+            saveGlobals.mutate(rest);
+          }}
+        >
+          Save marketing tags
+        </button>
+      </section>
+
+      <BrokenLinksSection />
+
+      <section className="card space-y-3 p-4">
+        <h3 className="font-semibold">Custom CSS / JS</h3>
+        <p className="text-xs text-muted-foreground">
+          Injected on all CMS marketing pages. Scripts run as trusted Creator content — do not paste
+          untrusted third-party code without review.
+        </p>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">Head CSS</span>
+          <textarea
+            className="w-full rounded border px-2 py-1.5 font-mono text-xs"
+            rows={4}
+            value={chrome.customHeadCss ?? ''}
+            onChange={(e) => setChrome({ ...chrome, customHeadCss: e.target.value || null })}
+            placeholder={'.hero { /* … */ }'}
+          />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">Custom JS</span>
+          <textarea
+            className="w-full rounded border px-2 py-1.5 font-mono text-xs"
+            rows={4}
+            value={chrome.customHeadJs ?? ''}
+            onChange={(e) => setChrome({ ...chrome, customHeadJs: e.target.value || null })}
+            placeholder={'console.log("marketing");'}
+          />
+        </label>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => {
+            const { updatedAt: _u, ...rest } = chrome;
+            saveGlobals.mutate(rest);
+          }}
+        >
+          <Save className="h-4 w-4" /> Save CSS / JS
         </button>
       </section>
 
@@ -411,5 +589,116 @@ export function CmsChromeSeoNoticesPanel() {
         ))}
       </section>
     </div>
+  );
+}
+
+function NamedFootersSection() {
+  const utils = trpc.useUtils();
+  const { data: footers } = trpc.websiteCms.footers.list.useQuery();
+  const { data: globals } = trpc.websiteCms.globals.get.useQuery();
+  const [name, setName] = useState('');
+  const upsert = trpc.websiteCms.footers.upsert.useMutation({
+    onSuccess: () => {
+      setName('');
+      void utils.websiteCms.footers.list.invalidate();
+    },
+  });
+  const remove = trpc.websiteCms.footers.delete.useMutation({
+    onSuccess: () => void utils.websiteCms.footers.list.invalidate(),
+  });
+
+  return (
+    <section className="card space-y-3 p-4">
+      <h3 className="font-semibold">Named footers</h3>
+      <p className="text-xs text-muted-foreground">
+        Create alternate footers and assign them per page in the Pages editor. Default footer is
+        edited above.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <input
+          className="rounded border px-2 py-1.5 text-sm"
+          placeholder="Footer name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={!name || !globals || upsert.isPending}
+          onClick={() =>
+            upsert.mutate({
+              name,
+              footer: globals!.footer,
+            })
+          }
+        >
+          <Plus className="h-4 w-4" /> Snapshot default as named footer
+        </button>
+      </div>
+      <ul className="space-y-2">
+        {footers?.map((f) => (
+          <li
+            key={f.id}
+            className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+          >
+            <span>
+              {f.name} <code className="text-xs text-muted-foreground">{f.id}</code>
+            </span>
+            <button
+              type="button"
+              className="text-red-600"
+              onClick={() => {
+                if (confirm(`Delete footer “${f.name}”?`)) remove.mutate({ id: f.id });
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function BrokenLinksSection() {
+  const utils = trpc.useUtils();
+  const { data: report } = trpc.websiteCms.links.report.useQuery();
+  const run = trpc.websiteCms.links.runCheck.useMutation({
+    onSuccess: () => void utils.websiteCms.links.report.invalidate(),
+  });
+
+  return (
+    <section className="card space-y-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">Broken link monitor</h3>
+        <button
+          type="button"
+          className="btn-secondary text-sm"
+          disabled={run.isPending}
+          onClick={() => run.mutate()}
+        >
+          {run.isPending ? 'Checking…' : 'Run check'}
+        </button>
+      </div>
+      {report ? (
+        <p className="text-xs text-muted-foreground">
+          Last run {new Date(report.ranAt).toLocaleString()} — {report.checked} checked,{' '}
+          {report.broken} broken
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">No report yet.</p>
+      )}
+      <ul className="max-h-56 space-y-1 overflow-y-auto text-sm">
+        {report?.items
+          .filter((i) => i.status !== 'ok')
+          .map((item) => (
+            <li key={`${item.url}-${item.source}`} className="rounded border px-2 py-1">
+              <span className="font-medium text-red-700">{item.status}</span> ·{' '}
+              <code className="text-xs">{item.url}</code>
+              <span className="text-xs text-muted-foreground"> · {item.source}</span>
+            </li>
+          ))}
+      </ul>
+    </section>
   );
 }

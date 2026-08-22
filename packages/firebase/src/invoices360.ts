@@ -25,10 +25,11 @@ import {
   getNextReminderStage,
   normalizeInvoiceStatus,
   renderTemplate,
+  resolveInvoiceReminderStatus,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
-import { colCreate, colDelete, colGet, colList, colUpdate, getByPublicToken, nanoid as firestoreNanoid } from './firestore';
+import { colCreate, colDelete, colGet, colList, colUpdate, getByPublicToken, generatePublicAccessToken } from './firestore';
 import { getInvoiceSettings } from './settings360';
 
 function ts() {
@@ -177,7 +178,7 @@ export async function createInvoice360(
     dueDate,
     viewCount: 0,
     paymentAttempts: 0,
-    publicToken: firestoreNanoid(32),
+    publicToken: generatePublicAccessToken(),
     remindersPaused: false,
     inCollectionQueue: false,
     notes: input.notes ?? null,
@@ -419,20 +420,29 @@ async function sendReminder360(orgId: string, invoiceId: string, stage: Reminder
     propertyAddress: invoice.propertyAddress ?? '',
   };
 
+  // YL-S20: honest status — no live email/SMS adapter in invoice reminders yet.
+  const status = resolveInvoiceReminderStatus({
+    channel,
+    providerAdapterActive: false,
+  });
+
   const reminder = await subCreate<InvoiceReminder>(orgId, invoiceId, 'reminders', {
     invoiceId,
     stage,
     channel,
-    status: 'sent',
+    status,
     scheduledAt: new Date(),
-    sentAt: new Date(),
+    sentAt: status === 'recorded' || status === 'sent' ? new Date() : null,
     templateId: template?.id ?? null,
     subject: template ? renderTemplate(template.subject, vars) : `Reminder: ${invoice.invoiceNumber}`,
     body: template ? renderTemplate(template.body, vars) : '',
   });
 
   await colUpdate(orgId, 'invoices', invoiceId, { reminderStage: stage, nextReminderAt: null });
-  await logInvoiceActivity(orgId, invoiceId, 'reminder_sent', `Reminder sent (${stage})`, { userId, metadata: { stage, channel } });
+  await logInvoiceActivity(orgId, invoiceId, 'reminder_sent', `Reminder ${status} (${stage})`, {
+    userId,
+    metadata: { stage, channel, status },
+  });
   return reminder;
 }
 

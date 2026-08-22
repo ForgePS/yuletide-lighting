@@ -6,12 +6,27 @@ import { describe, expect, it } from 'vitest';
 import {
   mapLegacyPortalPathToAppPath,
   portalAppPath,
+  portalInviteSuccessPath,
+  formatPortalStatusLabel,
   portalSessionTokenScopeConflict,
   redactPortalMagicTokenPath,
   translateLegacyPortalPathToSessionPath,
 } from './portal-legacy-path';
 
 const TOKEN = 'syntheticMagicTokenAAAA1111BBBB2222';
+
+describe('YL-S12 portal invite + status labels', () => {
+  it('portalInviteSuccessPath is session-first home', () => {
+    expect(portalInviteSuccessPath()).toBe('/portal/app');
+  });
+
+  it('formatPortalStatusLabel is null-safe', () => {
+    expect(formatPortalStatusLabel(null)).toBe('Unknown');
+    expect(formatPortalStatusLabel(undefined)).toBe('Unknown');
+    expect(formatPortalStatusLabel('')).toBe('Unknown');
+    expect(formatPortalStatusLabel('awaiting_signature')).toBe('Awaiting Signature');
+  });
+});
 
 describe('P2-S7B legacy route translation', () => {
   it('maps root', () => {

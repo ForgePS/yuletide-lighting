@@ -99,6 +99,8 @@ export type CrewProfile = ScheduleAuditFields & {
   skillLevel: 'junior' | 'mid' | 'senior' | 'lead';
   availabilityStatus: CrewAvailabilityStatus;
   assignedVehicleId?: string | null;
+  /** Optional Firebase Auth user linked to this schedule crew profile (YL-S10). */
+  assignedUserId?: string | null;
   scheduledHoursWeek: number;
   availableHoursWeek: number;
   utilizationPercent: number;
@@ -291,6 +293,72 @@ export function appointmentDurationHours(type: AppointmentType): number {
     internal_meeting: 1,
   };
   return map[type] ?? 2;
+}
+
+/** YL-S10 — null-safe display label for schedule statuses / categories / appointment types. */
+export function formatScheduleLabel(value: string | null | undefined): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return 'Unknown';
+  return text
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+/**
+ * YL-S10 — resolve job crew fields from a schedule crew profile.
+ * Never treat the crewSchedules document id as a Firebase user id.
+ */
+export function resolveJobCrewAssignment(
+  crew: { id: string; assignedUserId?: string | null } | null | undefined,
+): { assignedCrewId: string | null; assignedCrewUserId: string | null } {
+  if (!crew?.id) return { assignedCrewId: null, assignedCrewUserId: null };
+  const userId = typeof crew.assignedUserId === 'string' ? crew.assignedUserId.trim() : '';
+  return {
+    assignedCrewId: crew.id,
+    assignedCrewUserId: userId || null,
+  };
+}
+
+/** YL-S10 — empty strings are not valid customer ids for calendar writes. */
+export function normalizeOptionalId(id: string | null | undefined): string | undefined {
+  const value = typeof id === 'string' ? id.trim() : '';
+  return value || undefined;
+}
+
+type CalendarEventPick = {
+  id: string;
+  jobId?: string | null;
+  startAt?: Date | string | null;
+  updatedAt?: Date | string | null;
+};
+
+/** YL-S10 — prefer the latest event for a job when multiples exist. */
+export function pickPrimaryCalendarEventForJob<T extends CalendarEventPick>(
+  events: T[],
+  jobId: string,
+): T | null {
+  const matches = events.filter((e) => e.jobId === jobId);
+  if (!matches.length) return null;
+  return matches.reduce((best, cur) => {
+    const bestTs = eventRecencyMs(best);
+    const curTs = eventRecencyMs(cur);
+    return curTs >= bestTs ? cur : best;
+  });
+}
+
+function eventRecencyMs(event: CalendarEventPick): number {
+  const updated = toMs(event.updatedAt);
+  if (updated != null) return updated;
+  const start = toMs(event.startAt);
+  return start ?? 0;
+}
+
+function toMs(value: Date | string | null | undefined): number | null {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  const ms = d.getTime();
+  return Number.isNaN(ms) ? null : ms;
 }
 
 export function detectConflicts(

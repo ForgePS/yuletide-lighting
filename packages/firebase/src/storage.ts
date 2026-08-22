@@ -1,7 +1,12 @@
 import { getAdminStorage } from './admin';
 import { nanoid } from 'nanoid';
 
-import { toFileProxyUrl as toFileProxyUrlFromTypes } from '@clcrm/types';
+import {
+  assertStaffUploadContract,
+  sanitizeStorageFilename,
+  sanitizeStorageFolder,
+  toFileProxyUrl as toFileProxyUrlFromTypes,
+} from '@clcrm/types';
 
 export function toFileProxyUrl(path: string) {
   return toFileProxyUrlFromTypes(path);
@@ -36,13 +41,18 @@ export async function uploadFile(
   contentType: string,
   filename?: string,
 ): Promise<{ path: string; url: string }> {
+  const contract = assertStaffUploadContract({
+    contentType,
+    sizeBytes: buffer.byteLength,
+    folder,
+  });
   const bucket = getAdminStorage().bucket();
-  const safeName = (filename ?? `${nanoid()}-${Date.now()}`).replace(/[^\w.\-]+/g, '_');
-  const path = `organizations/${orgId}/${folder}/${safeName}`;
+  const safeName = sanitizeStorageFilename(filename ?? `${nanoid()}-${Date.now()}`);
+  const path = `organizations/${orgId}/${contract.folder}/${safeName}`;
   const file = bucket.file(path);
 
   await file.save(buffer, {
-    metadata: { contentType },
+    metadata: { contentType: contract.contentType },
   });
 
   return { path, url: toFileProxyUrl(path) };
@@ -61,13 +71,19 @@ export async function uploadPlatformFile(
   contentType: string,
   filename?: string,
 ): Promise<{ path: string; url: string }> {
+  const contract = assertStaffUploadContract({
+    contentType,
+    sizeBytes: buffer.byteLength,
+    folder,
+  });
   const bucket = getAdminStorage().bucket();
-  const safeName = (filename ?? `${nanoid()}-${Date.now()}`).replace(/[^\w.\-]+/g, '_');
-  const path = `platform/website/${folder}/${safeName}`;
+  const safeName = sanitizeStorageFilename(filename ?? `${nanoid()}-${Date.now()}`);
+  const safeFolder = sanitizeStorageFolder(contract.folder);
+  const path = `platform/website/${safeFolder}/${safeName}`;
   const file = bucket.file(path);
 
   await file.save(buffer, {
-    metadata: { contentType },
+    metadata: { contentType: contract.contentType },
   });
 
   return { path, url: toFileProxyUrl(path) };

@@ -84,6 +84,13 @@ export const inviteUserSchema = z.object({
   department: z.string().max(100).optional().nullable(),
 });
 
+export const claimStaffInviteSchema = z.object({
+  token: z.string().min(16).max(256),
+  password: z.string().min(8).max(128),
+  firstName: z.string().max(100).optional().nullable(),
+  lastName: z.string().max(100).optional().nullable(),
+});
+
 export const updateRolePermissionsSchema = z.object({
   roleId: z.string().min(1),
   permissions: permissionMatrixSchema,

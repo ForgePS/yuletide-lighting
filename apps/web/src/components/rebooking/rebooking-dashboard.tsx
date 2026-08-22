@@ -3,6 +3,12 @@
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency } from '@clcrm/ui';
+import {
+  defaultRebookingSeasonYear,
+  formatRebookingLabel,
+  hasPermission,
+} from '@clcrm/types';
+import { useAuth } from '@/lib/firebase-auth';
 import { LoadingState, ErrorState } from '@/components/ui/states';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -49,6 +55,12 @@ export function RebookingForecastCards() {
 }
 
 export function RebookingCustomerTable({ campaignId }: { campaignId: string }) {
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = Boolean(idToken) && !authLoading;
+  const { data: myPermissions } = trpc.settings360.myPermissions.useQuery(undefined, { enabled: ready });
+  const canCreate = myPermissions ? hasPermission(myPermissions, 'customers', 'create') : false;
+  const canEdit = myPermissions ? hasPermission(myPermissions, 'customers', 'edit') : false;
+
   const utils = trpc.useUtils();
   const { data, isLoading, refetch } = trpc.rebooking360.campaigns.records.useQuery({ campaignId });
   const send = trpc.rebooking360.records.send.useMutation({ onSuccess: () => refetch() });
@@ -86,22 +98,22 @@ export function RebookingCustomerTable({ campaignId }: { campaignId: string }) {
               <td>{formatCurrency(row.projectedValueCents)}</td>
               <td>{row.bookedValueCents ? formatCurrency(row.bookedValueCents) : '—'}</td>
               <td>
-                <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${STATUS_COLORS[row.status] ?? ''}`}>
-                  {row.status.replace(/_/g, ' ')}
+                <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_COLORS[row.status] ?? ''}`}>
+                  {formatRebookingLabel(row.status)}
                 </span>
               </td>
               <td>
                 <div className="flex flex-wrap gap-2">
-                  {row.status === 'not_sent' && (
+                  {canEdit && row.status === 'not_sent' && (
                     <button type="button" className="text-xs text-primary hover:underline" onClick={() => send.mutate({ recordId: row.id })}>Send</button>
                   )}
-                  {row.status !== 'rebooked' && row.status !== 'declined' && (
+                  {canCreate && row.status !== 'rebooked' && row.status !== 'declined' && (
                     <button type="button" className="text-xs text-green-600 hover:underline" onClick={() => rebook.mutate({ recordId: row.id, sameDesign: true })}>Rebook</button>
                   )}
                   {row.newProposalId && (
                     <Link href={`/app/proposals/${row.newProposalId}`} className="text-xs text-primary hover:underline">Proposal</Link>
                   )}
-                  {row.status !== 'declined' && (
+                  {canEdit && row.status !== 'declined' && (
                     <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => update.mutate({ recordId: row.id, status: 'declined' })}>Decline</button>
                   )}
                 </div>
@@ -115,6 +127,12 @@ export function RebookingCustomerTable({ campaignId }: { campaignId: string }) {
 }
 
 export function RebookingDashboard() {
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = Boolean(idToken) && !authLoading;
+  const { data: myPermissions } = trpc.settings360.myPermissions.useQuery(undefined, { enabled: ready });
+  const canCreate = myPermissions ? hasPermission(myPermissions, 'customers', 'create') : false;
+  const canEdit = myPermissions ? hasPermission(myPermissions, 'customers', 'edit') : false;
+
   const utils = trpc.useUtils();
   const { data: campaigns, isLoading } = trpc.rebooking360.campaigns.list.useQuery();
   const create = trpc.rebooking360.campaigns.create.useMutation({
@@ -127,7 +145,7 @@ export function RebookingDashboard() {
     onSuccess: () => utils.rebooking360.campaigns.list.invalidate(),
   });
 
-  const nextYear = new Date().getFullYear() + (new Date().getMonth() >= 6 ? 1 : 0);
+  const nextYear = defaultRebookingSeasonYear();
 
   return (
     <div className="space-y-8">
@@ -135,14 +153,16 @@ export function RebookingDashboard() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Campaigns</h2>
-        <button
-          type="button"
-          className="btn-primary text-sm"
-          disabled={create.isPending}
-          onClick={() => create.mutate({ seasonYear: nextYear })}
-        >
-          Create {nextYear} campaign
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            className="btn-primary text-sm"
+            disabled={create.isPending}
+            onClick={() => create.mutate({ seasonYear: nextYear })}
+          >
+            Create {nextYear} campaign
+          </button>
+        ) : null}
       </div>
 
       {isLoading ? (
@@ -156,9 +176,11 @@ export function RebookingDashboard() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <Link href={`/app/rebooking/campaigns/${c.id}`} className="text-lg font-semibold hover:text-primary hover:underline">
-                    {c.name}
+                    {c.name || formatRebookingLabel(null, 'Untitled campaign')}
                   </Link>
-                  <p className="text-sm text-muted-foreground capitalize">{c.status} · {c.targetCustomerIds.length} targets</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatRebookingLabel(c.status)} · {c.targetCustomerIds.length} targets
+                  </p>
                 </div>
                 <div className="text-right text-sm">
                   <p>{formatCurrency(c.totalBookedRevenueCents)} booked</p>
@@ -166,14 +188,16 @@ export function RebookingDashboard() {
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" className="btn-secondary text-xs" disabled={populate.isPending} onClick={() => populate.mutate({ campaignId: c.id })}>
-                  Import prior season
-                </button>
-                {c.status === 'draft' && (
+                {canEdit ? (
+                  <button type="button" className="btn-secondary text-xs" disabled={populate.isPending} onClick={() => populate.mutate({ campaignId: c.id })}>
+                    Import prior season
+                  </button>
+                ) : null}
+                {canEdit && c.status === 'draft' ? (
                   <button type="button" className="btn-primary text-xs" onClick={() => updateCampaign.mutate({ campaignId: c.id, status: 'active' })}>
                     Activate
                   </button>
-                )}
+                ) : null}
                 <Link href={`/app/rebooking/campaigns/${c.id}`} className="btn-secondary text-xs">Manage</Link>
               </div>
             </div>

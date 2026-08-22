@@ -2,6 +2,7 @@
 
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel } from '@clcrm/types';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { LoadingState } from '@/components/ui/states';
 
@@ -38,7 +39,7 @@ function ContactsBody() {
               </p>
               {(c.role || c.title) && (
                 <p className="mt-1 text-sm capitalize text-stone-500">
-                  {[c.role?.replace(/_/g, ' '), c.title].filter(Boolean).join(' · ')}
+                  {[c.role ? formatPortalStatusLabel(c.role) : null, c.title].filter(Boolean).join(' · ')}
                 </p>
               )}
             </div>

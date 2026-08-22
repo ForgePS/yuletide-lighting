@@ -13,6 +13,8 @@ import {
   portalMagicCredentialWriteFields,
   allowLegacyPlaintextMagicTokenLookup,
   getPortalMagicTokenMode,
+  isPortalAccountHashReady,
+  summarizePortalHashReadiness,
   PORTAL_ACCESS_SECRET_DOMAIN,
 } from './portal-magic-access';
 import { hashPortalSecret } from './portal-security';
@@ -126,5 +128,34 @@ describe('P2-S7 hash equality + fingerprint', () => {
     expect(fp).toMatch(/^[a-f0-9]{8}$/);
     expect(magicAccessFingerprint(null)).toBeNull();
     expect(magicAccessFingerprint('garbage')).toBeNull();
+  });
+});
+
+describe('YL-S12 HASH_ONLY readiness helpers', () => {
+  it('isPortalAccountHashReady requires hash and no plaintext', () => {
+    const raw = generatePortalAccessToken();
+    const fields = portalMagicCredentialWriteFields(raw);
+    expect(isPortalAccountHashReady(fields)).toBe(true);
+    expect(isPortalAccountHashReady({ accessTokenHash: fields.accessTokenHash, accessToken: raw })).toBe(
+      false,
+    );
+    expect(isPortalAccountHashReady({ accessToken: raw, accessTokenHash: null })).toBe(false);
+  });
+
+  it('summarizePortalHashReadiness reports migrate readiness without flipping mode', () => {
+    const raw = generatePortalAccessToken();
+    const ready = portalMagicCredentialWriteFields(raw);
+    const summary = summarizePortalHashReadiness([
+      ready,
+      { accessToken: 'legacyplaintexttoken1234', accessTokenHash: null },
+      { accessTokenHash: ready.accessTokenHash, accessToken: null },
+    ]);
+    expect(summary.total).toBe(3);
+    expect(summary.hashReady).toBe(2);
+    expect(summary.stillHasPlaintext).toBe(1);
+    expect(summary.missingHash).toBe(1);
+    expect(summary.readyForHashOnly).toBe(false);
+    expect(summarizePortalHashReadiness([ready, ready]).readyForHashOnly).toBe(true);
+    expect(getPortalMagicTokenMode()).not.toBe('HASH_ONLY'); // default env unchanged by helper
   });
 });

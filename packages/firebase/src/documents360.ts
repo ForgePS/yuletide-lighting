@@ -20,7 +20,7 @@ export type CustomerDocument360 = {
   notes: string | null;
   relatedRecordType: string | null;
   relatedRecordId: string | null;
-  /** Portal visibility classification (P2-S5). Unknown/missing treated as customer_visible for legacy. */
+  /** Portal visibility classification (P2-S5 / YL-S15). Missing/unknown = not customer-visible. */
   visibility?: 'customer_visible' | 'staff_only' | 'internal' | 'system' | string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -75,17 +75,26 @@ export async function createCustomerDocument360(
     notes?: string | null;
     relatedRecordType?: string | null;
     relatedRecordId?: string | null;
+    visibility?: 'customer_visible' | 'staff_only' | 'internal' | 'system' | null;
   },
   userId?: string | null,
 ): Promise<CustomerDocument360> {
+  const { normalizeDocumentVisibility } = await import('@clcrm/types');
+  const category = input.category ?? 'other';
+  const customerFacing = ['proposal', 'agreement', 'invoice', 'photo'].includes(category);
+  const visibility = normalizeDocumentVisibility(
+    input.visibility,
+    customerFacing ? 'customer_visible' : 'staff_only',
+  );
   const created = await colCreate(orgId, 'customerDocuments', {
     customerId: input.customerId,
     title: input.title.trim(),
-    category: input.category ?? 'other',
+    category,
     url: input.url?.trim() || null,
     notes: input.notes?.trim() || null,
     relatedRecordType: input.relatedRecordType?.trim() || null,
     relatedRecordId: input.relatedRecordId?.trim() || null,
+    visibility,
     createdBy: userId ?? null,
   });
   return normalizeDocument(created as Record<string, unknown>, orgId, created.id);

@@ -5,6 +5,12 @@ import type {
   RebookingRecord,
   RebookingRecordWithCustomer,
 } from '@clcrm/types';
+import {
+  isPriorSeasonJobEligibleForRebooking,
+  isRebookingPopulateCustomerEligible,
+  isRebookingRecordTerminal,
+  shouldSendRebookingOutreach,
+} from '@clcrm/types';
 import { getAdminFirestore } from './admin';
 import { colCreate, colGet, colList, colUpdate, type CustomerRecord } from './firestore';
 import { createProposal360, getProposal360 } from './proposals';
@@ -226,15 +232,24 @@ export async function populateCampaignFromPriorSeason(
   const eligibleCustomerIds = new Set<string>();
 
   for (const job of jobs) {
-    const stage = String(job.stage ?? '');
-    if (!['installed', 'removed', 'complete', 'review_requested'].includes(stage)) continue;
-    const d = job.installedAt ?? job.removedAt ?? job.createdAt;
-    const year = d instanceof Date ? d.getFullYear() : d ? new Date(String(d)).getFullYear() : null;
-    if (year === priorYear && job.customerId) eligibleCustomerIds.add(String(job.customerId));
+    if (
+      isPriorSeasonJobEligibleForRebooking(
+        {
+          stage: job.stage as string | null | undefined,
+          customerId: job.customerId ? String(job.customerId) : null,
+          installedAt: (job.installedAt as Date | string | null | undefined) ?? null,
+          removedAt: (job.removedAt as Date | string | null | undefined) ?? null,
+          createdAt: (job.createdAt as Date | string | null | undefined) ?? null,
+        },
+        priorYear,
+      )
+    ) {
+      eligibleCustomerIds.add(String(job.customerId));
+    }
   }
 
   for (const customer of customers) {
-    if (['stored', 'removed', 'rebook_next_season'].includes(customer.pipelineStage ?? '')) {
+    if (isRebookingPopulateCustomerEligible(customer.pipelineStage)) {
       eligibleCustomerIds.add(customer.id);
     }
   }
@@ -311,6 +326,14 @@ export async function sendRebookingOutreach(
   const campaign = await getRebookingCampaign(orgId, record.campaignId);
   if (!campaign) throw new Error('Campaign not found');
 
+  // YL-S25: idempotent — do not re-fire outreach for terminal / already-contacted rows.
+  if (!shouldSendRebookingOutreach(record.status)) {
+    return {
+      ...record,
+      replayed: true as const,
+    };
+  }
+
   await colUpdate(orgId, 'rebookingRecords', recordId, {
     status: 'sent',
     lastContactedAt: new Date(),
@@ -349,8 +372,8 @@ export async function processRebookRecord(
   const campaign = await getRebookingCampaign(orgId, record.campaignId);
   if (!campaign) throw new Error('Campaign not found');
 
-  // Terminal states: deterministic replay, no duplicate proposals (P2-S6).
-  if (['rebooked', 'upgrade_requested', 'declined'].includes(record.status)) {
+  // Terminal states: deterministic replay, no duplicate proposals (P2-S6 / YL-S25).
+  if (isRebookingRecordTerminal(record.status)) {
     return {
       recordId,
       newProposalId: record.newProposalId ?? null,

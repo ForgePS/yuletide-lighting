@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
-import { formatDate } from '@clcrm/ui';
+import { formatDate, formatStage } from '@clcrm/ui';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { PortalResponsiveTable, PortalStatusPill } from '@/components/portal/portal-mobile';
 import { LoadingState } from '@/components/ui/states';
@@ -41,7 +41,7 @@ function JobsBody() {
           key: 'stage',
           header: 'Status',
           cell: (job) => (
-            <PortalStatusPill tone="info">{job.stage.replace(/_/g, ' ')}</PortalStatusPill>
+            <PortalStatusPill tone="info">{formatStage(job.stage)}</PortalStatusPill>
           ),
         },
         {
@@ -68,7 +68,7 @@ function JobsBody() {
           <div>
             <p className="font-semibold text-stone-900">{job.title}</p>
             <p className="mt-1 text-base capitalize text-stone-500">
-              {job.stage.replace(/_/g, ' ')}
+              {formatStage(job.stage)}
             </p>
           </div>
           {job.scheduledStart && (

@@ -2,6 +2,7 @@
 
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel } from '@clcrm/types';
 import { formatDate } from '@clcrm/ui';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { LoadingState } from '@/components/ui/states';
@@ -36,7 +37,7 @@ function TakedownsBody() {
             <div>
               <p className="font-semibold text-stone-900">{t.title}</p>
               <p className="mt-1 text-sm capitalize text-stone-500">
-                {String(t.status).replace(/_/g, ' ')}
+                {formatPortalStatusLabel(String(t.status))}
               </p>
               {t.propertyAddress && (
                 <p className="mt-1 text-xs text-stone-400">{t.propertyAddress}</p>

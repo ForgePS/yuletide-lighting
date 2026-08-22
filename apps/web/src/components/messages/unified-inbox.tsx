@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
-import { channelIcon, statusBadge, priorityBadge } from '@/lib/message-utils';
+import { channelIcon, statusBadge, priorityBadge, deliveryStatusBadge, deliveryStatusLabel } from '@/lib/message-utils';
 import { formatDate } from '@clcrm/ui';
+import { formatMessageLabel } from '@clcrm/types';
 import { useToast } from '@/lib/toast';
 import { LoadingState, EmptyState } from '@/components/ui/states';
 import { MessageComposer } from './message-composer';
@@ -35,8 +36,8 @@ export function UnifiedInbox() {
             </div>
             <p className="mt-1 truncate text-xs text-muted-foreground">{conv.lastMessagePreview ?? 'No messages'}</p>
             <div className="mt-2 flex flex-wrap gap-1">
-              <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusBadge(conv.status)}`}>{conv.status.replace(/_/g, ' ')}</span>
-              <span className={`text-xs capitalize ${priorityBadge(conv.priority)}`}>{conv.priority}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusBadge(conv.status)}`}>{formatMessageLabel(conv.status)}</span>
+              <span className={`text-xs capitalize ${priorityBadge(conv.priority)}`}>{formatMessageLabel(conv.priority)}</span>
             </div>
           </button>
         ))}
@@ -47,12 +48,19 @@ export function UnifiedInbox() {
           <>
             <div className="border-b p-4">
               <h2 className="font-semibold">{thread.conversation.customerName}</h2>
-              <p className="text-sm text-muted-foreground capitalize">{thread.conversation.category.replace(/_/g, ' ')} · {thread.conversation.source}</p>
+              <p className="text-sm text-muted-foreground capitalize">{formatMessageLabel(thread.conversation.category)} · {formatMessageLabel(thread.conversation.source)}</p>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               {thread.messages.map((msg) => (
                 <div key={msg.id} className={`mb-3 max-w-[80%] rounded-lg p-3 text-sm ${msg.direction === 'outbound' ? 'ml-auto bg-red-50 text-red-900' : 'bg-muted'}`}>
-                  <p className="text-xs text-muted-foreground">{channelIcon(msg.channel)} {msg.channel} · {msg.status}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {channelIcon(msg.channel)} {msg.channel}{' '}
+                    <span
+                      className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${deliveryStatusBadge(msg.status)}`}
+                    >
+                      {deliveryStatusLabel(msg.status)}
+                    </span>
+                  </p>
                   {msg.subject && <p className="mt-1 font-medium">{msg.subject}</p>}
                   <p className="mt-1 whitespace-pre-wrap">{msg.body}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{formatDate(msg.createdAt)}</p>

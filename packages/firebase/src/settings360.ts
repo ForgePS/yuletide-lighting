@@ -36,6 +36,7 @@ import {
   DEFAULT_PERMISSION_MATRIX,
   SYSTEM_ROLES,
   mapLegacyRole,
+  mapSettingsRoleToLegacyRole,
   SUBSCRIPTION_PRICING,
   normalizeLogoReference,
   normalizeProposalPackageDefaults,
@@ -44,6 +45,32 @@ import { getAdminFirestore, getAdminAuth, Timestamp } from './admin';
 import { getOrgSubscriptionState } from './billing';
 import { mapTimestampsFromData, stripUndefined } from './firestore-utils';
 import { getOrganization, updateOrganization } from './firestore';
+import { assertTwilioPhoneUnique } from './messages360';
+import {
+  createPortalOpaqueToken,
+  hashPortalSecret,
+  timingSafeEqualHex,
+} from './portal-security';
+
+/** YL-S26 — staff invite token TTL (7 days). */
+export const STAFF_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const STAFF_INVITE_HASH_SALT = 'staff-invite';
+
+export function hashStaffInviteToken(token: string): string {
+  return hashPortalSecret(token, STAFF_INVITE_HASH_SALT);
+}
+
+export function buildStaffInviteUrl(token: string): string {
+  const base = (process.env.NEXT_PUBLIC_APP_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
+  return `${base}/invite/${encodeURIComponent(token)}`;
+}
+
+export type InviteOrgUserResult = {
+  invite: OrgUserProfile;
+  inviteUrl: string;
+  /** Copy-once plaintext token — never log. */
+  inviteToken: string;
+};
 
 function ts() {
   return Timestamp.now();
@@ -425,7 +452,12 @@ export async function listOrgUsers(orgId: string): Promise<OrgUserProfile[]> {
     });
   });
 
-  const invites = inviteSnap.docs.map((d) => {
+  const invites = inviteSnap.docs
+    .filter((d) => {
+      const status = d.data()?.status;
+      return status === 'pending' || status == null;
+    })
+    .map((d) => {
     const data = d.data();
     return mapDoc<OrgUserProfile>({
       id: `invite:${d.id}`,
@@ -458,7 +490,7 @@ export async function inviteOrgUser(
   },
   actorId?: string | null,
   actorEmail?: string | null,
-) {
+): Promise<InviteOrgUserResult> {
   const db = getAdminFirestore();
   const email = input.email.trim().toLowerCase();
   const existing = await db
@@ -472,11 +504,17 @@ export async function inviteOrgUser(
   const inviteDup = await db
     .collection(`organizations/${orgId}/userInvites`)
     .where('email', '==', email)
-    .limit(1)
     .get();
-  if (!inviteDup.empty) throw new Error('An invitation for this email already exists');
+  const hasPending = inviteDup.docs.some((d) => {
+    const status = d.data()?.status;
+    return status === 'pending' || status == null;
+  });
+  if (hasPending) throw new Error('An invitation for this email already exists');
 
+  const inviteToken = createPortalOpaqueToken(32);
+  const tokenHash = hashStaffInviteToken(inviteToken);
   const now = ts();
+  const expiresAt = Timestamp.fromMillis(Date.now() + STAFF_INVITE_TTL_MS);
   const ref = db.collection(`organizations/${orgId}/userInvites`).doc();
   const payload = {
     organizationId: orgId,
@@ -486,6 +524,10 @@ export async function inviteOrgUser(
     department: input.department ?? null,
     role: input.role,
     status: 'pending',
+    tokenHash,
+    expiresAt,
+    claimedAt: null,
+    claimedByUid: null,
     createdAt: now,
     updatedAt: now,
     createdBy: actorId ?? null,
@@ -497,10 +539,164 @@ export async function inviteOrgUser(
     resource: 'settings/users',
     userId: actorId,
     userEmail: actorEmail,
-    details: { email },
+    details: { email, inviteId: ref.id },
   });
   const users = await listOrgUsers(orgId);
-  return users.find((u) => u.id === `invite:${ref.id}`)!;
+  const invite = users.find((u) => u.id === `invite:${ref.id}`)!;
+  return {
+    invite,
+    inviteUrl: buildStaffInviteUrl(inviteToken),
+    inviteToken,
+  };
+}
+
+/**
+ * YL-S26 — lookup pending staff invite by opaque token (hash match).
+ * Returns enumeration-safe null when missing/expired/ambiguous.
+ */
+export async function lookupStaffInviteByToken(token: string): Promise<{
+  orgId: string;
+  inviteId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  role: OrgUserProfile['role'];
+  department: string | null;
+} | null> {
+  const trimmed = token.trim();
+  if (trimmed.length < 16) return null;
+  const tokenHash = hashStaffInviteToken(trimmed);
+  const db = getAdminFirestore();
+  const snap = await db
+    .collectionGroup('userInvites')
+    .where('tokenHash', '==', tokenHash)
+    .limit(2)
+    .get();
+  if (snap.size !== 1) return null;
+  const doc = snap.docs[0]!;
+  const data = doc.data();
+  if (data.status !== 'pending') return null;
+  const expiresAt = data.expiresAt?.toDate?.() ?? (data.expiresAt ? new Date(data.expiresAt) : null);
+  if (expiresAt && expiresAt.getTime() < Date.now()) return null;
+  const orgId = String(data.organizationId ?? doc.ref.parent.parent?.id ?? '');
+  if (!orgId) return null;
+  if (!timingSafeEqualHex(String(data.tokenHash ?? ''), tokenHash)) return null;
+  return {
+    orgId,
+    inviteId: doc.id,
+    email: String(data.email ?? '').toLowerCase(),
+    firstName: (data.firstName as string | null) ?? null,
+    lastName: (data.lastName as string | null) ?? null,
+    role: (data.role as OrgUserProfile['role']) ?? 'office_staff',
+    department: (data.department as string | null) ?? null,
+  };
+}
+
+/**
+ * YL-S26 — claim staff invite: Auth user + users/{uid} membership.
+ */
+export async function claimStaffInvite(input: {
+  token: string;
+  password: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}): Promise<{ uid: string; organizationId: string; email: string }> {
+  const password = input.password;
+  if (typeof password !== 'string' || password.length < 8) {
+    throw new Error('Password must be at least 8 characters');
+  }
+
+  const invite = await lookupStaffInviteByToken(input.token);
+  if (!invite || !invite.email) {
+    throw new Error('Invitation is invalid or has expired');
+  }
+
+  const db = getAdminFirestore();
+  const auth = getAdminAuth();
+  const email = invite.email;
+  const firstName = input.firstName?.trim() || invite.firstName || null;
+  const lastName = input.lastName?.trim() || invite.lastName || null;
+  const displayName = [firstName, lastName].filter(Boolean).join(' ') || undefined;
+  const legacyRole = mapSettingsRoleToLegacyRole(invite.role) ?? 'office';
+
+  let uid: string | undefined;
+  try {
+    const existingAuth = await auth.getUserByEmail(email);
+    uid = existingAuth.uid;
+    const existingUser = await db.collection('users').doc(uid).get();
+    if (existingUser.exists) {
+      const existingOrg = String(existingUser.data()?.organizationId ?? '');
+      if (existingOrg && existingOrg !== invite.orgId) {
+        throw new Error('This email is already linked to another organization');
+      }
+      if (existingOrg === invite.orgId) {
+        throw new Error('This email is already a member of this organization');
+      }
+    }
+    await auth.updateUser(uid, {
+      password,
+      displayName: displayName ?? existingAuth.displayName,
+      emailVerified: true,
+      disabled: false,
+    });
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    if (code === 'auth/user-not-found') {
+      const created = await auth.createUser({
+        email,
+        password,
+        displayName,
+        emailVerified: true,
+        disabled: false,
+      });
+      uid = created.uid;
+    } else if (err instanceof Error && /already linked|already a member/i.test(err.message)) {
+      throw err;
+    } else {
+      throw err;
+    }
+  }
+
+  if (!uid) {
+    throw new Error('Invitation is invalid or has expired');
+  }
+
+  const now = ts();
+  await db.collection('users').doc(uid).set(
+    {
+      firebaseUid: uid,
+      organizationId: invite.orgId,
+      email,
+      firstName,
+      lastName,
+      role: legacyRole,
+      settingsRole: invite.role,
+      status: 'active',
+      department: invite.department,
+      createdAt: now,
+      updatedAt: now,
+    },
+    { merge: true },
+  );
+
+  const inviteRef = db.collection(`organizations/${invite.orgId}/userInvites`).doc(invite.inviteId);
+  await inviteRef.update({
+    status: 'claimed',
+    tokenHash: null,
+    claimedAt: now,
+    claimedByUid: uid,
+    updatedAt: now,
+  });
+
+  await logAudit(invite.orgId, {
+    action: 'claim',
+    resource: 'settings/userInvites',
+    userId: uid,
+    userEmail: email,
+    details: { inviteId: invite.inviteId },
+  });
+
+  return { uid, organizationId: invite.orgId, email };
 }
 
 export async function updateOrgUser(
@@ -549,15 +745,7 @@ export async function updateOrgUser(
   if (input.status !== undefined) update.status = input.status;
   if (input.role !== undefined) {
     update.settingsRole = input.role;
-    const legacyMap: Record<string, string> = {
-      owner: 'owner',
-      administrator: 'admin',
-      office_staff: 'office',
-      installer: 'crew',
-      crew_leader: 'crew',
-      dispatcher: 'crew',
-    };
-    update.role = legacyMap[input.role] ?? 'office';
+    update.role = mapSettingsRoleToLegacyRole(input.role) ?? 'office';
   }
 
   await ref.update(update);
@@ -1262,6 +1450,7 @@ export async function updateIntegration(
   );
 
   if (integrationId === 'twilio' && input.apiKey) {
+    await assertTwilioPhoneUnique(orgId, input.apiKey);
     await updateOrganization(orgId, { twilioPhoneNumber: input.apiKey });
   }
 

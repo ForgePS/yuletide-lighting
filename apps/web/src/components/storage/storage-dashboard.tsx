@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency } from '@clcrm/ui';
+import { formatStorageStatusLabel } from '@clcrm/types';
 import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 import { StoragePullSheetView } from './storage-pull-sheet';
 
@@ -97,8 +98,8 @@ export function StorageRecordsTable({ customerId }: { customerId?: string }) {
                 </td>
                 <td>{row.itemCount}</td>
                 <td>
-                  <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${STATUS_COLORS[row.status] ?? ''}`}>
-                    {row.status}
+                  <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${STATUS_COLORS[row.status] ?? 'bg-muted text-muted-foreground'}`}>
+                    {formatStorageStatusLabel(row.status)}
                   </span>
                 </td>
                 <td className="text-muted-foreground">{row.storedAt.toLocaleDateString()}</td>

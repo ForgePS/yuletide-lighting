@@ -163,6 +163,8 @@ export type ProposalRecord = ProposalAuditFields & {
   contractUrl?: string | null;
   contractGeneratedAt?: Date | null;
   followUpAutomationEnabled: boolean;
+  /** YL-S20 — last automated follow-up recorded (idempotency vs lastViewedAt). */
+  followUpLastSentAt?: Date | null;
   upsellSuggestions: string[];
   upsellPotentialCents: number;
   aiSuggestedPriceCents?: number | null;
@@ -250,4 +252,123 @@ export function normalizeProposalStatus(status: string): ProposalStatus {
   if (status === 'accepted') return 'approved';
   if (status === 'declined') return 'rejected';
   return status as ProposalStatus;
+}
+
+export type ProposalPackageEditorDraft = {
+  key: 'good' | 'better' | 'best';
+  tier: PackageTier;
+  label: string;
+  description: string;
+  inclusions: string[];
+  markupPercent: number;
+  isRecommended: boolean;
+};
+
+const TIER_TO_KEY: Record<PackageTier, ProposalPackageEditorDraft['key']> = {
+  basic: 'good',
+  recommended: 'better',
+  premium: 'best',
+};
+
+const EMPTY_PACKAGE_EDITOR_DRAFTS: ProposalPackageEditorDraft[] = [
+  {
+    key: 'good',
+    tier: 'basic',
+    label: 'Good',
+    description: '',
+    inclusions: [],
+    markupPercent: 15,
+    isRecommended: false,
+  },
+  {
+    key: 'better',
+    tier: 'recommended',
+    label: 'Better',
+    description: '',
+    inclusions: [],
+    markupPercent: 25,
+    isRecommended: true,
+  },
+  {
+    key: 'best',
+    tier: 'premium',
+    label: 'Best',
+    description: '',
+    inclusions: [],
+    markupPercent: 35,
+    isRecommended: false,
+  },
+];
+
+/** Infer markup % from package linear footage vs proposal base footage. */
+export function inferPackageMarkupPercent(
+  packageLinearFootage: number | undefined,
+  baseLinearFootage: number | undefined,
+  fallback: number,
+): number {
+  const base = Number(baseLinearFootage);
+  const valued = Number(packageLinearFootage);
+  if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(valued) || valued <= 0) {
+    return fallback;
+  }
+  return Math.max(0, Math.round((valued / base - 1) * 100));
+}
+
+/**
+ * YL-S7 / BACKLOG-002 — hydrate Good/Better/Best editor drafts from proposal packages.
+ * Org packageDefaults seed new proposals only; edit flows use this helper.
+ */
+export function buildPackageEditorDraftsFromProposalPackages(
+  packages:
+    | Array<
+        Pick<
+          ProposalPackage,
+          'tier' | 'label' | 'name' | 'description' | 'products' | 'isRecommended' | 'pricing'
+        >
+      >
+    | null
+    | undefined,
+  basePricing?: Pick<PricingComponents, 'linearFootage'> | null,
+): ProposalPackageEditorDraft[] {
+  if (!packages?.length) return EMPTY_PACKAGE_EDITOR_DRAFTS.map((d) => ({ ...d }));
+  const baseLf = basePricing?.linearFootage;
+  const byKey = new Map<ProposalPackageEditorDraft['key'], ProposalPackageEditorDraft>();
+  for (const pkg of packages) {
+    const key = TIER_TO_KEY[pkg.tier] ?? 'good';
+    const empty = EMPTY_PACKAGE_EDITOR_DRAFTS.find((d) => d.key === key)!;
+    byKey.set(key, {
+      key,
+      tier: pkg.tier,
+      label: String(pkg.label ?? pkg.name ?? empty.label),
+      description: String(pkg.description ?? ''),
+      inclusions: Array.isArray(pkg.products) ? pkg.products.map(String) : [],
+      markupPercent: inferPackageMarkupPercent(
+        pkg.pricing?.linearFootage,
+        baseLf,
+        empty.markupPercent,
+      ),
+      isRecommended: Boolean(pkg.isRecommended),
+    });
+  }
+  return EMPTY_PACKAGE_EDITOR_DRAFTS.map((empty) => byKey.get(empty.key) ?? { ...empty });
+}
+
+export function proposalPackagesAreFilled(
+  packages: Array<{
+    label?: string;
+    description?: string;
+    inclusions?: string[];
+    products?: string[];
+  }>,
+): boolean {
+  return packages.some((pkg) => {
+    const label = String(pkg.label ?? '').trim();
+    const description = String(pkg.description ?? '').trim();
+    const inclusions = Array.isArray(pkg.inclusions)
+      ? pkg.inclusions
+      : Array.isArray(pkg.products)
+        ? pkg.products
+        : [];
+    return label.length > 0 && (description.length > 0 || inclusions.length > 0);
+  });
 }

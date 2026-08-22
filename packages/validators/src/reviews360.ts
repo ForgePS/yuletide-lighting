@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publicAccessTokenSchema } from './public-token';
 
 export const reviewRequest360StatusSchema = z.enum([
   'pending',
@@ -18,7 +19,7 @@ export const sendReviewRequestSchema = z.object({
 });
 
 export const submitReviewFeedbackSchema = z.object({
-  token: z.string().min(8),
+  token: publicAccessTokenSchema,
   rating: z.number().int().min(1).max(5),
   feedback: z.string().max(5000).optional().or(z.literal('')),
 });

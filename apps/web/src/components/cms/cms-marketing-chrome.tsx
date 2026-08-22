@@ -9,7 +9,7 @@ export function CmsMarketingChrome({ globals }: { globals: CmsSiteGlobals }) {
   const { user } = useAuth();
   const { header } = globals;
   const bar = header.announcementBar;
-  const logoSrc = header.logoUrl || globals.branding.primaryLogoUrl || '/logo.svg';
+  const logoSrc = header.logoUrl || globals.branding.primaryLogoUrl || '/logo.png';
 
   return (
     <>

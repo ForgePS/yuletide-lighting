@@ -8,12 +8,12 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import * as Location from 'expo-location';
 
 import { ScreenContainer } from '@/components/screen-container';
 import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
-import { trpcQuery, trpcMutation } from '../lib/api';
+import { clearAuthToken, getAuthToken, signOutCrew, trpcQuery, trpcMutation } from '../lib/api';
 import { flushOfflineQueue, getLastSyncAt, getOfflineQueue } from '../lib/offline-queue';
 
 type ScheduleItem = {
@@ -38,14 +38,25 @@ type ScheduleItem = {
 export default function CrewHomeScreen() {
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authed, setAuthed] = useState<boolean | null>(null);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const { isTablet, scheduleColumns } = useResponsiveLayout();
 
   useEffect(() => {
-    loadSchedule();
-    refreshSyncStatus();
+    void (async () => {
+      const token = await getAuthToken();
+      if (!token) {
+        setAuthed(false);
+        setLoading(false);
+        router.replace('/login');
+        return;
+      }
+      setAuthed(true);
+      await loadSchedule();
+      await refreshSyncStatus();
+    })();
   }, []);
 
   async function refreshSyncStatus() {
@@ -58,12 +69,29 @@ export default function CrewHomeScreen() {
     try {
       const data = await trpcQuery('crew.mySchedule', { date: new Date().toISOString() });
       setSchedule(data ?? []);
+      // Hydrate active clock from assigned job details (capped).
+      const details = await Promise.all(
+        (data ?? []).slice(0, 8).map((item: ScheduleItem) =>
+          trpcQuery('crew.getJob', { jobId: item.job.id }).catch(() => null),
+        ),
+      );
+      const active = details.find((d) => d?.activeTimeEntryId)?.activeTimeEntryId;
+      if (active) setActiveEntryId(active);
     } catch {
-      Alert.alert('Error', 'Could not load schedule. Check your connection.');
+      Alert.alert('Error', 'Could not load schedule. Check your connection or sign in again.', [
+        { text: 'Sign out', onPress: () => void onSignOut() },
+        { text: 'OK' },
+      ]);
     } finally {
       setLoading(false);
       void refreshSyncStatus();
     }
+  }
+
+  async function onSignOut() {
+    await signOutCrew();
+    await clearAuthToken();
+    router.replace('/login');
   }
 
   async function syncNow() {
@@ -104,10 +132,24 @@ export default function CrewHomeScreen() {
     Alert.alert('Clocked out', 'Time entry saved.');
   }
 
+  async function startJob(jobId: string) {
+    await trpcMutation('crew.startJob', { jobId });
+    Alert.alert('Started', 'Job marked in progress.');
+    loadSchedule();
+  }
+
   async function completeJob(jobId: string) {
     await trpcMutation('crew.completeJob', { jobId });
     Alert.alert('Complete', 'Job marked as installed.');
     loadSchedule();
+  }
+
+  if (authed === false) {
+    return (
+      <ScreenContainer style={styles.center}>
+        <ActivityIndicator size="large" color="#DC2626" />
+      </ScreenContainer>
+    );
   }
 
   if (loading) {
@@ -120,7 +162,12 @@ export default function CrewHomeScreen() {
 
   return (
     <ScreenContainer>
-      <Text style={[styles.heading, isTablet && styles.headingTablet]}>Today&apos;s schedule</Text>
+      <View style={styles.headerRow}>
+        <Text style={[styles.heading, isTablet && styles.headingTablet]}>Today&apos;s schedule</Text>
+        <TouchableOpacity style={styles.btnOutline} onPress={() => void onSignOut()}>
+          <Text style={styles.btnOutlineText}>Sign out</Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.syncBar}>
         <Text style={styles.syncText}>
           {pendingCount > 0 ? `${pendingCount} queued offline` : 'Queue clear'}
@@ -166,6 +213,9 @@ export default function CrewHomeScreen() {
                   <Text style={styles.btnOutlineText}>Clock out</Text>
                 </TouchableOpacity>
               )}
+              <TouchableOpacity style={styles.btnOutline} onPress={() => startJob(item.job.id)}>
+                <Text style={styles.btnOutlineText}>Start</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.btnPrimary}
                 onPress={() => completeJob(item.job.id)}
@@ -188,8 +238,15 @@ export default function CrewHomeScreen() {
 const styles = StyleSheet.create({
   center: { justifyContent: 'center', alignItems: 'center' },
   listContent: { paddingBottom: 24 },
-  heading: { fontSize: 22, fontWeight: '700', marginBottom: 16, color: '#0F172A' },
-  headingTablet: { fontSize: 28, marginBottom: 24 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+  heading: { flex: 1, fontSize: 22, fontWeight: '700', color: '#0F172A' },
+  headingTablet: { fontSize: 28 },
   syncBar: {
     flexDirection: 'row',
     alignItems: 'center',

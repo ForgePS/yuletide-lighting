@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { JobPhotoCapture } from '@/components/job-photo-capture';
 import { ScreenContainer } from '@/components/screen-container';
 import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
-import { trpcQuery } from '@/lib/api';
+import { trpcMutation, trpcQuery } from '@/lib/api';
 import { mutateWithOfflineFallback } from '@/lib/offline-queue';
 
 type JobDetail = {
@@ -21,6 +21,7 @@ type JobDetail = {
   mockupPhotoUrls?: string[] | null;
   approvedPackageName?: string | null;
   installNotes?: string | null;
+  activeTimeEntryId?: string | null;
 };
 
 export default function JobDetailScreen() {
@@ -43,6 +44,17 @@ export default function JobDetailScreen() {
   useEffect(() => {
     reload();
   }, [reload]);
+
+  async function startJob() {
+    if (!id) return;
+    try {
+      await trpcMutation('crew.startJob', { jobId: id });
+      Alert.alert('Started', 'Job marked in progress.');
+      reload();
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Could not start job.');
+    }
+  }
 
   async function reportIssue() {
     if (!id || !issueTitle.trim()) return;
@@ -105,6 +117,10 @@ export default function JobDetailScreen() {
         {detail?.approvedPackageName ? (
           <Text style={styles.subheading}>Package: {detail.approvedPackageName}</Text>
         ) : null}
+
+        <TouchableOpacity style={styles.primaryBtn} onPress={startJob}>
+          <Text style={styles.primaryBtnText}>Start job</Text>
+        </TouchableOpacity>
 
         <View style={[styles.body, twoColumn && styles.bodyLandscape]}>
           <View style={[styles.section, twoColumn && styles.column]}>
@@ -241,4 +257,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnOutlineText: { color: '#475569', fontWeight: '600', fontSize: 14 },
+  primaryBtn: {
+    backgroundColor: '#DC2626',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  primaryBtnText: { color: '#FFF', fontWeight: '600', fontSize: 14 },
 });

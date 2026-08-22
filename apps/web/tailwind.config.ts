@@ -28,6 +28,13 @@ module.exports = {
           border: 'hsl(var(--sidebar-border))',
         },
         info: 'hsl(var(--info))',
+        success: 'hsl(var(--success))',
+        warning: 'hsl(var(--warning))',
+        danger: 'hsl(var(--danger))',
+        secondary: {
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--foreground))',
+        },
         ring: 'hsl(var(--ring))',
       },
       borderRadius: {

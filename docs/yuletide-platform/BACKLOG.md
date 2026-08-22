@@ -5,10 +5,11 @@ Items discovered outside the active authorized sprint. Do not implement until au
 ## YL-BACKLOG-001
 Discovered During: YL-S0 (prior chat context)
 Description: Integrate Sneat Theme from local zip `sneat-1.0.0.zip` into staff/app UI (scope TBD).
-Reason Deferred: YL-S0 is documentation-only; framework/theme migration needs separate authorization (directive §12).
-Suggested Sprint: YL-S18 (Admin / Application Shell) or dedicated theme sprint
+Reason Deferred: YL-S0 is documentation-only; framework/theme migration needs separate authorization (directive §12). Branch has Sneat-inspired tokens only; full zip still absent after YL-S18 (shell harden only).
+Suggested Sprint: dedicated theme sprint (not YL-S18)
 Priority: MEDIUM
 Blocking Current Sprint: NO
+**Status: PARTIAL (2026-08-19)** — Sneat v3.0.0 zip tokens applied to staff shell + Creator Console (Tailwind mapping); see `apps/web/vendor/SNEAT.md`. Full Bootstrap/Django asset embed not used.
 
 ## YL-BACKLOG-002
 Discovered During: YL-S0 (prior chat context)
@@ -17,14 +18,16 @@ Reason Deferred: Feature work; belongs under Estimates (YL-S7), not S0.
 Suggested Sprint: YL-S7
 Priority: HIGH
 Blocking Current Sprint: NO
+**Status: RESOLVED in YL-S7** (2026-08-10) — hydrate from packages subcollection + replace-on-update persist.
 
 ## YL-BACKLOG-003
 Discovered During: YL-S0 (prior chat context)
 Description: Proposal Dashboard can throw if `statusClass(p.status)` receives null/undefined (`status.includes`).
-Reason Deferred: Bugfix not in S0 scope.
+Reason Deferred: Bug fix not in S0 scope.
 Suggested Sprint: YL-S7 or hotfix authorization
 Priority: HIGH
 Blocking Current Sprint: NO
+**Status: RESOLVED in YL-S7** (2026-08-10) — null-safe `statusClass` in proposal dashboard.
 
 ## YL-BACKLOG-004
 Discovered During: prior go-live / YL-S0
@@ -49,6 +52,7 @@ Reason Deferred: Ops/UAT; not S0.
 Suggested Sprint: YL-S23
 Priority: HIGH
 Blocking Current Sprint: NO
+**Status: PARTIAL in YL-S23** (2026-08-13) — in-repo pure-helper Vitest chain shipped; staging/prod live UAT still deferred (needs secrets + explicit prod auth).
 
 ## YL-BACKLOG-007
 Discovered During: YL-S0 baseline
@@ -57,6 +61,7 @@ Reason Deferred: Architectural; map first in YL-S1/S3.
 Suggested Sprint: YL-S1 / YL-S3
 Priority: MEDIUM
 Blocking Current Sprint: NO
+**Status: PARTIAL in YL-S6** (2026-08-10) — consolidation plan + Firestore `settingsRole`→legacy bridge shipped; path cutover + full rules matrix + Storage parity remain.
 
 ## YL-BACKLOG-008
 Discovered During: YL-S0 baseline
@@ -73,6 +78,8 @@ Reason Deferred: Infra; no deploy in S0.
 Suggested Sprint: YL-S24
 Priority: MEDIUM
 Blocking Current Sprint: NO
+**Status: PARTIAL in YL-S24** (2026-08-13) — engines/CI/deploy policy pinned to Node 22 (`nodejs22`); live Hosting/SSR redeploy still required to apply runtime in GCP (no prod deploy in S24).
+**Status: RESOLVED runtime on prod Hosting SSR** (2026-08-13 deploy) — `ssryuletidelighting` updated as Node.js 22 (2nd Gen); `/api/health` reports `node":"v22.23.1"`. See `docs/production-cleanup/s8-production-deploy-2026-08-13.md`.
 
 ## YL-BACKLOG-010
 Discovered During: YL-S1
@@ -98,3 +105,4 @@ Reason Deferred: YL-S3 centralized registry + admin/office capability gates only
 Suggested Sprint: YL-S5 or dedicated RBAC cutover sprint
 Priority: MEDIUM
 Blocking Current Sprint: NO
+**Status: RESOLVED in YL-S5** (2026-08-10) — routers use `permissionProcedure` / `assertAuthCan`; `office_staff` desk matrix expanded; no production deploy.

@@ -170,6 +170,20 @@ export const cmsBlockSchema = z.discriminatedUnion('type', [
     src: z.string(),
     alt: z.string(),
     caption: z.string().optional(),
+    focalPoint: z.object({ x: z.number(), y: z.number() }).nullable().optional(),
+    crop: z
+      .object({
+        x: z.number(),
+        y: z.number(),
+        width: z.number(),
+        height: z.number(),
+      })
+      .nullable()
+      .optional(),
+    variants: z
+      .array(z.object({ width: z.number().int().positive(), url: z.string() }))
+      .nullable()
+      .optional(),
   }),
   z.object({
     ...blockBase,
@@ -198,6 +212,49 @@ export const cmsBlockSchema = z.discriminatedUnion('type', [
         caption: z.string().optional(),
       }),
     ),
+  }),
+  z.object({
+    ...blockBase,
+    type: z.literal('slideshow'),
+    slides: z.array(
+      z.object({
+        id: z.string(),
+        src: z.string(),
+        alt: z.string(),
+        caption: z.string().optional(),
+        href: z.string().optional(),
+      }),
+    ),
+    autoplay: z.boolean().optional(),
+    intervalMs: z.number().int().min(1000).max(60000).optional(),
+    showDots: z.boolean().optional(),
+  }),
+  z.object({
+    ...blockBase,
+    type: z.literal('map'),
+    lat: z.number(),
+    lng: z.number(),
+    zoom: z.number().optional(),
+    markerLabel: z.string().optional(),
+    height: z.number().int().min(120).max(800).optional(),
+  }),
+  z.object({
+    ...blockBase,
+    type: z.literal('calendar'),
+    title: z.string().optional(),
+    mode: z.enum(['events', 'embed_url']),
+    embedUrl: z.string().optional(),
+    events: z
+      .array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          start: z.string(),
+          end: z.string().optional(),
+          location: z.string().optional(),
+        }),
+      )
+      .optional(),
   }),
   z.object({
     ...blockBase,
@@ -230,6 +287,12 @@ export const cmsBlockSchema = z.discriminatedUnion('type', [
     featuredOnly: z.boolean().optional(),
     layout: z.enum(['grid', 'list']).optional(),
   }),
+  z.object({
+    ...blockBase,
+    type: z.literal('site_search'),
+    title: z.string().optional(),
+    placeholder: z.string().optional(),
+  }),
 ]);
 
 export const cmsSeoSchema = z.object({
@@ -252,7 +315,27 @@ export const cmsPageUpdateSchema = z.object({
   status: z.enum(['draft', 'published', 'scheduled', 'archived']),
   blocks: z.array(cmsBlockSchema),
   seo: cmsSeoSchema,
-  scheduledPublishAt: z.date().nullable().optional(),
+  scheduledPublishAt: z.coerce.date().nullable().optional(),
+  footerId: z.string().nullable().optional(),
+  blockOrderByBreakpoint: z
+    .object({
+      desktop: z.array(z.string()).optional(),
+      tablet: z.array(z.string()).optional(),
+      mobile: z.array(z.string()).optional(),
+    })
+    .nullable()
+    .optional(),
+  locale: z.string().min(2).max(12).optional(),
+  translations: z
+    .record(
+      z.object({
+        title: z.string().optional(),
+        blocks: z.array(cmsBlockSchema).optional(),
+        seo: cmsSeoSchema.partial().optional(),
+      }),
+    )
+    .nullable()
+    .optional(),
   changeSummary: z.string().optional(),
 });
 
@@ -336,6 +419,47 @@ export const cmsSiteGlobalsSchema = z.object({
     noIndex: z.boolean().optional(),
     noFollow: z.boolean().optional(),
     includeInSitemap: z.boolean().optional(),
+  }),
+  customHeadCss: z.string().nullable().optional(),
+  customHeadJs: z.string().nullable().optional(),
+  gtmContainerId: z.string().nullable().optional(),
+  metaPixelId: z.string().nullable().optional(),
+  themeMode: z.enum(['light', 'dark', 'system']).optional(),
+  themePreset: z.enum(['default', 'midnight', 'forest', 'snow']).optional(),
+  layoutTemplate: z.enum(['classic', 'centered', 'minimal']).optional(),
+  defaultLocale: z.string().optional(),
+  availableLocales: z.array(z.string()).optional(),
+});
+
+export const cmsSavedSectionCreateSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  blocks: z.array(cmsBlockSchema).min(1),
+});
+
+export const cmsSavedSectionUpdateSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  blocks: z.array(cmsBlockSchema).min(1),
+});
+
+export const cmsNamedFooterUpsertSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1),
+  footer: z.object({
+    columns: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        links: z.array(cmsLinkSchema).optional(),
+        text: z.string().nullable().optional(),
+      }),
+    ),
+    copyrightText: z.string(),
+    socialLinks: z.array(cmsLinkSchema),
+    background: z.string().nullable().optional(),
+    textColor: z.string().nullable().optional(),
   }),
 });
 

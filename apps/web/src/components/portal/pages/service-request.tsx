@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel } from '@clcrm/types';
 import { formatDate } from '@clcrm/ui';
 import { useToast } from '@/lib/toast';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
@@ -310,7 +311,7 @@ function ServiceBody() {
               <li key={item.id} className="border-b border-stone-100 pb-3 last:border-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium text-stone-900">{item.title}</p>
-                  <PortalStatusPill>{item.status.replace(/_/g, ' ')}</PortalStatusPill>
+                  <PortalStatusPill>{formatPortalStatusLabel(item.status)}</PortalStatusPill>
                 </div>
                 <p className="mt-1 text-sm text-stone-500">{formatDate(item.createdAt)}</p>
               </li>

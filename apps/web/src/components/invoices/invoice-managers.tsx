@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, riskColor } from '@/lib/invoice-utils';
 import { formatDate } from '@clcrm/ui';
+import { formatInvoiceStatusLabel } from '@clcrm/types';
 import { useToast } from '@/lib/toast';
 import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 import { useAnalyticsYear } from '@/lib/analytics-year-context';
@@ -91,7 +92,7 @@ export function PaymentHistory() {
               </td>
               <td>{p.customerName ?? '—'}</td>
               <td>{formatCurrency(p.amountCents)}</td>
-              <td className="capitalize">{p.paymentMethod.replace(/_/g, ' ')}</td>
+              <td className="capitalize">{formatInvoiceStatusLabel(p.paymentMethod)}</td>
               <td className="capitalize">{p.paymentType}</td>
             </tr>
           ))}

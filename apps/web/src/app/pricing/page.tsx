@@ -1,24 +1,23 @@
 import type { Metadata } from 'next';
-import { loadPricingContent } from '@/lib/marketing-content';
 import { CmsPageView } from '@/components/cms/cms-page-view';
-import { PricingPageView } from '@/components/marketing/pricing-page-view';
+import { loadCmsPageBundle } from '@/lib/cms-content';
 
-export const revalidate = 60;
+export const revalidate = 30;
 
-export const metadata: Metadata = {
-  title: 'Pricing | Yuletide CRM',
-  description: 'Simple monthly and annual pricing for Christmas light installer teams.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { page } = await loadCmsPageBundle('pricing');
+  return {
+    title: page?.seo?.title ?? 'Pricing | Yuletide CRM',
+    description:
+      page?.seo?.description ??
+      'Simple monthly and annual pricing for Christmas light installer teams.',
+  };
+}
 
 export default async function PricingPage() {
-  try {
-    const { getPublishedPageBundle } = await import('@yuletide/firebase');
-    const bundle = await getPublishedPageBundle('pricing');
-    if (bundle.page) {
-      return <CmsPageView page={bundle.page} globals={bundle.globals} />;
-    }
-  } catch {
-    // fall through to static marketing
+  const { page, globals } = await loadCmsPageBundle('pricing');
+  if (!page) {
+    return null;
   }
-  return <PricingPageView pricing={loadPricingContent(null)} />;
+  return <CmsPageView page={page} globals={globals} />;
 }

@@ -13,6 +13,7 @@ import { trpc } from '@/lib/trpc';
 import { formatCurrency, statusColor } from '@/lib/invoice-utils';
 
 import { formatDate } from '@clcrm/ui';
+import { formatInvoiceStatusLabel } from '@clcrm/types';
 
 import { LoadingState, EmptyState } from '@/components/ui/states';
 
@@ -82,7 +83,7 @@ function InvoiceCard({
 
         <span className="font-medium text-primary">{invoice.invoiceNumber}</span>
 
-        <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusColor(invoice.status)}`}>{invoice.status.replace(/_/g, ' ')}</span>
+        <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusColor(invoice.status)}`}>{formatInvoiceStatusLabel(invoice.status)}</span>
 
       </div>
 
@@ -331,7 +332,7 @@ export function InvoicePipeline() {
 
                   </td>
 
-                  <td><span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusColor(invoice.status)}`}>{invoice.status.replace(/_/g, ' ')}</span></td>
+                  <td><span className={`rounded-full px-2 py-0.5 text-xs capitalize ${statusColor(invoice.status)}`}>{formatInvoiceStatusLabel(invoice.status)}</span></td>
 
                   <td>{formatCurrency(invoice.subtotalCents)}</td>
 

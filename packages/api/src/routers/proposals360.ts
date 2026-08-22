@@ -26,24 +26,25 @@ import {
   updateProposal360Schema,
   updateProposalStatusSchema,
   publicApprovalSchema,
+  publicAccessTokenSchema,
   createProposalTemplateSchema,
   updateProposalTemplateSchema,
   depositPaymentSchema,
 } from '@clcrm/validators';
-import { router, adminProcedure, officeProcedure, publicProcedure, permissionProcedure } from '../trpc';
+import { router, publicProcedure, permissionProcedure } from '../trpc';
 
 export const proposals360Router = router({
-  list: officeProcedure.query(({ ctx }) => listProposals360(ctx.auth.organizationId)),
+  list: permissionProcedure('proposals', 'view').query(({ ctx }) => listProposals360(ctx.auth.organizationId)),
 
-  getById: officeProcedure.input(z.object({ proposalId: z.string() })).query(async ({ ctx, input }) => {
+  getById: permissionProcedure('proposals', 'view').input(z.object({ proposalId: z.string() })).query(async ({ ctx, input }) => {
     const proposal = await getProposal360(ctx.auth.organizationId, input.proposalId);
     if (!proposal) throw new TRPCError({ code: 'NOT_FOUND' });
     return proposal;
   }),
 
-  analytics: officeProcedure.query(({ ctx }) => getProposalAnalytics(ctx.auth.organizationId)),
+  analytics: permissionProcedure('proposals', 'view').query(({ ctx }) => getProposalAnalytics(ctx.auth.organizationId)),
 
-  create: officeProcedure.input(createProposal360Schema).mutation(async ({ ctx, input }) => {
+  create: permissionProcedure('proposals', 'create').input(createProposal360Schema).mutation(async ({ ctx, input }) => {
   const { packages, templateId: _t, preferPackages, ...rest } = input;
   return createProposal360(
     ctx.auth.organizationId,
@@ -52,7 +53,7 @@ export const proposals360Router = router({
   );
   }),
 
-  update: officeProcedure
+  update: permissionProcedure('proposals', 'edit')
     .input(z.object({ proposalId: z.string(), data: updateProposal360Schema }))
     .mutation(({ ctx, input }) => updateProposal360(ctx.auth.organizationId, input.proposalId, input.data, ctx.auth.userId)),
 
@@ -60,25 +61,25 @@ export const proposals360Router = router({
     .input(z.object({ proposalId: z.string() }))
     .mutation(({ ctx, input }) => deleteProposal360(ctx.auth.organizationId, input.proposalId)),
 
-  updateStatus: officeProcedure.input(updateProposalStatusSchema).mutation(({ ctx, input }) =>
+  updateStatus: permissionProcedure('proposals', 'edit').input(updateProposalStatusSchema).mutation(({ ctx, input }) =>
     updateProposalStatus(ctx.auth.organizationId, input.proposalId, input.status, ctx.auth.userId),
   ),
 
-  send: officeProcedure.input(z.object({ proposalId: z.string() })).mutation(({ ctx, input }) =>
+  send: permissionProcedure('proposals', 'edit').input(z.object({ proposalId: z.string() })).mutation(({ ctx, input }) =>
     sendProposal360(ctx.auth.organizationId, input.proposalId, ctx.auth.userId),
   ),
 
-  collectDeposit: officeProcedure.input(depositPaymentSchema).mutation(({ ctx, input }) =>
+  collectDeposit: permissionProcedure('proposals', 'edit').input(depositPaymentSchema).mutation(({ ctx, input }) =>
     collectDeposit(ctx.auth.organizationId, input.proposalId, input.amountCents),
   ),
 
-  upsells: officeProcedure.input(z.object({ proposalId: z.string() })).query(async ({ ctx, input }) => {
+  upsells: permissionProcedure('proposals', 'view').input(z.object({ proposalId: z.string() })).query(async ({ ctx, input }) => {
     const proposal = await getProposal360(ctx.auth.organizationId, input.proposalId);
     if (!proposal) throw new TRPCError({ code: 'NOT_FOUND' });
     return calculateUpsells(proposal, proposal.installType);
   }),
 
-  aiAssist: officeProcedure
+  aiAssist: permissionProcedure('proposals', 'view')
     .input(z.object({ proposalId: z.string(), customerName: z.string(), propertyAddress: z.string() }))
     .query(async ({ ctx, input }) => {
       const proposal = await getProposal360(ctx.auth.organizationId, input.proposalId);
@@ -91,12 +92,12 @@ export const proposals360Router = router({
       });
     }),
 
-  calculatePricing: officeProcedure
+  calculatePricing: permissionProcedure('proposals', 'view')
     .input(z.object({ pricing: z.record(z.number()) }))
     .query(({ input }) => calculatePricingFromComponents(input.pricing as never)),
 
   packages: router({
-    update: officeProcedure
+    update: permissionProcedure('proposals', 'edit')
       .input(z.object({ proposalId: z.string(), packageId: z.string(), data: z.record(z.unknown()) }))
       .mutation(({ ctx, input }) =>
         updateProposalPackage(ctx.auth.organizationId, input.proposalId, input.packageId, input.data, ctx.auth.userId),
@@ -104,11 +105,11 @@ export const proposals360Router = router({
   }),
 
   templates: router({
-    list: officeProcedure.query(({ ctx }) => ensureProposalTemplates(ctx.auth.organizationId)),
-    create: officeProcedure.input(createProposalTemplateSchema).mutation(({ ctx, input }) =>
+    list: permissionProcedure('proposals', 'view').query(({ ctx }) => ensureProposalTemplates(ctx.auth.organizationId)),
+    create: permissionProcedure('proposals', 'create').input(createProposalTemplateSchema).mutation(({ ctx, input }) =>
       createProposalTemplate(ctx.auth.organizationId, { organizationId: ctx.auth.organizationId, ...input, defaultPackages: input.defaultPackages as never[] }, ctx.auth.userId),
     ),
-    update: officeProcedure
+    update: permissionProcedure('proposals', 'edit')
       .input(z.object({ templateId: z.string(), data: updateProposalTemplateSchema }))
       .mutation(async ({ ctx, input }) => {
         const db = getAdminFirestore();
@@ -122,7 +123,7 @@ export const proposals360Router = router({
 
   public: router({
     getByToken: publicProcedure
-      .input(z.object({ token: z.string(), userAgent: z.string().optional(), device: z.string().optional() }))
+      .input(z.object({ token: publicAccessTokenSchema, userAgent: z.string().optional(), device: z.string().optional() }))
       .query(async ({ input, ctx }) => {
         const result = await getProposalByToken(input.token, {
           userAgent: input.userAgent,
@@ -149,7 +150,21 @@ export const proposals360Router = router({
     }),
   }),
 
-  createRevision: officeProcedure
+  rotatePublicToken: permissionProcedure('proposals', 'edit')
+    .input(z.object({ proposalId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { rotateRecordPublicToken } = await import('@yuletide/firebase');
+      const result = await rotateRecordPublicToken(
+        ctx.auth.organizationId,
+        'proposals',
+        input.proposalId,
+        ctx.auth.userId,
+      );
+      if (!result) throw new TRPCError({ code: 'NOT_FOUND' });
+      return result;
+    }),
+
+  createRevision: permissionProcedure('proposals', 'create')
     .input(z.object({ proposalId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { createProposalRevision360 } = await import('@yuletide/firebase');

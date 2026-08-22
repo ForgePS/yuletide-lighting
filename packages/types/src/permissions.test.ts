@@ -65,4 +65,16 @@ describe('YL-S3 capability helpers', () => {
       expect(hasOfficeCapability(authFor(slug))).toBe(false);
     }
   });
+
+  it('YL-S5 office_staff has desk CRM bits including proposals and settings.view only', () => {
+    const perms = SYSTEM_ROLES.find((r) => r.slug === 'office_staff')!.permissions;
+    expect(can(perms, 'proposals', 'view')).toBe(true);
+    expect(can(perms, 'proposals', 'create')).toBe(true);
+    expect(can(perms, 'mockups', 'view')).toBe(true);
+    expect(can(perms, 'inventory', 'view')).toBe(true);
+    expect(can(perms, 'reports', 'view')).toBe(true);
+    expect(can(perms, 'settings', 'view')).toBe(true);
+    expect(can(perms, 'settings', 'edit')).toBe(false);
+    expect(can(perms, 'customers', 'delete')).toBe(false);
+  });
 });

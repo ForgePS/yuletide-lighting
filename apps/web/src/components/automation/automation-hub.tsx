@@ -5,7 +5,15 @@ import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatDate } from '@clcrm/ui';
 import { LoadingState, EmptyState } from '@/components/ui/states';
-import { AUTOMATION360_TRIGGER_LABELS, type Automation360Trigger } from '@clcrm/types';
+import {
+  AUTOMATION360_TRIGGER_LABELS,
+  formatAutomationActionLabel,
+  formatAutomationRunStatus,
+  formatAutomationTriggerLabel,
+  hasPermission,
+  type Automation360Trigger,
+} from '@clcrm/types';
+import { useAuth } from '@/lib/firebase-auth';
 
 const ACTION_TYPES = [
   { value: 'send_email', label: 'Send email' },
@@ -27,6 +35,11 @@ const STATUS_COLORS: Record<string, string> = {
 export function AutomationHub() {
   const { toast } = useToast();
   const utils = trpc.useUtils();
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = !authLoading && !!idToken;
+  const { data: myPermissions } = trpc.settings360.myPermissions.useQuery(undefined, { enabled: ready });
+  const canEdit = myPermissions ? hasPermission(myPermissions, 'settings', 'edit') : false;
+
   const { data: dashboard, isLoading: dashLoading } = trpc.automation360.dashboard.useQuery();
   const { data: rules, isLoading: rulesLoading } = trpc.automation360.rules.list.useQuery();
   const { data: runs, isLoading: runsLoading } = trpc.automation360.runs.list.useQuery({ limit: 40 });
@@ -101,14 +114,14 @@ export function AutomationHub() {
             </button>
           ))}
         </div>
-        {tab === 'rules' && (
+        {tab === 'rules' && canEdit ? (
           <button type="button" className="btn-primary text-sm" onClick={() => setShowForm((v) => !v)}>
             {showForm ? 'Cancel' : 'New rule'}
           </button>
-        )}
+        ) : null}
       </div>
 
-      {showForm && tab === 'rules' && (
+      {showForm && tab === 'rules' && canEdit ? (
         <form
           className="card space-y-4 p-6"
           onSubmit={(e) => {
@@ -172,7 +185,7 @@ export function AutomationHub() {
             Save rule
           </button>
         </form>
-      )}
+      ) : null}
 
       {tab === 'rules' ? (
         !rules?.length ? (
@@ -184,23 +197,25 @@ export function AutomationHub() {
                 <div>
                   <p className="font-medium">{rule.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {AUTOMATION360_TRIGGER_LABELS[rule.trigger]} · {rule.actions.length} action
+                    {formatAutomationTriggerLabel(rule.trigger)} · {rule.actions.length} action
                     {rule.actions.length === 1 ? '' : 's'} · {rule.runCount} runs
                     {rule.lastRunAt ? ` · last ${formatDate(rule.lastRunAt)}` : ''}
                   </p>
                   {rule.description && <p className="mt-1 text-xs text-muted-foreground">{rule.description}</p>}
-                  <p className="mt-2 text-xs capitalize text-muted-foreground">
-                    Actions: {rule.actions.map((a) => a.type.replace(/_/g, ' ')).join(', ')}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Actions: {rule.actions.map((a) => formatAutomationActionLabel(a.type)).join(', ')}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className={rule.active ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
-                  disabled={toggle.isPending}
-                  onClick={() => toggle.mutate({ ruleId: rule.id, active: !rule.active })}
-                >
-                  {rule.active ? 'Disable' : 'Enable'}
-                </button>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    className={rule.active ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
+                    disabled={toggle.isPending}
+                    onClick={() => toggle.mutate({ ruleId: rule.id, active: !rule.active })}
+                  >
+                    {rule.active ? 'Disable' : 'Enable'}
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>
@@ -227,11 +242,13 @@ export function AutomationHub() {
                 <tr key={run.id} className={run.status === 'failed' ? 'bg-red-50/50' : undefined}>
                   <td className="whitespace-nowrap text-sm">{formatDate(run.createdAt)}</td>
                   <td>{run.ruleName}</td>
-                  <td className="text-sm">{AUTOMATION360_TRIGGER_LABELS[run.trigger]}</td>
+                  <td className="text-sm">{formatAutomationTriggerLabel(run.trigger)}</td>
                   <td className="text-sm">{run.customerName ?? run.customerId ?? '—'}</td>
                   <td>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_COLORS[run.status]}`}>
-                      {run.status}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[run.status] ?? STATUS_COLORS.skipped}`}
+                    >
+                      {formatAutomationRunStatus(run.status)}
                     </span>
                   </td>
                   <td className="max-w-xs truncate text-xs text-muted-foreground">

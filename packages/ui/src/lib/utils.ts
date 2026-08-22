@@ -53,9 +53,12 @@ export function formatDate(date: Date | string | null | undefined): string {
   }).format(d);
 }
 
-export function formatStage(stage: string): string {
-  return stage
+/** YL-S9 — null-safe pipeline stage / status label. */
+export function formatStage(stage: string | null | undefined): string {
+  const value = typeof stage === 'string' ? stage.trim() : '';
+  if (!value) return 'Unknown';
+  return value
     .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
     .join(' ');
 }

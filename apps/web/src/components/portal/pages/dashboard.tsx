@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatScheduleLabel } from '@clcrm/types';
 import { formatCurrency, formatDate } from '@clcrm/ui';
 import { LoadingState, ErrorState } from '@/components/ui/states';
 import { labelProposalStatus } from '@/lib/proposal-utils';
@@ -104,7 +105,7 @@ export function PortalDashboardPage() {
     nextAction = {
       eyebrow: 'Next action',
       title: 'Project in progress',
-      body: `${activeJob.title} · ${activeJob.stage.replace(/_/g, ' ')}`,
+      body: `${activeJob.title} · ${formatScheduleLabel(activeJob.stage)}`,
       href: portalAppPath('jobs', activeJob.id),
       cta: 'Track installation',
       tone: 'info',
@@ -140,7 +141,7 @@ export function PortalDashboardPage() {
           <PortalSection eyebrow="Upcoming appointment" title={nextAppt.title}>
             <p className="text-base text-stone-600">{formatDate(nextAppt.startAt)}</p>
             <p className="mt-1 capitalize text-stone-500">
-              {nextAppt.appointmentType.replace(/_/g, ' ')}
+              {formatScheduleLabel(nextAppt.appointmentType)}
             </p>
             {nextAppt.propertyAddress && (
               <p className="mt-1 text-sm text-stone-400">{nextAppt.propertyAddress}</p>
@@ -156,7 +157,7 @@ export function PortalDashboardPage() {
 
         {features.includes('install_tracking') && activeJob && (
           <PortalSection eyebrow="Current project" title={activeJob.title}>
-            <PortalStatusPill tone="info">{activeJob.stage.replace(/_/g, ' ')}</PortalStatusPill>
+            <PortalStatusPill tone="info">{formatScheduleLabel(activeJob.stage)}</PortalStatusPill>
             {activeJob.scheduledStart && (
               <p className="mt-2 text-base text-stone-600">
                 Scheduled {formatDate(activeJob.scheduledStart)}

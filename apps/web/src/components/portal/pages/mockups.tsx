@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel } from '@clcrm/types';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { LoadingState } from '@/components/ui/states';
 
@@ -52,7 +53,7 @@ function MockupsBody() {
               <div>
                 <p className="text-sm font-medium text-stone-900">{m.name}</p>
                 {m.status && (
-                  <p className="text-xs capitalize text-stone-500">{m.status.replace(/_/g, ' ')}</p>
+                  <p className="text-xs capitalize text-stone-500">{formatPortalStatusLabel(m.status)}</p>
                 )}
               </div>
               {m.approvalToken && m.status === 'in_review' && canApprove && (

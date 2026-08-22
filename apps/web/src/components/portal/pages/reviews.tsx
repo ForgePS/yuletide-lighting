@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel } from '@clcrm/types';
 import { formatCurrency, formatDate } from '@clcrm/ui';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { LoadingState } from '@/components/ui/states';
@@ -41,7 +42,7 @@ function ReviewsBody({ showReferrals }: { showReferrals: boolean }) {
                 className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-3 last:border-0"
               >
                 <div>
-                  <p className="text-sm capitalize text-stone-700">{r.status.replace(/_/g, ' ')}</p>
+                  <p className="text-sm capitalize text-stone-700">{formatPortalStatusLabel(r.status)}</p>
                   {r.rating != null && <p className="text-sm font-medium">{r.rating} / 5</p>}
                   {r.submittedAt && (
                     <p className="text-xs text-stone-400">{formatDate(r.submittedAt)}</p>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publicAccessTokenSchema } from './public-token';
 
 export const multiYearAgreementStatusSchema = z.enum([
   'draft',
@@ -11,7 +12,7 @@ export const multiYearAgreementStatusSchema = z.enum([
 ]);
 
 export const agreementPublicSignSchema = z.object({
-  token: z.string().min(8),
+  token: publicAccessTokenSchema,
   signedByName: z.string().min(1).max(200),
   signatureData: z.string().max(50000).optional(),
   ipAddress: z.string().max(100).optional(),

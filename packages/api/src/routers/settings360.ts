@@ -8,6 +8,8 @@ import {
   listOrgUsers,
   updateOrgUser,
   inviteOrgUser,
+  claimStaffInvite,
+  lookupStaffInviteByToken,
   listRoles,
   updateRolePermissions,
   getNotificationSettings,
@@ -53,6 +55,7 @@ import {
   brandingSettingsSchema,
   updateUserSchema,
   inviteUserSchema,
+  claimStaffInviteSchema,
   updateRolePermissionsSchema,
   notificationSettingsSchema,
   notificationRuleUpdateSchema,
@@ -74,8 +77,6 @@ import {
 } from '@clcrm/validators';
 import {
   router,
-  adminProcedure,
-  officeProcedure,
   permissionProcedure,
   publicProcedure,
   protectedProcedure,
@@ -86,23 +87,23 @@ export const settings360Router = router({
     seasonConfig: publicProcedure.query(() => getPublicSeasonConfig()),
   }),
 
-  dashboard: officeProcedure.query(({ ctx }) => getSettingsDashboard(ctx.auth.organizationId)),
+  dashboard: permissionProcedure('settings', 'view').query(({ ctx }) => getSettingsDashboard(ctx.auth.organizationId)),
 
-  company: officeProcedure.query(({ ctx }) => getCompanySettings(ctx.auth.organizationId)),
+  company: permissionProcedure('settings', 'view').query(({ ctx }) => getCompanySettings(ctx.auth.organizationId)),
   updateCompany: permissionProcedure('settings', 'edit')
     .input(companySettingsSchema)
     .mutation(({ ctx, input }) =>
       updateCompanySettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  branding: officeProcedure.query(({ ctx }) => getBrandingSettings(ctx.auth.organizationId)),
+  branding: permissionProcedure('settings', 'view').query(({ ctx }) => getBrandingSettings(ctx.auth.organizationId)),
   updateBranding: permissionProcedure('settings', 'edit')
     .input(brandingSettingsSchema)
     .mutation(({ ctx, input }) =>
       updateBrandingSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  users: officeProcedure.query(({ ctx }) => listOrgUsers(ctx.auth.organizationId)),
+  users: permissionProcedure('settings', 'view').query(({ ctx }) => listOrgUsers(ctx.auth.organizationId)),
   updateUser: permissionProcedure('settings', 'edit')
     .input(updateUserSchema)
     .mutation(({ ctx, input }) => {
@@ -120,8 +121,23 @@ export const settings360Router = router({
     .mutation(({ ctx, input }) =>
       inviteOrgUser(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
+  previewInvite: publicProcedure
+    .input(z.object({ token: z.string().min(16).max(256) }))
+    .query(async ({ input }) => {
+      const invite = await lookupStaffInviteByToken(input.token);
+      if (!invite) return { ok: false as const };
+      return {
+        ok: true as const,
+        email: invite.email,
+        firstName: invite.firstName,
+        lastName: invite.lastName,
+      };
+    }),
+  claimInvite: publicProcedure
+    .input(claimStaffInviteSchema)
+    .mutation(({ input }) => claimStaffInvite(input)),
 
-  roles: officeProcedure.query(({ ctx }) => listRoles(ctx.auth.organizationId)),
+  roles: permissionProcedure('settings', 'view').query(({ ctx }) => listRoles(ctx.auth.organizationId)),
   updateRolePermissions: permissionProcedure('settings', 'edit')
     .input(updateRolePermissionsSchema)
     .mutation(({ ctx, input }) =>
@@ -136,15 +152,15 @@ export const settings360Router = router({
 
   myPermissions: protectedProcedure.query(({ ctx }) => ctx.auth.permissions),
 
-  notifications: officeProcedure.query(({ ctx }) =>
+  notifications: permissionProcedure('settings', 'view').query(({ ctx }) =>
     getNotificationSettings(ctx.auth.organizationId),
   ),
-  updateNotifications: adminProcedure
+  updateNotifications: permissionProcedure('settings', 'edit')
     .input(notificationSettingsSchema)
     .mutation(({ ctx, input }) =>
       updateNotificationSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
-  updateNotificationRule: adminProcedure
+  updateNotificationRule: permissionProcedure('settings', 'edit')
     .input(notificationRuleUpdateSchema)
     .mutation(({ ctx, input }) => {
       const { ruleId, ...fields } = input;
@@ -157,8 +173,8 @@ export const settings360Router = router({
       );
     }),
 
-  automation: officeProcedure.query(({ ctx }) => getAutomationSettings(ctx.auth.organizationId)),
-  updateAutomationRule: adminProcedure
+  automation: permissionProcedure('settings', 'view').query(({ ctx }) => getAutomationSettings(ctx.auth.organizationId)),
+  updateAutomationRule: permissionProcedure('settings', 'edit')
     .input(automationRuleUpdateSchema)
     .mutation(({ ctx, input }) =>
       updateAutomationRule(
@@ -170,59 +186,59 @@ export const settings360Router = router({
       ),
     ),
 
-  proposals: officeProcedure.query(({ ctx }) => getProposalSettings(ctx.auth.organizationId)),
-  updateProposals: adminProcedure
+  proposals: permissionProcedure('settings', 'view').query(({ ctx }) => getProposalSettings(ctx.auth.organizationId)),
+  updateProposals: permissionProcedure('settings', 'edit')
     .input(proposalSettingsSchema)
     .mutation(({ ctx, input }) =>
       updateProposalSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  agreements: officeProcedure.query(({ ctx }) => getAgreementSettings(ctx.auth.organizationId)),
-  updateAgreements: adminProcedure
+  agreements: permissionProcedure('settings', 'view').query(({ ctx }) => getAgreementSettings(ctx.auth.organizationId)),
+  updateAgreements: permissionProcedure('settings', 'edit')
     .input(agreementSettingsSchema)
     .mutation(({ ctx, input }) =>
       updateAgreementSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  invoices: officeProcedure.query(({ ctx }) => getInvoiceSettings(ctx.auth.organizationId)),
-  updateInvoices: adminProcedure
+  invoices: permissionProcedure('settings', 'view').query(({ ctx }) => getInvoiceSettings(ctx.auth.organizationId)),
+  updateInvoices: permissionProcedure('settings', 'edit')
     .input(invoiceSettingsConfigSchema)
     .mutation(({ ctx, input }) =>
       updateInvoiceSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  jobs: officeProcedure.query(({ ctx }) => getJobSettings(ctx.auth.organizationId)),
-  updateJobs: adminProcedure
+  jobs: permissionProcedure('settings', 'view').query(({ ctx }) => getJobSettings(ctx.auth.organizationId)),
+  updateJobs: permissionProcedure('settings', 'edit')
     .input(jobSettingsConfigSchema)
     .mutation(({ ctx, input }) =>
       updateJobSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  season: officeProcedure.query(({ ctx }) => getSeasonSettings(ctx.auth.organizationId)),
-  updateSeason: adminProcedure
+  season: permissionProcedure('settings', 'view').query(({ ctx }) => getSeasonSettings(ctx.auth.organizationId)),
+  updateSeason: permissionProcedure('settings', 'edit')
     .input(seasonSettingsSchema)
     .mutation(({ ctx, input }) =>
       updateSeasonSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  inventory: officeProcedure.query(({ ctx }) => getInventorySettings(ctx.auth.organizationId)),
-  updateInventory: adminProcedure
+  inventory: permissionProcedure('settings', 'view').query(({ ctx }) => getInventorySettings(ctx.auth.organizationId)),
+  updateInventory: permissionProcedure('settings', 'edit')
     .input(inventorySettingsConfigSchema)
     .mutation(({ ctx, input }) =>
       updateInventorySettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  portal: officeProcedure.query(({ ctx }) => getPortalSettings(ctx.auth.organizationId)),
-  updatePortal: adminProcedure
+  portal: permissionProcedure('settings', 'view').query(({ ctx }) => getPortalSettings(ctx.auth.organizationId)),
+  updatePortal: permissionProcedure('settings', 'edit')
     .input(customerPortalSettingsSchema)
     .mutation(({ ctx, input }) =>
       updatePortalSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  integrations: officeProcedure.query(({ ctx }) =>
+  integrations: permissionProcedure('settings', 'view').query(({ ctx }) =>
     getIntegrationsSettings(ctx.auth.organizationId),
   ),
-  updateIntegration: adminProcedure
+  updateIntegration: permissionProcedure('settings', 'edit')
     .input(integrationToggleSchema)
     .mutation(({ ctx, input }) =>
       updateIntegration(
@@ -233,35 +249,35 @@ export const settings360Router = router({
         ctx.auth.email,
       ),
     ),
-  testIntegration: adminProcedure
+  testIntegration: permissionProcedure('settings', 'edit')
     .input(z.object({ integrationId: z.enum(['stripe', 'twilio', 'resend', 'mapbox', 'inngest']) }))
     .mutation(({ ctx, input }) =>
       testIntegrationConnection(ctx.auth.organizationId, input.integrationId),
     ),
 
-  ai: officeProcedure.query(({ ctx }) => getAiSettings(ctx.auth.organizationId)),
-  updateAi: adminProcedure
+  ai: permissionProcedure('settings', 'view').query(({ ctx }) => getAiSettings(ctx.auth.organizationId)),
+  updateAi: permissionProcedure('settings', 'edit')
     .input(aiSettingsConfigSchema)
     .mutation(({ ctx, input }) =>
       updateAiSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  security: officeProcedure.query(({ ctx }) => getSecuritySettings(ctx.auth.organizationId)),
-  updateSecurity: adminProcedure
+  security: permissionProcedure('settings', 'view').query(({ ctx }) => getSecuritySettings(ctx.auth.organizationId)),
+  updateSecurity: permissionProcedure('settings', 'edit')
     .input(securitySettingsSchema)
     .mutation(({ ctx, input }) =>
       updateSecuritySettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  system: officeProcedure.query(({ ctx }) => getSystemPreferences(ctx.auth.organizationId)),
-  updateSystem: adminProcedure
+  system: permissionProcedure('settings', 'view').query(({ ctx }) => getSystemPreferences(ctx.auth.organizationId)),
+  updateSystem: permissionProcedure('settings', 'edit')
     .input(systemPreferencesSchema)
     .mutation(({ ctx, input }) =>
       updateSystemPreferences(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  reports: officeProcedure.query(({ ctx }) => getReportsSettings(ctx.auth.organizationId)),
-  updateReports: adminProcedure
+  reports: permissionProcedure('settings', 'view').query(({ ctx }) => getReportsSettings(ctx.auth.organizationId)),
+  updateReports: permissionProcedure('settings', 'edit')
     .input(
       z.object({
         defaultDashboardRole: settingsRoleSchema.optional(),
@@ -272,8 +288,8 @@ export const settings360Router = router({
       updateReportsSettings(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
     ),
 
-  featureFlags: officeProcedure.query(({ ctx }) => listFeatureFlags(ctx.auth.organizationId)),
-  toggleFeatureFlag: adminProcedure
+  featureFlags: permissionProcedure('settings', 'view').query(({ ctx }) => listFeatureFlags(ctx.auth.organizationId)),
+  toggleFeatureFlag: permissionProcedure('settings', 'edit')
     .input(featureFlagToggleSchema)
     .mutation(({ ctx, input }) =>
       toggleFeatureFlag(
@@ -285,14 +301,14 @@ export const settings360Router = router({
       ),
     ),
 
-  auditLogs: officeProcedure
+  auditLogs: permissionProcedure('settings', 'view')
     .input(auditLogFilterSchema.optional())
     .query(({ ctx, input }) =>
       listAuditLogs(ctx.auth.organizationId, input?.limit ?? 50, input?.resource),
     ),
 
-  backups: officeProcedure.query(({ ctx }) => listBackups(ctx.auth.organizationId)),
-  createBackup: adminProcedure.mutation(({ ctx }) =>
+  backups: permissionProcedure('settings', 'view').query(({ ctx }) => listBackups(ctx.auth.organizationId)),
+  createBackup: permissionProcedure('settings', 'edit').mutation(({ ctx }) =>
     createBackup(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email),
   ),
 

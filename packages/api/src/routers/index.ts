@@ -1,6 +1,7 @@
 import { eq, and, desc, ilike, or, sql, count, gte, lte } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { TRPCError } from '@trpc/server';
+import { isMessageProviderSendEnabled } from '@clcrm/types';
 import {
   getDb,
   customers,
@@ -13,7 +14,6 @@ import {
   messageThreads,
   messages,
   messageTemplates,
-  automations,
   scheduleBlocks,
   routes,
   mockups,
@@ -46,7 +46,7 @@ import {
   paginationSchema,
 } from '@clcrm/validators';
 import { z } from 'zod';
-import { router, protectedProcedure, officeProcedure, adminProcedure, publicProcedure } from '../trpc';
+import { router, protectedProcedure, permissionProcedure, publicProcedure } from '../trpc';
 
 function orgScope(organizationId: string) {
   return organizationId;
@@ -59,7 +59,7 @@ function calcSubtotal(
 }
 
 export const customersRouter = router({
-  list: officeProcedure.input(paginationSchema).query(async ({ ctx, input }) => {
+  list: permissionProcedure('customers', 'view').input(paginationSchema).query(async ({ ctx, input }) => {
     const db = getDb();
     const orgId = orgScope(ctx.auth.organizationId);
     const offset = (input.page - 1) * input.pageSize;
@@ -90,7 +90,7 @@ export const customersRouter = router({
     return { items, total, page: input.page, pageSize: input.pageSize };
   }),
 
-  getById: officeProcedure
+  getById: permissionProcedure('customers', 'view')
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const db = getDb();
@@ -110,7 +110,7 @@ export const customersRouter = router({
       return { ...customer, properties: customerProperties };
     }),
 
-  create: officeProcedure.input(createCustomerSchema).mutation(async ({ ctx, input }) => {
+  create: permissionProcedure('customers', 'create').input(createCustomerSchema).mutation(async ({ ctx, input }) => {
     const db = getDb();
     const [created] = await db
       .insert(customers)
@@ -124,7 +124,7 @@ export const customersRouter = router({
     return created!;
   }),
 
-  update: officeProcedure
+  update: permissionProcedure('customers', 'edit')
     .input(z.object({ id: z.string().uuid(), data: updateCustomerSchema }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -139,7 +139,7 @@ export const customersRouter = router({
       return updated;
     }),
 
-  delete: adminProcedure
+  delete: permissionProcedure('customers', 'delete')
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -153,7 +153,7 @@ export const customersRouter = router({
 });
 
 export const propertiesRouter = router({
-  create: officeProcedure.input(createPropertySchema).mutation(async ({ ctx, input }) => {
+  create: permissionProcedure('customers', 'create').input(createPropertySchema).mutation(async ({ ctx, input }) => {
     const db = getDb();
     const [created] = await db
       .insert(properties)
@@ -162,7 +162,7 @@ export const propertiesRouter = router({
     return created!;
   }),
 
-  update: officeProcedure
+  update: permissionProcedure('customers', 'edit')
     .input(z.object({ id: z.string().uuid(), data: updatePropertySchema }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -177,7 +177,7 @@ export const propertiesRouter = router({
       return updated;
     }),
 
-  geocode: officeProcedure
+  geocode: permissionProcedure('customers', 'edit')
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -215,50 +215,41 @@ export const propertiesRouter = router({
     }),
 });
 
+/** @deprecated YL-S16 — Postgres inventory path retired. Use inventory360 (Firestore). */
 export const inventoryRouter = router({
-  list: officeProcedure.query(async ({ ctx }) => {
-    const db = getDb();
-    return db
-      .select()
-      .from(inventoryItems)
-      .where(eq(inventoryItems.organizationId, ctx.auth.organizationId))
-      .orderBy(inventoryItems.name);
+  list: permissionProcedure('inventory', 'view').query(async () => {
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: 'YL-S16: legacy Postgres inventory router retired. Use inventory360.',
+    });
   }),
 
-  lowStock: officeProcedure.query(async ({ ctx }) => {
-    return getLowStockItems(ctx.auth.organizationId);
+  lowStock: permissionProcedure('inventory', 'view').query(async () => {
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: 'YL-S16: legacy Postgres inventory router retired. Use inventory360.',
+    });
   }),
 
-  create: officeProcedure.input(createInventoryItemSchema).mutation(async ({ ctx, input }) => {
-    const db = getDb();
-    const [created] = await db
-      .insert(inventoryItems)
-      .values({ organizationId: ctx.auth.organizationId, ...input })
-      .returning();
-    return created!;
+  create: permissionProcedure('inventory', 'create').input(createInventoryItemSchema).mutation(async () => {
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: 'YL-S16: legacy Postgres inventory router retired. Use inventory360.',
+    });
   }),
 
-  update: officeProcedure
+  update: permissionProcedure('inventory', 'edit')
     .input(z.object({ id: z.string().uuid(), data: createInventoryItemSchema.partial() }))
-    .mutation(async ({ ctx, input }) => {
-      const db = getDb();
-      const [updated] = await db
-        .update(inventoryItems)
-        .set({ ...input.data, updatedAt: new Date() })
-        .where(
-          and(
-            eq(inventoryItems.id, input.id),
-            eq(inventoryItems.organizationId, ctx.auth.organizationId),
-          ),
-        )
-        .returning();
-      if (!updated) throw new TRPCError({ code: 'NOT_FOUND' });
-      return updated;
+    .mutation(async () => {
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: 'YL-S16: legacy Postgres inventory router retired. Use inventory360.',
+      });
     }),
 });
 
 export const proposalsRouter = router({
-  list: officeProcedure.input(paginationSchema.optional()).query(async ({ ctx, input }) => {
+  list: permissionProcedure('proposals', 'view').input(paginationSchema.optional()).query(async ({ ctx, input }) => {
     const db = getDb();
     return db
       .select()
@@ -268,7 +259,7 @@ export const proposalsRouter = router({
       .limit(input?.pageSize ?? 50);
   }),
 
-  getById: officeProcedure
+  getById: permissionProcedure('proposals', 'view')
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const db = getDb();
@@ -282,7 +273,7 @@ export const proposalsRouter = router({
       return proposal;
     }),
 
-  create: officeProcedure.input(createProposalSchema).mutation(async ({ ctx, input }) => {
+  create: permissionProcedure('proposals', 'create').input(createProposalSchema).mutation(async ({ ctx, input }) => {
     const db = getDb();
     const lineItems = input.lineItems.map((item) => ({
       ...item,
@@ -319,7 +310,7 @@ export const proposalsRouter = router({
     return created!;
   }),
 
-  send: officeProcedure
+  send: permissionProcedure('proposals', 'edit')
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -423,7 +414,7 @@ export const proposalsRouter = router({
 });
 
 export const invoicesRouter = router({
-  list: officeProcedure.query(async ({ ctx }) => {
+  list: permissionProcedure('invoices', 'view').query(async ({ ctx }) => {
     const db = getDb();
     return db
       .select()
@@ -432,7 +423,7 @@ export const invoicesRouter = router({
       .orderBy(desc(invoices.createdAt));
   }),
 
-  createFromProposal: officeProcedure
+  createFromProposal: permissionProcedure('invoices', 'create')
     .input(createInvoiceSchema)
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -513,7 +504,7 @@ export const invoicesRouter = router({
 });
 
 export const jobsRouter = router({
-  list: officeProcedure
+  list: permissionProcedure('jobs', 'view')
     .input(z.object({ stage: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
       const db = getDb();
@@ -528,7 +519,7 @@ export const jobsRouter = router({
         .orderBy(desc(jobs.updatedAt));
     }),
 
-  pipeline: officeProcedure.query(async ({ ctx }) => {
+  pipeline: permissionProcedure('jobs', 'view').query(async ({ ctx }) => {
     const db = getDb();
     const allJobs = await db
       .select()
@@ -556,7 +547,7 @@ export const jobsRouter = router({
     }));
   }),
 
-  reserveInventory: officeProcedure
+  reserveInventory: permissionProcedure('jobs', 'edit')
     .input(z.object({ jobId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -564,7 +555,7 @@ export const jobsRouter = router({
       return { success: true };
     }),
 
-  completeInstall: officeProcedure
+  completeInstall: permissionProcedure('jobs', 'edit')
     .input(z.object({ jobId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -572,7 +563,7 @@ export const jobsRouter = router({
       return { success: true };
     }),
 
-  cancelReservation: officeProcedure
+  cancelReservation: permissionProcedure('jobs', 'edit')
     .input(z.object({ jobId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -580,7 +571,7 @@ export const jobsRouter = router({
       return { success: true };
     }),
 
-  addMaterials: officeProcedure
+  addMaterials: permissionProcedure('jobs', 'edit')
     .input(
       z.object({
         jobId: z.string().uuid(),
@@ -602,7 +593,7 @@ export const jobsRouter = router({
       return { success: true };
     }),
 
-  getMaterials: officeProcedure
+  getMaterials: permissionProcedure('jobs', 'view')
     .input(z.object({ jobId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const db = getDb();
@@ -621,7 +612,7 @@ export const jobsRouter = router({
         );
     }),
 
-  schedule: officeProcedure.input(scheduleJobSchema).mutation(async ({ ctx, input }) => {
+  schedule: permissionProcedure('jobs', 'edit').input(scheduleJobSchema).mutation(async ({ ctx, input }) => {
     const db = getDb();
     const start = new Date(input.scheduledStart);
     const end = input.scheduledEnd
@@ -650,7 +641,7 @@ export const jobsRouter = router({
     return { success: true };
   }),
 
-  markRemovalComplete: officeProcedure
+  markRemovalComplete: permissionProcedure('jobs', 'edit')
     .input(z.object({ jobId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -663,7 +654,7 @@ export const jobsRouter = router({
 });
 
 export const messagesRouter = router({
-  threads: officeProcedure.query(async ({ ctx }) => {
+  threads: permissionProcedure('customers', 'view').query(async ({ ctx }) => {
     const db = getDb();
     return db
       .select({
@@ -676,7 +667,7 @@ export const messagesRouter = router({
       .orderBy(desc(messageThreads.lastMessageAt));
   }),
 
-  getThread: officeProcedure
+  getThread: permissionProcedure('customers', 'view')
     .input(z.object({ customerId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const db = getDb();
@@ -709,7 +700,7 @@ export const messagesRouter = router({
       return { thread: thread!, messages: threadMessages };
     }),
 
-  send: officeProcedure.input(sendMessageSchema).mutation(async ({ ctx, input }) => {
+  send: permissionProcedure('customers', 'create').input(sendMessageSchema).mutation(async ({ ctx, input }) => {
     const db = getDb();
     let [thread] = await db
       .select()
@@ -750,7 +741,12 @@ export const messagesRouter = router({
       .set({ lastMessageAt: new Date(), updatedAt: new Date() })
       .where(eq(messageThreads.id, thread!.id));
 
-    if (input.channel === 'sms') {
+    // YL-S14: dead SQL messagesRouter — provider calls gated; never send without REAL_* cutover.
+    if (
+      input.channel === 'sms' &&
+      isMessageProviderSendEnabled('sms') &&
+      process.env.TWILIO_ACCOUNT_SID
+    ) {
       const [customer] = await db
         .select()
         .from(customers)
@@ -760,7 +756,7 @@ export const messagesRouter = router({
         .from(organizations)
         .where(eq(organizations.id, ctx.auth.organizationId));
 
-      if (customer?.phone && org?.twilioPhoneNumber && process.env.TWILIO_ACCOUNT_SID) {
+      if (customer?.phone && org?.twilioPhoneNumber) {
         const auth = Buffer.from(
           `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`,
         ).toString('base64');
@@ -782,7 +778,7 @@ export const messagesRouter = router({
       }
     }
 
-    if (input.channel === 'email' && process.env.RESEND_API_KEY) {
+    if (input.channel === 'email' && isMessageProviderSendEnabled('email')) {
       const [customer] = await db
         .select()
         .from(customers)
@@ -807,7 +803,7 @@ export const messagesRouter = router({
     return message!;
   }),
 
-  templates: officeProcedure.query(async ({ ctx }) => {
+  templates: permissionProcedure('customers', 'view').query(async ({ ctx }) => {
     const db = getDb();
     return db
       .select()
@@ -815,7 +811,7 @@ export const messagesRouter = router({
       .where(eq(messageTemplates.organizationId, ctx.auth.organizationId));
   }),
 
-  createTemplate: officeProcedure
+  createTemplate: permissionProcedure('customers', 'create')
     .input(
       z.object({
         name: z.string(),
@@ -833,17 +829,17 @@ export const messagesRouter = router({
       return created!;
     }),
 
-  automations: officeProcedure.query(async ({ ctx }) => {
-    const db = getDb();
-    return db
-      .select()
-      .from(automations)
-      .where(eq(automations.organizationId, ctx.auth.organizationId));
+  automations: permissionProcedure('customers', 'view').query(async () => {
+    // YL-S21: legacy Postgres automations retired — use automation360 / messages360.
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: 'YL-S21: legacy Postgres automations router retired. Use automation360.',
+    });
   }),
 });
 
 export const scheduleRouter = router({
-  calendar: officeProcedure
+  calendar: permissionProcedure('jobs', 'view')
     .input(
       z.object({
         start: z.string().datetime(),
@@ -869,7 +865,7 @@ export const scheduleRouter = router({
         .orderBy(scheduleBlocks.startAt);
     }),
 
-  optimizeRoute: officeProcedure
+  optimizeRoute: permissionProcedure('jobs', 'create')
     .input(
       z.object({
         crewUserId: z.string().uuid().optional(),
@@ -906,7 +902,7 @@ export const scheduleRouter = router({
       return created!;
     }),
 
-  getRoutes: officeProcedure
+  getRoutes: permissionProcedure('jobs', 'view')
     .input(z.object({ date: z.string().datetime() }))
     .query(async ({ ctx, input }) => {
       const db = getDb();
@@ -982,7 +978,7 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
 }
 
 export const mockupsRouter = router({
-  list: officeProcedure
+  list: permissionProcedure('mockups', 'view')
     .input(z.object({ propertyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const db = getDb();
@@ -998,7 +994,7 @@ export const mockupsRouter = router({
         .orderBy(desc(mockups.version));
     }),
 
-  create: officeProcedure.input(createMockupSchema).mutation(async ({ ctx, input }) => {
+  create: permissionProcedure('mockups', 'create').input(createMockupSchema).mutation(async ({ ctx, input }) => {
     const db = getDb();
     const existing = await db
       .select()
@@ -1022,7 +1018,7 @@ export const mockupsRouter = router({
     return created!;
   }),
 
-  attachToProposal: officeProcedure
+  attachToProposal: permissionProcedure('mockups', 'edit')
     .input(z.object({ proposalId: z.string().uuid(), mockupId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -1142,106 +1138,27 @@ export const crewRouter = router({
     }),
 });
 
+/** @deprecated YL-S19 — Postgres reports path retired. Use reports360. */
 export const reportsRouter = router({
-  dashboard: officeProcedure.query(async ({ ctx }) => {
-    const db = getDb();
-    const orgId = ctx.auth.organizationId;
-
-    const [customerCount] = await db
-      .select({ count: count() })
-      .from(customers)
-      .where(eq(customers.organizationId, orgId));
-
-    const [proposalCount] = await db
-      .select({ count: count() })
-      .from(proposals)
-      .where(eq(proposals.organizationId, orgId));
-
-    const [acceptedCount] = await db
-      .select({ count: count() })
-      .from(proposals)
-      .where(and(eq(proposals.organizationId, orgId), eq(proposals.status, 'accepted')));
-
-    const allInvoices = await db
-      .select()
-      .from(invoices)
-      .where(eq(invoices.organizationId, orgId));
-
-    const revenueCents = allInvoices.reduce((sum, inv) => sum + inv.amountPaidCents, 0);
-    const pendingCents = allInvoices
-      .filter((inv) => inv.status !== 'paid' && inv.status !== 'void')
-      .reduce((sum, inv) => sum + (inv.subtotalCents - inv.amountPaidCents), 0);
-
-    const activeJobs = await db
-      .select({ count: count() })
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.organizationId, orgId),
-          sql`${jobs.stage} NOT IN ('complete', 'lost')`,
-        ),
-      );
-
-    const conversionRate =
-      Number(proposalCount?.count) > 0
-        ? (Number(acceptedCount?.count) / Number(proposalCount?.count)) * 100
-        : 0;
-
-    return {
-      customers: Number(customerCount?.count ?? 0),
-      proposals: Number(proposalCount?.count ?? 0),
-      acceptedProposals: Number(acceptedCount?.count ?? 0),
-      conversionRate: Math.round(conversionRate),
-      revenueCents,
-      pendingCents,
-      activeJobs: Number(activeJobs[0]?.count ?? 0),
-    };
+  dashboard: permissionProcedure('reports', 'view').query(async () => {
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: 'YL-S19: legacy Postgres reports router retired. Use reports360.',
+    });
   }),
 
-  exportCsv: officeProcedure
+  exportCsv: permissionProcedure('reports', 'export')
     .input(z.object({ type: z.enum(['customers', 'invoices', 'jobs']) }))
-    .query(async ({ ctx, input }) => {
-      const db = getDb();
-      const orgId = ctx.auth.organizationId;
-
-      if (input.type === 'customers') {
-        const rows = await db.select().from(customers).where(eq(customers.organizationId, orgId));
-        const header = 'firstName,lastName,email,phone,tags\n';
-        const body = rows
-          .map(
-            (r) =>
-              `"${r.firstName}","${r.lastName}","${r.email ?? ''}","${r.phone ?? ''}","${(r.tags as string[]).join(';')}"`,
-          )
-          .join('\n');
-        return header + body;
-      }
-
-      if (input.type === 'invoices') {
-        const rows = await db.select().from(invoices).where(eq(invoices.organizationId, orgId));
-        const header = 'invoiceNumber,status,subtotalCents,amountPaidCents,dueDate\n';
-        const body = rows
-          .map(
-            (r) =>
-              `"${r.invoiceNumber}","${r.status}",${r.subtotalCents},${r.amountPaidCents},"${r.dueDate?.toISOString() ?? ''}"`,
-          )
-          .join('\n');
-        return header + body;
-      }
-
-      const rows = await db.select().from(jobs).where(eq(jobs.organizationId, orgId));
-      const header = 'title,stage,scheduledStart,installedAt\n';
-      const body = rows
-        .map(
-          (r) =>
-            `"${r.title}","${r.stage}","${r.scheduledStart?.toISOString() ?? ''}","${r.installedAt?.toISOString() ?? ''}"`,
-        )
-        .join('\n');
-      return header + body;
+    .query(async () => {
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: 'YL-S19: legacy Postgres reports router retired. Use reports360.',
+      });
     }),
 });
 
 export const settingsRouter = router({
-  get: officeProcedure.query(async ({ ctx }) => {
+  get: permissionProcedure('settings', 'view').query(async ({ ctx }) => {
     const db = getDb();
     const [org] = await db
       .select()
@@ -1250,7 +1167,7 @@ export const settingsRouter = router({
     return org!;
   }),
 
-  update: adminProcedure.input(orgSettingsSchema).mutation(async ({ ctx, input }) => {
+  update: permissionProcedure('settings', 'edit').input(orgSettingsSchema).mutation(async ({ ctx, input }) => {
     const db = getDb();
     const [updated] = await db
       .update(organizations)
@@ -1260,14 +1177,14 @@ export const settingsRouter = router({
     return updated!;
   }),
 
-  team: officeProcedure.query(async ({ ctx }) => {
+  team: permissionProcedure('settings', 'view').query(async ({ ctx }) => {
     const db = getDb();
     return db.select().from(users).where(eq(users.organizationId, ctx.auth.organizationId));
   }),
 });
 
 export const reviewsRouter = router({
-  send: officeProcedure
+  send: permissionProcedure('customers', 'create')
     .input(z.object({ jobId: z.string().uuid(), platform: z.enum(['google', 'facebook']) }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();

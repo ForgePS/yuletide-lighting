@@ -5,12 +5,13 @@ import type {
   JobActivityAction,
   JobActivityLog,
 } from '@clcrm/types';
+import { collectCrewScheduleJobIds, isCrewAssignedToJob } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import { colCreate, colGet, colList, colUpdate } from './firestore';
 import { consumeJobMaterials } from './inventory';
 import { getJob360, syncCustomerPipelineFromJob } from './jobs360';
 import { createServiceIssue360 } from './service-issues';
-import { listCalendarEvents } from './schedule360';
+import { ensureCrews, listCalendarEvents } from './schedule360';
 import { mapTimestampsFromData } from './firestore-utils';
 
 function ts() {
@@ -90,9 +91,41 @@ function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+async function loadCrewUserByProfileId(orgId: string): Promise<Record<string, string | null | undefined>> {
+  const crews = await ensureCrews(orgId);
+  const map: Record<string, string | null | undefined> = {};
+  for (const crew of crews) {
+    map[crew.id] = crew.assignedUserId ?? null;
+  }
+  return map;
+}
+
+/** YL-S11 — fail closed if the Auth user is not assigned to the job. */
+export async function assertCrewAssignedToJob(orgId: string, userId: string, jobId: string) {
+  const job = await colGet<{
+    assignedCrewUserId?: string | null;
+    assignedCrewId?: string | null;
+  }>(orgId, 'jobs', jobId);
+  if (!job) throw new Error('Job not found');
+  const crewUserByProfileId = await loadCrewUserByProfileId(orgId);
+  const events = await listCalendarEvents(orgId);
+  const eventCrewIds = events.filter((e) => e.jobId === jobId).map((e) => e.crewId);
+  if (
+    !isCrewAssignedToJob({
+      userId,
+      job,
+      eventCrewIds,
+      crewUserByProfileId,
+    })
+  ) {
+    throw new Error('Not assigned to this job');
+  }
+}
+
 async function buildScheduleItem(orgId: string, jobId: string): Promise<CrewScheduleItem | null> {
   const detail = await getJob360(orgId, jobId);
-  if (!detail?.job || !detail.customer || !detail.property) return null;
+  // YL-S11: do not drop jobs that lack customer or property linkage.
+  if (!detail?.job) return null;
 
   const activity = await listJobActivity(orgId, jobId);
   const checklist = DEFAULT_CHECKLIST.map((item) => {
@@ -116,19 +149,19 @@ async function buildScheduleItem(orgId: string, jobId: string): Promise<CrewSche
       jobType: detail.job.jobType ?? null,
     },
     customer: {
-      id: detail.customer.id,
-      firstName: detail.customer.firstName ?? '',
-      lastName: detail.customer.lastName ?? '',
-      phone: detail.customer.phone ?? null,
-      businessName: detail.customer.businessName ?? null,
+      id: detail.customer?.id ?? 'unknown',
+      firstName: detail.customer?.firstName ?? '',
+      lastName: detail.customer?.lastName ?? '',
+      phone: detail.customer?.phone ?? null,
+      businessName: detail.customer?.businessName ?? null,
     },
     property: {
-      id: detail.property.id,
-      addressLine1: detail.property.addressLine1,
-      city: detail.property.city,
-      state: detail.property.state,
-      postalCode: detail.property.postalCode,
-      installNotes: detail.property.installNotes ?? null,
+      id: detail.property?.id ?? 'unknown',
+      addressLine1: detail.property?.addressLine1 ?? 'Address pending',
+      city: detail.property?.city ?? '',
+      state: detail.property?.state ?? '',
+      postalCode: detail.property?.postalCode,
+      installNotes: detail.property?.installNotes ?? null,
     },
     checklist,
   };
@@ -139,27 +172,23 @@ export async function getCrewMySchedule(orgId: string, userId: string, dateInput
   const jobs = await colList<{
     id: string;
     assignedCrewUserId?: string | null;
+    assignedCrewId?: string | null;
     scheduledStart?: Date | null;
     stage?: string;
   }>(orgId, 'jobs');
 
   const events = await listCalendarEvents(orgId);
   const dayEvents = events.filter((e) => e.startAt && isSameDay(e.startAt, target));
+  const crewUserByProfileId = await loadCrewUserByProfileId(orgId);
+  const jobIds = collectCrewScheduleJobIds({
+    userId,
+    targetDate: target,
+    jobs,
+    dayEvents,
+    crewUserByProfileId,
+  });
 
-  const jobIds = new Set<string>();
-  for (const job of jobs) {
-    if (job.assignedCrewUserId === userId) {
-      const start = job.scheduledStart;
-      if (!start || isSameDay(start instanceof Date ? start : new Date(String(start)), target)) {
-        jobIds.add(job.id);
-      }
-    }
-  }
-  for (const event of dayEvents) {
-    if (event.jobId) jobIds.add(event.jobId);
-  }
-
-  const items = await Promise.all([...jobIds].map((id) => buildScheduleItem(orgId, id)));
+  const items = await Promise.all(jobIds.map((id) => buildScheduleItem(orgId, id)));
   return items
     .filter(Boolean)
     .sort((a, b) => {
@@ -239,6 +268,7 @@ export async function crewRecordMaterialUsage(
     items: Array<{ inventoryItemId: string; quantity: number; notes?: string }>;
   },
 ) {
+  await assertCrewAssignedToJob(orgId, userId, input.jobId);
   const materials = await colList<{
     id: string;
     jobId: string;
@@ -290,6 +320,7 @@ export async function crewClockIn(
   userName: string | null | undefined,
   input: { jobId: string; clockIn: Date; latitude?: number; longitude?: number },
 ) {
+  await assertCrewAssignedToJob(orgId, userId, input.jobId);
   const entry = await colCreate(orgId, 'timeEntries', {
     jobId: input.jobId,
     userId,
@@ -309,21 +340,26 @@ export async function crewClockIn(
 }
 
 export async function crewClockOut(orgId: string, userId: string, userName: string | null | undefined, entryId: string) {
-  const entry = await colGet<{ jobId?: string }>(orgId, 'timeEntries', entryId);
+  const entry = await colGet<{ jobId?: string; userId?: string }>(orgId, 'timeEntries', entryId);
+  if (!entry || entry.userId !== userId) throw new Error('Time entry not found');
+  if (entry.jobId) await assertCrewAssignedToJob(orgId, userId, entry.jobId);
   await colUpdate(orgId, 'timeEntries', entryId, { clockOut: new Date() });
-  if (entry?.jobId) {
+  if (entry.jobId) {
     await logJobActivity(orgId, { jobId: entry.jobId, userId, userName, action: 'clock_out' });
   }
   return { success: true };
 }
 
 export async function crewStartJob(orgId: string, userId: string, userName: string | null | undefined, jobId: string) {
-  await colUpdate(orgId, 'jobs', jobId, { stage: 'installed', installedAt: new Date() });
+  await assertCrewAssignedToJob(orgId, userId, jobId);
+  // YL-S9: start must not jump to `installed` — that is crewCompleteJob / consumeJobMaterials.
+  await colUpdate(orgId, 'jobs', jobId, { startedAt: new Date() });
   await logJobActivity(orgId, { jobId, userId, userName, action: 'job_started' });
   return { success: true };
 }
 
 export async function crewCompleteJob(orgId: string, userId: string, userName: string | null | undefined, jobId: string) {
+  await assertCrewAssignedToJob(orgId, userId, jobId);
   const job = await colGet<{ customerId?: string; stage?: string }>(orgId, 'jobs', jobId);
   await consumeJobMaterials(orgId, jobId);
   await colUpdate(orgId, 'jobs', jobId, { stage: 'installed', installedAt: new Date(), completionDate: new Date() });
@@ -360,6 +396,7 @@ export async function crewUploadPhoto(
   userName: string | null | undefined,
   input: { jobId: string; url: string; photoType?: string; caption?: string },
 ) {
+  await assertCrewAssignedToJob(orgId, userId, input.jobId);
   const photo = await colCreate(orgId, 'jobPhotos', {
     jobId: input.jobId,
     url: input.url,
@@ -390,6 +427,7 @@ export async function crewReportIssue(
     category: string;
   },
 ) {
+  await assertCrewAssignedToJob(orgId, userId, input.jobId);
   const detail = await getJob360(orgId, input.jobId);
   const issue = await createServiceIssue360(
     orgId,
@@ -428,6 +466,7 @@ export async function crewRecordCustomerNotHome(
   jobId: string,
   notes?: string,
 ) {
+  await assertCrewAssignedToJob(orgId, userId, jobId);
   await logJobActivity(orgId, {
     jobId,
     userId,
@@ -444,6 +483,7 @@ export async function crewSubmitSignature(
   userName: string | null | undefined,
   input: { jobId: string; customerName: string; signatureData: string },
 ) {
+  await assertCrewAssignedToJob(orgId, userId, input.jobId);
   await colUpdate(orgId, 'jobs', input.jobId, {
     completionSignature: input.signatureData,
     completionSignedBy: input.customerName,

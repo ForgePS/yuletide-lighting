@@ -18,7 +18,9 @@ import {
   DEFAULT_INTERNAL_CHANNELS,
   DEFAULT_MESSAGE_TEMPLATES,
   renderMessageTemplate,
+  resolveOutboundMessageStatus,
 } from '@clcrm/types';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
 import { colCreate, colGet, colList, colUpdate } from './firestore';
@@ -160,10 +162,22 @@ export async function sendMessage360(
     subject?: string;
     attachmentUrls?: string[];
     scheduledAt?: Date;
+    /** Staff notification trigger; defaults to manual_outbound. */
+    notificationTrigger?: string;
+    /** When true, skip the staff notifications row (automation writes its own). */
+    skipStaffNotification?: boolean;
   },
   userId?: string | null,
   userName?: string | null,
 ) {
+  if (input.channel === 'sms') {
+    const customer = await findCustomerForSms(orgId, { customerId: input.customerId });
+    if (!customer) throw new Error('Customer not found');
+    if (customer.smsOptIn === false) {
+      throw new Error('Customer is opted out of SMS');
+    }
+  }
+
   const conversation = input.conversationId
     ? await getConversation(orgId, input.conversationId)
     : await ensureConversation(orgId, input.customerId, {
@@ -174,15 +188,22 @@ export async function sendMessage360(
 
   const classification = classifyMessage(input.body);
   const now = new Date();
+  // YL-S14: no Twilio/Resend adapter in messages360 yet — never claim provider delivery.
+  const status = resolveOutboundMessageStatus({
+    channel: input.channel,
+    scheduledAt: input.scheduledAt ?? null,
+    now,
+    providerAdapterActive: false,
+  });
   const message = await msgCreate(orgId, conversation.id, {
     channel: input.channel,
     direction: 'outbound',
     body: input.body,
     subject: input.subject ?? null,
-    status: input.scheduledAt && input.scheduledAt > now ? 'sent' : 'delivered',
+    status,
     sentByUserId: userId ?? null,
     sentByUserName: userName ?? null,
-    deliveredAt: input.scheduledAt && input.scheduledAt > now ? null : now,
+    deliveredAt: status === 'recorded' || status === 'sent' ? now : null,
     readAt: null,
     openedAt: null,
     attachmentUrls: input.attachmentUrls ?? [],
@@ -202,16 +223,18 @@ export async function sendMessage360(
 
   // Legacy flat `messages` dual-write removed (P0.2B write freeze).
 
-  await colCreate(orgId, 'notifications', {
-    organizationId: orgId,
-    customerId: input.customerId,
-    trigger: 'proposal_sent',
-    channel: input.channel,
-    title: input.subject ?? 'Message sent',
-    body: input.body.slice(0, 200),
-    status: 'delivered',
-    sentAt: now,
-  });
+  if (!input.skipStaffNotification) {
+    await colCreate(orgId, 'notifications', {
+      organizationId: orgId,
+      customerId: input.customerId,
+      trigger: input.notificationTrigger ?? 'manual_outbound',
+      channel: input.channel,
+      title: input.subject ?? 'Message sent',
+      body: input.body.slice(0, 200),
+      status,
+      sentAt: now,
+    });
+  }
 
   if (input.channel === 'portal') {
     try {
@@ -368,8 +391,26 @@ export function phonesMatchForTwilio(configured: string, inbound: string): boole
   );
 }
 
+/** YL-S26 — collect all org ids whose configured Twilio number matches inbound To. */
+export function collectTwilioPhoneOrgMatches(
+  orgs: Array<{ id: string; twilioPhoneNumber?: string | null }>,
+  toPhone: string,
+): string[] {
+  const digits = normalizePhoneDigits(toPhone);
+  if (digits.length < 7) return [];
+  const matches: string[] = [];
+  for (const org of orgs) {
+    if (typeof org.twilioPhoneNumber !== 'string') continue;
+    if (phonesMatchForTwilio(org.twilioPhoneNumber, toPhone)) {
+      matches.push(org.id);
+    }
+  }
+  return matches;
+}
+
 /**
  * Resolve tenant from Twilio inbound "To" number. Fail closed — never trust client organizationId.
+ * YL-S26: return orgId only when exactly one org matches; collisions → null.
  */
 export async function resolveOrganizationIdByTwilioToPhone(
   toPhone: string,
@@ -379,14 +420,68 @@ export async function resolveOrganizationIdByTwilioToPhone(
 
   const db = getAdminFirestore();
   const snap = await db.collection('organizations').where('twilioPhoneNumber', '!=', null).get();
-  for (const doc of snap.docs) {
-    const configured = doc.data()?.twilioPhoneNumber;
-    if (typeof configured !== 'string') continue;
-    if (phonesMatchForTwilio(configured, toPhone)) {
-      return doc.id;
-    }
+  const orgs = snap.docs.map((doc) => ({
+    id: doc.id,
+    twilioPhoneNumber: doc.data()?.twilioPhoneNumber as string | null | undefined,
+  }));
+  const matches = collectTwilioPhoneOrgMatches(orgs, toPhone);
+  if (matches.length !== 1) return null;
+  return matches[0]!;
+}
+
+/**
+ * YL-S26 — refuse assigning a Twilio number already used by another organization.
+ */
+export async function assertTwilioPhoneUnique(orgId: string, phone: string): Promise<void> {
+  const digits = normalizePhoneDigits(phone);
+  if (digits.length < 7) {
+    throw new Error('Twilio phone number is invalid');
   }
-  return null;
+  const db = getAdminFirestore();
+  const snap = await db.collection('organizations').where('twilioPhoneNumber', '!=', null).get();
+  const orgs = snap.docs.map((doc) => ({
+    id: doc.id,
+    twilioPhoneNumber: doc.data()?.twilioPhoneNumber as string | null | undefined,
+  }));
+  const matches = collectTwilioPhoneOrgMatches(orgs, phone).filter((id) => id !== orgId);
+  if (matches.length > 0) {
+    throw new Error('This Twilio phone number is already assigned to another organization');
+  }
+}
+
+/**
+ * YL-S14 — Twilio webhook signature check (HMAC-SHA1).
+ * Fail closed when auth token or signature is missing.
+ */
+export function verifyTwilioRequestSignature(input: {
+  authToken?: string | null;
+  signature?: string | null;
+  url: string;
+  params: Record<string, string>;
+}): { ok: boolean; reason?: string } {
+  const token = typeof input.authToken === 'string' ? input.authToken.trim() : '';
+  if (!token) return { ok: false, reason: 'TWILIO_AUTH_TOKEN_MISSING' };
+  const signature = typeof input.signature === 'string' ? input.signature.trim() : '';
+  if (!signature) return { ok: false, reason: 'SIGNATURE_MISSING' };
+  const url = typeof input.url === 'string' ? input.url.trim() : '';
+  if (!url) return { ok: false, reason: 'WEBHOOK_URL_MISSING' };
+
+  const data =
+    url +
+    Object.keys(input.params)
+      .sort()
+      .reduce((acc, key) => acc + key + String(input.params[key] ?? ''), '');
+  const expected = createHmac('sha1', token).update(Buffer.from(data, 'utf-8')).digest('base64');
+  try {
+    const a = Buffer.from(expected);
+    const b = Buffer.from(signature);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      return { ok: false, reason: 'SIGNATURE_MISMATCH' };
+    }
+  } catch {
+    return { ok: false, reason: 'SIGNATURE_MISMATCH' };
+  }
+  return { ok: true };
 }
 
 export async function receiveSms360(
@@ -477,6 +572,7 @@ export async function receivePortalMessage(
 
 export async function markMessageRead(orgId: string, conversationId: string, messageId: string) {
   const db = getAdminFirestore();
+  const conversation = await getConversation(orgId, conversationId);
   await db
     .doc(`${orgPath(orgId, 'conversations')}/${conversationId}/messages/${messageId}`)
     .update({
@@ -484,6 +580,11 @@ export async function markMessageRead(orgId: string, conversationId: string, mes
       readAt: ts(),
       updatedAt: ts(),
     });
+  if (conversation) {
+    await colUpdate(orgId, 'conversations', conversationId, {
+      unreadCount: Math.max(0, (conversation.unreadCount ?? 0) - 1),
+    });
+  }
 }
 
 export async function getCustomerTimeline(
@@ -714,6 +815,8 @@ export async function triggerAutomation(
           channel: auto.channel,
           body,
           subject,
+          notificationTrigger: trigger,
+          skipStaffNotification: true,
         },
         userId,
         'Automation',
@@ -729,7 +832,7 @@ export async function triggerAutomation(
       channel: auto.channel,
       title: auto.name,
       body: body.slice(0, 200),
-      status: 'sent',
+      status: 'recorded',
       sentAt: new Date(),
     });
   }

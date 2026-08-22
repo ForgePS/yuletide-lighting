@@ -22,6 +22,7 @@ import type {
 import {
   DEFAULT_PORTAL_FEATURES,
   PHASE1_ACTIVE_PORTAL_FEATURES,
+  normalizeInvoiceStatus,
   resolvePortalPermission,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
@@ -1571,11 +1572,11 @@ export async function uploadPortalPhoto(
     settingsAllows: (settings) =>
       settings.allowServiceRequests && settings.permissions.requestService,
   });
+  const { isPortalPhotoContentType } = await import('@clcrm/types');
   const { getPortalSecurityConfig } = await import('./portal-security-config');
   const { createPortalFileAccess, sanitizePortalFilename } = await import('./portal-file-access');
   const cfg = getPortalSecurityConfig();
-  const allowed = new Set(['image/jpeg', 'image/png', 'image/webp']);
-  if (!allowed.has(input.contentType)) {
+  if (!isPortalPhotoContentType(input.contentType)) {
     throw new Error('Unsupported photo type');
   }
   const buffer = Buffer.from(input.dataBase64, 'base64');
@@ -2016,12 +2017,10 @@ export async function listPortalDocuments(auth: string | PortalAuthInput) {
   const { listCustomerDocuments360 } = await import('./documents360');
   const { createPortalFileAccess } = await import('./portal-file-access');
   const docs = await listCustomerDocuments360(ctx.organizationId, ctx.customer.id);
+  const { isCustomerVisibleDocument } = await import('@clcrm/types');
   const visible = docs.filter((d) => {
     if (!d.url) return false;
-    const visibility = String(
-      (d as { visibility?: string }).visibility ?? 'customer_visible',
-    ).toLowerCase();
-    if (visibility !== 'customer_visible') return false;
+    if (!isCustomerVisibleDocument((d as { visibility?: string | null }).visibility)) return false;
     const category = String(d.category ?? '').toLowerCase();
     if (category === 'internal' || category === 'staff_only' || category === 'loto') return false;
     return true;
@@ -2074,6 +2073,27 @@ export async function listPortalStorage(auth: string | PortalAuthInput) {
         quantity: Number((item as { quantity?: number }).quantity ?? 1),
         condition: String((item as { condition?: string }).condition ?? 'good'),
       }));
+      const { createPortalFileAccess } = await import('./portal-file-access');
+      const photos = await Promise.all(
+        (detail?.record.photos ?? r.photos ?? []).map(async (photoUrl, idx) => {
+          const file = await createPortalFileAccess({
+            authorized: ctx,
+            fileId: `${r.id}-photo-${idx}`,
+            name: `Storage photo ${idx + 1}`,
+            contentType: 'image/jpeg',
+            category: 'storage_photo',
+            sourceUrlOrPath: photoUrl,
+            visibility: 'customer_visible',
+            parent: { collection: 'storageRecords', id: r.id },
+          });
+          return {
+            id: file.id,
+            canPreview: file.canPreview,
+            canDownload: file.canDownload,
+            url: file.accessUrl,
+          };
+        }),
+      );
       return {
         id: r.id,
         status: r.status,
@@ -2084,6 +2104,7 @@ export async function listPortalStorage(auth: string | PortalAuthInput) {
         itemCount: r.itemCount ?? items.length,
         conditionNotes: r.conditionNotes ?? null,
         items,
+        photos: photos.filter((p) => p.url),
       };
     }),
   ).then((rows) => rows.filter((row): row is NonNullable<typeof row> => row != null));
@@ -2508,9 +2529,10 @@ function mapPortalInvoice(i: Record<string, unknown> & { id: string }) {
   return {
     id: String(i.id),
     invoiceNumber: String(i.invoiceNumber ?? i.id),
-    status: String(i.status ?? 'draft'),
+    status: normalizeInvoiceStatus(String(i.status ?? 'draft')),
     subtotalCents: Number(i.subtotalCents ?? 0),
     amountPaidCents: Number(i.amountPaidCents ?? 0),
+    depositCents: Number(i.depositCents ?? 0),
     publicToken: (i.publicToken as string) ?? null,
     dueDate: i.dueDate instanceof Date ? i.dueDate : i.dueDate ? new Date(String(i.dueDate)) : null,
     paidAt: i.paidAt instanceof Date ? i.paidAt : i.paidAt ? new Date(String(i.paidAt)) : null,

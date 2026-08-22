@@ -31,7 +31,7 @@ Helpers: `authCan`, `assertAuthCan`.
 
 `apps/web/src/lib/permissions.ts` — `userCan`, `userIsAdmin`, `userIsOffice`.
 
-## Not done this sprint
+## Not done this sprint (historical YL-S3)
 
-- Convert every router from `officeProcedure` → resource-specific `permissionProcedure` (BACKLOG-012)
-- Align Firestore rules with PermissionMatrix (YL-S4 / BACKLOG-007)
+- ~~Convert every router from `officeProcedure` → resource-specific `permissionProcedure`~~ → **done in YL-S5 / BACKLOG-012**
+- Align Firestore rules with PermissionMatrix (BACKLOG-007)

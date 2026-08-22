@@ -68,7 +68,8 @@ export async function createOrgJob(orgId: string, input: CreateOrgJobInput) {
     organizationId: orgId,
     customerId: input.customerId,
     title: input.title.trim(),
-    stage: input.stage ?? 'pending',
+    // YL-S9: default into pipeline board (legacy `pending` was an orphan column).
+    stage: input.stage ?? 'accepted_proposal',
     propertyId: input.propertyId ?? null,
     proposalId: input.proposalId ?? null,
     jobType: input.jobType ?? null,

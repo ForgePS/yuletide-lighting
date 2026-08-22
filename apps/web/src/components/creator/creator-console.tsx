@@ -82,7 +82,7 @@ export function CreatorConsole({ initialTab = 'overview' }: { initialTab?: Creat
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Platform Admin</h1>
+          <h1 className="page-title">Platform Admin</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Manage {productName} platform-wide settings, tenant subscriptions, modules, and operations.
           </p>
@@ -127,7 +127,7 @@ export function CreatorConsole({ initialTab = 'overview' }: { initialTab?: Creat
             <Globe className="h-5 w-5" />
           </span>
           <div>
-            <p className="font-semibold text-slate-900">Website CMS</p>
+            <p className="font-semibold text-foreground">Website CMS</p>
             <p className="text-sm text-muted-foreground">
               Edit pages, navigation, branding, media, forms, SEO, and collections without code.
             </p>
@@ -143,8 +143,8 @@ export function CreatorConsole({ initialTab = 'overview' }: { initialTab?: Creat
       <CreatorPanel title="Platform hierarchy" icon={ShieldCheck}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-slate-900">{settings?.productLabel ?? 'Platform Admin'}</p>
-            <ul className="mt-3 space-y-2 border-l-2 border-slate-200 pl-4">
+            <p className="text-sm font-semibold text-foreground">{settings?.productLabel ?? 'Platform Admin'}</p>
+            <ul className="mt-3 space-y-2 border-l-2 border-border pl-4">
               <li className="font-semibold text-primary">
                 {productName}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">· platform root</span>
@@ -873,11 +873,11 @@ function EcosystemTab() {
           </div>
         ))}
       </div>
-      <div className="mt-6 rounded-lg bg-slate-950 p-6 text-white">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{settings?.productLabel ?? 'Platform Admin'}</p>
-        <p className="mt-2 text-2xl font-bold">{settings?.productName ?? 'Yuletide CRM'}</p>
-        <p className="mt-1 text-sm text-slate-300">{settings?.tagline}</p>
-        <p className="mt-3 text-xs text-slate-500">Version {settings?.version ?? '1.0.0'} · Status {settings?.status ?? 'active'}</p>
+      <div className="card mt-6 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-surface to-surface p-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-primary">{settings?.productLabel ?? 'Platform Admin'}</p>
+        <p className="mt-2 text-2xl font-bold text-foreground">{settings?.productName ?? 'Yuletide CRM'}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{settings?.tagline}</p>
+        <p className="mt-3 text-xs text-muted-foreground">Version {settings?.version ?? '1.0.0'} · Status {settings?.status ?? 'active'}</p>
       </div>
     </CreatorPanel>
   );

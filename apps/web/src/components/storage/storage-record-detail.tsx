@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { formatCurrency } from '@clcrm/ui';
+import { formatStorageTypeLabel, formatStoredItemConditionLabel } from '@clcrm/types';
 import { LoadingState, ErrorState } from '@/components/ui/states';
 import { AuthenticatedImage } from '@/components/authenticated-image';
 import type { StoredItemCondition } from '@clcrm/types';
@@ -99,7 +100,7 @@ export function StorageRecordDetail({ recordId }: { recordId: string }) {
           <h1 className="mt-1 text-2xl font-bold">{customerName}</h1>
           {propertyAddress && <p className="text-muted-foreground">{propertyAddress}</p>}
           <p className="mt-1 text-sm capitalize text-muted-foreground">
-            {record.storageType.replace(/_/g, ' ')} · Stored {record.storedAt.toLocaleDateString()}
+            {formatStorageTypeLabel(record.storageType)} · Stored {record.storedAt.toLocaleDateString()}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -225,7 +226,7 @@ export function StorageRecordDetail({ recordId }: { recordId: string }) {
               <tr key={item.id}>
                 <td className="font-medium">{item.name}</td>
                 <td>{item.quantity}</td>
-                <td className="capitalize">{item.condition}</td>
+                <td className="capitalize">{formatStoredItemConditionLabel(item.condition)}</td>
                 <td className="text-muted-foreground">{item.notes ?? '—'}</td>
                 <td>
                   {item.condition !== 'damaged' && (

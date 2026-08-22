@@ -15,6 +15,7 @@ export const cmsFormFieldSchema = z.object({
     'file',
     'consent',
     'hidden',
+    'signature',
   ]),
   label: z.string().min(1),
   name: z.string().min(1),
@@ -23,6 +24,15 @@ export const cmsFormFieldSchema = z.object({
   options: z.array(z.string()).optional(),
   helpText: z.string().optional(),
   width: z.enum(['full', 'half']).optional(),
+  step: z.number().int().min(1).max(20).optional(),
+  visibleWhen: z
+    .object({
+      field: z.string(),
+      op: z.enum(['eq', 'neq', 'truthy', 'falsy']),
+      value: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
   validation: z
     .object({
       min: z.number().optional(),
@@ -40,7 +50,7 @@ export const cmsFormSettingsSchema = z.object({
   confirmationEmailEnabled: z.boolean(),
   confirmationSubject: z.string().optional(),
   confirmationBody: z.string().optional(),
-  spamProtection: z.enum(['none', 'honeypot']),
+  spamProtection: z.enum(['none', 'honeypot', 'turnstile']),
   multiStep: z.boolean(),
 });
 
@@ -63,6 +73,7 @@ export const cmsFormSubmitSchema = z.object({
   formId: z.string().min(1),
   data: z.record(z.unknown()),
   honeypot: z.string().optional(),
+  captchaToken: z.string().optional(),
 });
 
 export const cmsCollectionFieldSchema = z.object({
@@ -146,4 +157,8 @@ export const cmsMediaUpdateSchema = z.object({
   caption: z.string().optional(),
   folder: z.string().optional(),
   focalPoint: z.object({ x: z.number(), y: z.number() }).nullable().optional(),
+  variants: z
+    .array(z.object({ width: z.number().int().positive(), url: z.string() }))
+    .nullable()
+    .optional(),
 });

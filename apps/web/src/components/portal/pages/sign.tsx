@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel } from '@clcrm/types';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { PortalStickyBar, PortalStatusPill } from '@/components/portal/portal-mobile';
 import { LoadingState } from '@/components/ui/states';
@@ -39,11 +40,11 @@ function SigningBody() {
             className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">
-              {item.kind.replace(/_/g, ' ')}
+              {formatPortalStatusLabel(item.kind)}
             </p>
             <p className="mt-1 text-lg font-semibold text-stone-900">{item.title}</p>
             <div className="mt-2">
-              <PortalStatusPill>{item.status.replace(/_/g, ' ')}</PortalStatusPill>
+              <PortalStatusPill>{formatPortalStatusLabel(item.status)}</PortalStatusPill>
             </div>
             {item.detail && <p className="mt-2 text-base text-stone-500">{item.detail}</p>}
             {item.href ? (

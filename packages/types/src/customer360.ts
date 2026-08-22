@@ -291,6 +291,81 @@ export type JobRecord = AuditFields & {
   completedPhotoUrls: string[];
 };
 
+/** YL-S9 — null-safe display label for org pipeline stages / CRM job statuses. */
+export function formatJobStageLabel(stage: string | null | undefined): string {
+  const value = typeof stage === 'string' ? stage.trim() : '';
+  if (!value) return 'Unknown';
+  return value
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+/**
+ * YL-S9 — map CRM Job History status → org pipeline `stage`.
+ * Manual customer jobs enter the board at `accepted_proposal` (not orphan `pending`).
+ */
+export function mapCrmJobStatusToOrgStage(status: JobStatus | string | null | undefined): string {
+  switch (status) {
+    case 'scheduled':
+      return 'scheduled';
+    case 'in_progress':
+      return 'scheduled';
+    case 'completed':
+      return 'installed';
+    case 'cancelled':
+      return 'lost';
+    case 'draft':
+    default:
+      return 'accepted_proposal';
+  }
+}
+
+/** YL-S9 — map org pipeline `stage` → CRM Job History `status`. */
+export function mapOrgJobStageToCrmStatus(stage: string | null | undefined): JobStatus {
+  switch (stage) {
+    case 'scheduled':
+      return 'scheduled';
+    case 'installed':
+    case 'removal_scheduled':
+    case 'removed':
+    case 'review_requested':
+    case 'complete':
+      return 'completed';
+    case 'lost':
+      return 'cancelled';
+    case 'draft_proposal':
+    case 'sent_proposal':
+    case 'accepted_proposal':
+    case 'invoiced':
+    case 'deposit_paid':
+    case 'inventory_reserved':
+    case 'pending':
+    default:
+      return 'draft';
+  }
+}
+
+/** YL-S9 — staff may reserve inventory after accept / invoice / deposit. */
+export function canReserveJobInventory(stage: string | null | undefined): boolean {
+  return stage === 'accepted_proposal' || stage === 'invoiced' || stage === 'deposit_paid';
+}
+
+/** YL-S9 — staff may schedule from mid-pipeline prep stages. */
+export function canScheduleJob(stage: string | null | undefined): boolean {
+  return (
+    stage === 'accepted_proposal' ||
+    stage === 'invoiced' ||
+    stage === 'deposit_paid' ||
+    stage === 'inventory_reserved'
+  );
+}
+
+/** YL-S9 — mark installed when scheduled (or reserved if schedule was skipped). */
+export function canMarkJobInstalled(stage: string | null | undefined): boolean {
+  return stage === 'scheduled' || stage === 'inventory_reserved';
+}
+
 export type StorageInventoryItem = AuditFields & {
   id: string;
   customerId: string;

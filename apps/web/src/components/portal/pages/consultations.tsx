@@ -2,6 +2,7 @@
 
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel } from '@clcrm/types';
 import { formatDate } from '@clcrm/ui';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { LoadingState } from '@/components/ui/states';
@@ -33,10 +34,10 @@ function ConsultationsBody() {
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="font-semibold capitalize text-stone-900">
-                {c.consultationType.replace(/_/g, ' ')}
+                {formatPortalStatusLabel(c.consultationType)}
               </p>
               <p className="mt-1 text-sm capitalize text-stone-500">
-                {c.status.replace(/_/g, ' ')}
+                {formatPortalStatusLabel(c.status)}
               </p>
             </div>
             {c.scheduledAt && <p className="text-sm text-stone-700">{formatDate(c.scheduledAt)}</p>}

@@ -33,7 +33,13 @@ export type ReminderStage =
   | 'overdue_21'
   | 'overdue_30';
 
-export type ReminderStatus = 'scheduled' | 'sent' | 'skipped' | 'paused' | 'cancelled';
+export type ReminderStatus =
+  | 'scheduled'
+  | 'recorded'
+  | 'sent'
+  | 'skipped'
+  | 'paused'
+  | 'cancelled';
 
 export type ReminderChannel = 'email' | 'sms';
 
@@ -288,8 +294,63 @@ export function normalizeInvoiceStatus(status: string): InvoiceStatus {
   const map: Record<string, InvoiceStatus> = {
     partial: 'partially_paid',
     void: 'cancelled',
+    canceled: 'cancelled',
   };
   return (map[status] ?? status) as InvoiceStatus;
+}
+
+/** YL-S13 — null-safe invoice / payment method labels. */
+export function formatInvoiceStatusLabel(value: string | null | undefined): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return 'Unknown';
+  const normalized = normalizeInvoiceStatus(text);
+  return String(normalized)
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+/**
+ * YL-S13 — server-authoritative next charge amount (deposit-first, then balance).
+ * Pure helper shared by checkout, pay page, and portal billing.
+ */
+export function invoicePayableCents(invoice: {
+  status?: string | null;
+  subtotalCents?: number | null;
+  amountPaidCents?: number | null;
+  depositCents?: number | null;
+}): { payable: boolean; amountCents: number; reason?: string } {
+  const status = normalizeInvoiceStatus(String(invoice.status ?? 'draft').toLowerCase());
+  if (['paid', 'cancelled', 'draft', 'refunded'].includes(status)) {
+    return { payable: false, amountCents: 0, reason: 'INVALID_STATE' };
+  }
+  const subtotal = Math.max(0, Number(invoice.subtotalCents ?? 0));
+  const paid = Math.max(0, Number(invoice.amountPaidCents ?? 0));
+  const balance = Math.max(0, subtotal - paid);
+  if (balance <= 0) {
+    return { payable: false, amountCents: 0, reason: 'INVALID_STATE' };
+  }
+  const deposit = Number(invoice.depositCents ?? 0);
+  if (deposit > 0) {
+    const depositDue = Math.max(0, deposit - paid);
+    if (depositDue > 0) {
+      return { payable: true, amountCents: Math.min(depositDue, balance) };
+    }
+  }
+  return { payable: true, amountCents: balance };
+}
+
+/** YL-S13 — classify a payment for AR activity / subcollection rows. */
+export function inferInvoicePaymentType(
+  invoice: { subtotalCents: number; amountPaidCents: number; depositCents?: number | null },
+  amountCents: number,
+): PaymentType {
+  const newPaid = invoice.amountPaidCents + amountCents;
+  const balanceAfter = invoice.subtotalCents - newPaid;
+  if (balanceAfter <= 0) return 'final';
+  const depositDue = Math.max(0, (invoice.depositCents ?? 0) - invoice.amountPaidCents);
+  if (depositDue > 0 && amountCents <= depositDue) return 'deposit';
+  return 'partial';
 }
 
 export function computeBalanceDue(invoice: Pick<InvoiceRecord, 'subtotalCents' | 'amountPaidCents'>): number {

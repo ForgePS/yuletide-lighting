@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatScheduleLabel } from '@clcrm/types';
 import { formatDate } from '@clcrm/ui';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { LoadingState } from '@/components/ui/states';
@@ -33,7 +34,7 @@ function JobDetailBody({ jobId }: { jobId: string }) {
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <p className="text-xs font-medium uppercase tracking-wide text-stone-500">Status</p>
         <h3 className="mt-1 text-xl font-bold text-stone-900">{data.title}</h3>
-        <p className="mt-1 text-sm capitalize text-stone-600">{data.stage.replace(/_/g, ' ')}</p>
+        <p className="mt-1 text-sm capitalize text-stone-600">{formatScheduleLabel(data.stage)}</p>
         {data.approvedPackageName && (
           <p className="mt-2 text-sm text-stone-600">Package: {data.approvedPackageName}</p>
         )}
@@ -46,7 +47,7 @@ function JobDetailBody({ jobId }: { jobId: string }) {
             <p className="mt-2 text-sm text-stone-700">
               {formatDate(data.schedule.startAt)}
               <span className="ml-2 capitalize text-stone-500">
-                {data.schedule.dispatchStatus.replace(/_/g, ' ')}
+                {formatScheduleLabel(data.schedule.dispatchStatus)}
               </span>
             </p>
           ) : data.scheduledStart ? (

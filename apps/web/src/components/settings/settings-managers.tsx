@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { trpc } from '@/lib/trpc';
+import { useToast } from '@/lib/toast';
 import { roleLabel, SETTINGS_ROLES, USER_STATUSES } from '@/lib/settings-utils';
 import { FormField, SaveButton, SettingsError, SettingsLoading, SettingsSection, ToggleField, useSettingsSave } from './settings-widgets';
 import type { PermissionAction, PermissionResource, PermissionMatrix } from '@clcrm/types';
@@ -45,9 +47,10 @@ export function UserManagerPage() {
   const saveHandlers = useSettingsSave(() => refetch());
   const updateUser = trpc.settings360.updateUser.useMutation(saveHandlers);
   const inviteUser = trpc.settings360.inviteUser.useMutation({
-    onSuccess: () => {
+    onSuccess: (result) => {
       refetch();
       setInvite({ email: '', firstName: '', lastName: '', role: 'office_staff', department: '' });
+      setLastInviteLink(result.inviteUrl);
       saveHandlers.onSuccess();
     },
     onError: saveHandlers.onError,
@@ -55,6 +58,7 @@ export function UserManagerPage() {
   const [drafts, setDrafts] = useState<Record<string, UserDraft>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [invite, setInvite] = useState({ email: '', firstName: '', lastName: '', role: 'office_staff' as (typeof SETTINGS_ROLES)[number], department: '' });
+  const [lastInviteLink, setLastInviteLink] = useState<string | null>(null);
 
   useEffect(() => {
     if (!data) return;
@@ -97,7 +101,27 @@ export function UserManagerPage() {
 
   return (
     <div className="space-y-6">
-      <SettingsSection title="Add team member" description="Invite someone by email. They appear as pending until they sign up.">
+      <SettingsSection title="Add team member" description="Invite someone by email. Copy the invite link — email delivery is not automatic unless REAL_EMAIL is enabled.">
+        {lastInviteLink ? (
+          <div className="mb-4 rounded-xl border border-stone-200 bg-stone-50 p-3 text-sm">
+            <p className="font-medium text-stone-800">Invite link (copy now — shown once)</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <code className="break-all text-xs text-stone-700">{lastInviteLink}</code>
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                onClick={() => {
+                  void navigator.clipboard.writeText(lastInviteLink);
+                }}
+              >
+                Copy
+              </button>
+              <button type="button" className="text-xs text-stone-500 underline" onClick={() => setLastInviteLink(null)}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
         <form
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
           onSubmit={(e) => {
@@ -319,12 +343,87 @@ export function IntegrationCenterPage() {
   const { data, isLoading, refetch } = trpc.settings360.integrations.useQuery();
   const saveHandlers = useSettingsSave(() => refetch());
   const update = trpc.settings360.updateIntegration.useMutation(saveHandlers);
+  const { toast } = useToast();
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [stripeStatus, setStripeStatus] = useState<{
+    platformConfigured: boolean;
+    connected: boolean;
+    chargesEnabled: boolean;
+    detailsSubmitted: boolean;
+    accountId: string | null;
+    message?: string;
+  } | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const searchParams = useSearchParams();
+
+  async function loadStripeStatus() {
+    try {
+      const res = await fetch('/api/stripe/billing');
+      const json = (await res.json()) as typeof stripeStatus;
+      setStripeStatus(json);
+      return json;
+    } catch {
+      setStripeStatus(null);
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    void loadStripeStatus();
+  }, []);
+
+  useEffect(() => {
+    const flag = searchParams.get('stripe');
+    if (!flag) return;
+    void (async () => {
+      const status = await loadStripeStatus();
+      if (flag === 'success') {
+        if (status?.connected) {
+          toast('Stripe Connect is active — payouts can receive invoice payments.', 'success');
+          update.mutate({ integrationId: 'stripe', enabled: true });
+        } else {
+          toast(
+            'Returned from Stripe. Finish any remaining onboarding steps if Connect is still incomplete.',
+            'success',
+          );
+        }
+        void refetch();
+      } else if (flag === 'refresh') {
+        toast('Stripe onboarding was interrupted. Click Connect Stripe to continue.', 'error');
+      }
+    })();
+  }, [searchParams]);
 
   async function connectStripe() {
-    const res = await fetch('/api/stripe/billing', { method: 'POST' });
-    const { url } = await res.json();
-    if (url) window.location.href = url;
+    setConnecting(true);
+    try {
+      const res = await fetch('/api/stripe/billing', { method: 'POST' });
+      const body = (await res.json()) as {
+        url?: string | null;
+        error?: string;
+        alreadyConnected?: boolean;
+      };
+      if (!res.ok) {
+        toast(body.error || 'Could not start Stripe Connect', 'error');
+        return;
+      }
+      if (body.alreadyConnected) {
+        toast('Stripe is already connected for this organization.', 'success');
+        update.mutate({ integrationId: 'stripe', enabled: true });
+        void loadStripeStatus();
+        void refetch();
+        return;
+      }
+      if (body.url) {
+        window.location.href = body.url;
+        return;
+      }
+      toast('Stripe did not return an onboarding link.', 'error');
+    } catch {
+      toast('Could not reach Stripe Connect. Check your connection and try again.', 'error');
+    } finally {
+      setConnecting(false);
+    }
   }
 
   if (isLoading) return <SettingsLoading />;
@@ -352,18 +451,42 @@ export function IntegrationCenterPage() {
                 <div>
                   <p className="font-medium">{integration.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {integration.availability === 'planned'
-                      ? 'Planned — not available yet'
-                      : integration.availability === 'unavailable'
-                        ? 'Unavailable'
-                        : integration.configured
-                          ? 'Configured'
-                          : 'Not configured'}
+                    {integration.id === 'stripe' && stripeStatus
+                      ? stripeStatus.connected
+                        ? `Connected${stripeStatus.accountId ? ` · ${stripeStatus.accountId}` : ''}`
+                        : stripeStatus.platformConfigured
+                          ? stripeStatus.accountId
+                            ? 'Onboarding incomplete — click Connect to resume'
+                            : 'Platform keys set — not connected yet'
+                          : 'Platform keys missing (STRIPE_SECRET_KEY)'
+                      : integration.availability === 'planned'
+                        ? 'Planned — not available yet'
+                        : integration.availability === 'unavailable'
+                          ? 'Unavailable'
+                          : integration.configured
+                            ? 'Configured'
+                            : 'Not configured'}
                   </p>
+                  {integration.id === 'stripe' && stripeStatus?.message ? (
+                    <p className="mt-1 text-xs text-amber-800">{stripeStatus.message}</p>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-3">
                   {integration.id === 'stripe' && integration.connectable !== false && (
-                    <button type="button" className="btn-secondary text-sm" onClick={connectStripe}>Connect Stripe</button>
+                    <button
+                      type="button"
+                      className="btn-secondary text-sm"
+                      onClick={() => void connectStripe()}
+                      disabled={connecting || stripeStatus?.platformConfigured === false}
+                    >
+                      {connecting
+                        ? 'Opening Stripe…'
+                        : stripeStatus?.connected
+                          ? 'Reconnect / refresh'
+                          : stripeStatus?.accountId
+                            ? 'Continue Stripe setup'
+                            : 'Connect Stripe'}
+                    </button>
                   )}
                   {integration.connectable && !integration.configured && integration.id !== 'stripe' && (
                     <input

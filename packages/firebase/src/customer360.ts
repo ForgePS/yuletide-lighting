@@ -16,11 +16,13 @@ import type {
   HealthRating,
   InstallComplexity,
   JobRecord,
+  JobType,
   Property,
   PropertyListEntry,
   PropertyProfileType,
   StorageInventoryItem,
 } from '@clcrm/types';
+import { mapCrmJobStatusToOrgStage, mapOrgJobStageToCrmStatus } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import type { CustomerRecord, PropertyRecord } from './firestore';
 import { getCustomer, updateCustomer, colUpdate, colDelete } from './firestore';
@@ -465,8 +467,122 @@ export async function updateDesign(
   return subUpdate(orgId, customerId, 'designs', designId, data, userId) as Promise<DesignRecord>;
 }
 
-export async function listCustomerJobs(orgId: string, customerId: string) {
-  return subList<JobRecord>(orgId, customerId, 'jobs');
+type OrgJobListRow = {
+  id: string;
+  customerId?: string;
+  propertyId?: string | null;
+  propertyName?: string | null;
+  jobType?: string | null;
+  title?: string | null;
+  stage?: string | null;
+  status?: string | null;
+  scheduledStart?: Date | null;
+  scheduledDate?: Date | null;
+  scheduledEnd?: Date | null;
+  completionDate?: Date | null;
+  installedAt?: Date | null;
+  assignedCrewUserId?: string | null;
+  assignedCrewIds?: string[];
+  assignedCrewNames?: string[];
+  laborHours?: number | null;
+  materialsUsed?: string | null;
+  revenueCents?: number | null;
+  subtotalCents?: number | null;
+  crewNotes?: string | null;
+  installNotes?: string | null;
+  beforePhotoUrls?: string[];
+  duringPhotoUrls?: string[];
+  completedPhotoUrls?: string[];
+  createdAt?: Date;
+  updatedAt?: Date;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+};
+
+/** YL-S9 — project org jobs collection rows into CRM Job History shape. */
+export function mapOrgJobToCustomerJobRecord(raw: OrgJobListRow): JobRecord {
+  const crewId = raw.assignedCrewUserId ? [raw.assignedCrewUserId] : [];
+  return {
+    id: raw.id,
+    customerId: raw.customerId ?? '',
+    propertyId: raw.propertyId ?? null,
+    propertyName: raw.propertyName ?? null,
+    jobType: (raw.jobType as JobType) || 'installation',
+    title: raw.title?.trim() || 'Job',
+    scheduledDate: raw.scheduledDate ?? raw.scheduledStart ?? null,
+    completionDate: raw.completionDate ?? raw.installedAt ?? null,
+    assignedCrewIds: raw.assignedCrewIds?.length ? raw.assignedCrewIds : crewId,
+    assignedCrewNames: raw.assignedCrewNames ?? [],
+    laborHours: raw.laborHours ?? null,
+    materialsUsed: raw.materialsUsed ?? null,
+    revenueCents: raw.revenueCents ?? raw.subtotalCents ?? 0,
+    status: (() => {
+      if (raw.stage) return mapOrgJobStageToCrmStatus(raw.stage);
+      const crm = raw.status;
+      if (
+        crm === 'draft' ||
+        crm === 'scheduled' ||
+        crm === 'in_progress' ||
+        crm === 'completed' ||
+        crm === 'cancelled'
+      ) {
+        return crm;
+      }
+      return mapOrgJobStageToCrmStatus(crm);
+    })(),
+    crewNotes: raw.crewNotes ?? raw.installNotes ?? null,
+    beforePhotoUrls: raw.beforePhotoUrls ?? [],
+    duringPhotoUrls: raw.duringPhotoUrls ?? [],
+    completedPhotoUrls: raw.completedPhotoUrls ?? [],
+    createdAt: raw.createdAt ?? new Date(0),
+    updatedAt: raw.updatedAt ?? new Date(0),
+    createdBy: raw.createdBy ?? null,
+    updatedBy: raw.updatedBy ?? null,
+  };
+}
+
+function normalizeLegacyJobRecord(job: JobRecord): JobRecord {
+  return {
+    ...job,
+    jobType: job.jobType || 'installation',
+    assignedCrewIds: job.assignedCrewIds ?? [],
+    assignedCrewNames: job.assignedCrewNames ?? [],
+    revenueCents: job.revenueCents ?? 0,
+    status: job.status ?? 'draft',
+    beforePhotoUrls: job.beforePhotoUrls ?? [],
+    duringPhotoUrls: job.duringPhotoUrls ?? [],
+    completedPhotoUrls: job.completedPhotoUrls ?? [],
+  };
+}
+
+export async function listCustomerJobs(orgId: string, customerId: string): Promise<JobRecord[]> {
+  // YL-S9: creates go to org jobs; nested customers/{id}/jobs is legacy-only.
+  const db = getAdminFirestore();
+  const snap = await db
+    .collection(`organizations/${orgId}/jobs`)
+    .where('customerId', '==', customerId)
+    .get();
+  const orgJobs = snap.docs.map((d) =>
+    mapOrgJobToCustomerJobRecord(mapTimestampsFromData({ id: d.id, ...d.data() }) as OrgJobListRow),
+  );
+  const seen = new Set(orgJobs.map((j) => j.id));
+  let nested: JobRecord[] = [];
+  try {
+    nested = await subList<JobRecord>(orgId, customerId, 'jobs');
+  } catch {
+    nested = [];
+  }
+  for (const job of nested) {
+    if (!seen.has(job.id)) {
+      orgJobs.push(normalizeLegacyJobRecord(job));
+      seen.add(job.id);
+    }
+  }
+  return orgJobs.sort((a, b) => {
+    const at = a.scheduledDate?.getTime?.() ?? a.createdAt?.getTime?.() ?? 0;
+    const bt = b.scheduledDate?.getTime?.() ?? b.createdAt?.getTime?.() ?? 0;
+    return bt - at;
+  });
 }
 
 export async function createCustomerJob(
@@ -481,22 +597,26 @@ export async function createCustomerJob(
   const { emitLegacyPathDeprecation } = await import('./compat-metrics');
   emitLegacyPathDeprecation('jobs', 'createCustomerJob→createOrgJob');
   const { createOrgJob } = await import('./record-paths');
+  const explicitStage = (data as { stage?: string }).stage;
+  const stage = explicitStage ?? mapCrmJobStatusToOrgStage(data.status);
   const created = await createOrgJob(orgId, {
     customerId,
-    title: (data as { title?: string }).title ?? 'Job',
-    stage: (data as { stage?: string }).stage,
-    propertyId: (data as { propertyId?: string | null }).propertyId,
+    title: data.title ?? 'Job',
+    stage,
+    propertyId: data.propertyId,
     proposalId: (data as { proposalId?: string | null }).proposalId,
-    jobType: (data as { jobType?: string | null }).jobType,
-    subtotalCents: (data as { subtotalCents?: number | null }).subtotalCents,
-    installNotes: (data as { installNotes?: string | null }).installNotes,
+    jobType: data.jobType,
+    subtotalCents: data.revenueCents ?? (data as { subtotalCents?: number | null }).subtotalCents,
+    installNotes: data.crewNotes ?? (data as { installNotes?: string | null }).installNotes,
     internalNotes: (data as { internalNotes?: string | null }).internalNotes,
-    assignedCrewUserId: (data as { assignedCrewUserId?: string | null }).assignedCrewUserId,
-    scheduledStart: (data as { scheduledStart?: Date | null }).scheduledStart,
-    scheduledEnd: (data as { scheduledEnd?: Date | null }).scheduledEnd,
+    assignedCrewUserId:
+      data.assignedCrewIds?.[0] ?? (data as { assignedCrewUserId?: string | null }).assignedCrewUserId,
+    scheduledStart:
+      data.scheduledDate ?? (data as { scheduledStart?: Date | null }).scheduledStart ?? null,
+    scheduledEnd: (data as { scheduledEnd?: Date | null }).scheduledEnd ?? null,
   });
   void userId;
-  return created as unknown as JobRecord;
+  return mapOrgJobToCustomerJobRecord(created as OrgJobListRow);
 }
 
 export async function updateCustomerJob(
@@ -509,7 +629,18 @@ export async function updateCustomerJob(
   const { emitLegacyPathDeprecation } = await import('./compat-metrics');
   emitLegacyPathDeprecation('jobs', 'updateCustomerJob→org jobs');
   void userId;
-  return colUpdate(orgId, 'jobs', jobId, { ...data, customerId }) as Promise<JobRecord>;
+  const patch: Record<string, unknown> = { ...data, customerId };
+  if (data.status != null && (data as { stage?: string }).stage == null) {
+    patch.stage = mapCrmJobStatusToOrgStage(data.status);
+  }
+  if (data.scheduledDate !== undefined && (data as { scheduledStart?: Date | null }).scheduledStart == null) {
+    patch.scheduledStart = data.scheduledDate;
+  }
+  if (data.revenueCents !== undefined && (data as { subtotalCents?: number | null }).subtotalCents == null) {
+    patch.subtotalCents = data.revenueCents;
+  }
+  const updated = await colUpdate(orgId, 'jobs', jobId, patch);
+  return mapOrgJobToCustomerJobRecord(updated as OrgJobListRow);
 }
 
 export async function deleteCustomerJob360(orgId: string, customerId: string, jobId: string) {

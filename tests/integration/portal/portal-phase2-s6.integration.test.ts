@@ -659,7 +659,7 @@ describe('P2-S6 proposal public-token flows', () => {
 });
 
 describe('P2-S6 agreement draft + replay', () => {
-  it('signs draft agreement and replays without error', async () => {
+  it('YL-S8 denies signing draft until awaiting_signature', async () => {
     const token = `s6-draft-agr-${Date.now()}`;
     await colCreate(owners.a2.orgId, 'multiYearAgreements', {
       customerId: owners.a2.customerId,
@@ -670,7 +670,23 @@ describe('P2-S6 agreement draft + replay', () => {
       startSeason: 2026,
       endSeason: 2027,
     });
-    const first = await recordAgreementSignature(token, { signedByName: 'Draft Signer' });
+    await expect(
+      recordAgreementSignature(token, { signedByName: 'Draft Signer' }),
+    ).rejects.toThrow(/not available for signature/i);
+  });
+
+  it('signs awaiting_signature agreement and replays without error', async () => {
+    const token = `s6-await-agr-${Date.now()}`;
+    await colCreate(owners.a2.orgId, 'multiYearAgreements', {
+      customerId: owners.a2.customerId,
+      organizationId: owners.a2.orgId,
+      title: 'Awaiting agreement',
+      status: 'awaiting_signature',
+      publicToken: token,
+      startSeason: 2026,
+      endSeason: 2027,
+    });
+    const first = await recordAgreementSignature(token, { signedByName: 'Await Signer' });
     expect(first).toBeTruthy();
     const second = await recordAgreementSignature(token, { signedByName: 'Replay' });
     expect(second).toBeTruthy();
@@ -797,7 +813,7 @@ describe('P2-S6 transition matrix coverage', () => {
     ['proposal', 'approved', 'draft', false],
     ['proposal', 'draft', 'approved', false],
     ['agreement', 'awaiting_signature', 'active', true],
-    ['agreement', 'draft', 'active', true],
+    ['agreement', 'draft', 'active', false],
     ['agreement', 'active', 'active', false],
     ['agreement', 'completed', 'active', false],
     ['mockup', 'in_review', 'approved', true],

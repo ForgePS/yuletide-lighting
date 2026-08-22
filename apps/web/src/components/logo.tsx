@@ -14,7 +14,7 @@ type LogoProps = {
 };
 
 const sizes = {
-  full: { width: 180, height: 72, markHeight: 48 },
+  full: { width: 240, height: 120, markHeight: 48 },
   mark: { width: 48, height: 48, markHeight: 48 },
 };
 
@@ -22,7 +22,7 @@ export function Logo({
   href = '/',
   className,
   imageClassName,
-  src = '/logo.svg',
+  src = '/logo.png',
   variant = 'full',
   priority = false,
   onClick,

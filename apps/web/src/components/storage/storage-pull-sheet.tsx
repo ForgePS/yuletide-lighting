@@ -1,6 +1,7 @@
 'use client';
 
 import type { StoragePullSheet } from '@clcrm/types';
+import { formatStoredItemConditionLabel } from '@clcrm/types';
 
 export function StoragePullSheetView({ sheet }: { sheet: StoragePullSheet }) {
   return (
@@ -42,7 +43,7 @@ export function StoragePullSheetView({ sheet }: { sheet: StoragePullSheet }) {
                   <tr key={idx} className="border-b border-dashed">
                     <td className="py-1">{item.name}</td>
                     <td className="py-1">{item.quantity}</td>
-                    <td className="py-1 capitalize">{item.condition}</td>
+                    <td className="py-1 capitalize">{formatStoredItemConditionLabel(item.condition)}</td>
                   </tr>
                 ))}
               </tbody>

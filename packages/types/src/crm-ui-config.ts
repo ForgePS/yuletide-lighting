@@ -118,7 +118,7 @@ export const DEFAULT_CRM_NAV_ITEMS: CrmNavItemConfig[] = [
   { key: 'properties', label: 'Properties', href: '/app/properties', enabled: true, order: 4, section: 'sales', moduleKey: 'customers', permissionResource: 'customers' },
   { key: 'mockups', label: 'Mockups', href: '/app/mockups', enabled: true, order: 5, section: 'sales', moduleKey: 'mockups', permissionResource: 'mockups' },
   { key: 'proposals', label: 'Proposals', href: '/app/proposals', enabled: true, order: 6, section: 'sales', moduleKey: 'proposals', permissionResource: 'proposals' },
-  { key: 'agreements', label: 'Agreements', href: '/app/agreements', enabled: true, order: 7, section: 'sales', permissionResource: 'proposals' },
+  { key: 'agreements', label: 'Agreements', href: '/app/agreements', enabled: true, order: 7, section: 'sales', moduleKey: 'proposals', permissionResource: 'proposals' },
   { key: 'commercial', label: 'Commercial Accounts', href: '/app/commercial', enabled: true, order: 8, section: 'sales', moduleKey: 'commercial', permissionResource: 'customers' },
   { key: 'rebooking', label: 'Rebooking', href: '/app/rebooking', enabled: true, order: 9, section: 'sales', moduleKey: 'rebooking', permissionResource: 'customers' },
   { key: 'jobs', label: 'Jobs', href: '/app/jobs', enabled: true, order: 10, section: 'operations', moduleKey: 'jobs', permissionResource: 'jobs' },
@@ -136,7 +136,7 @@ export const DEFAULT_CRM_NAV_ITEMS: CrmNavItemConfig[] = [
   { key: 'sign_tracker', label: 'Sign Tracker', href: '/app/marketing/sign-tracker', enabled: true, order: 22, section: 'marketing', moduleKey: 'sign_tracker', permissionResource: 'sign_tracker' },
   { key: 'automation', label: 'Automation', href: '/app/automation', enabled: true, order: 23, section: 'administration', moduleKey: 'automation' },
   { key: 'reports', label: 'Reports', href: '/app/reports', enabled: true, order: 24, section: 'administration', moduleKey: 'reports', permissionResource: 'reports' },
-  { key: 'settings', label: 'Settings', href: '/app/settings', enabled: true, order: 25, section: 'administration' },
+  { key: 'settings', label: 'Settings', href: '/app/settings', enabled: true, order: 25, section: 'administration', permissionResource: 'settings' },
 ];
 
 export const DEFAULT_CRM_UI_CONFIG: CrmUiConfig = {
@@ -160,6 +160,23 @@ function withSectionDefaults(item: CrmNavItemConfig): CrmNavItemConfig {
   return { ...item, section: fromDefault?.section ?? 'administration' };
 }
 
+/** YL-S18 — null-safe nav / CRM label. */
+export function formatCrmNavLabel(value: string | null | undefined, fallback = 'Untitled'): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text || fallback;
+}
+
+/** YL-S18 — apply optional labelOverrides (`nav.{key}` or arbitrary CRM keys). */
+export function applyCrmLabelOverride(
+  overrides: CrmLabelOverrides | null | undefined,
+  key: string,
+  fallback: string,
+): string {
+  const raw = overrides?.[key];
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  return formatCrmNavLabel(fallback);
+}
+
 /** Resolve visible nav for an org given modules + UI config (+ optional permissions). Fail closed on modules. */
 export function resolveCrmNavItems(
   config: CrmUiConfig,
@@ -177,6 +194,11 @@ export function resolveCrmNavItems(
       const res = item.permissionResource;
       return permissions[res]?.view || permissions[res]?.edit || permissions[res]?.create;
     })
+    .map((item) => ({
+      ...item,
+      label: applyCrmLabelOverride(config.labelOverrides, `nav.${item.key}`, item.label),
+      href: typeof item.href === 'string' && item.href.trim() ? item.href.trim() : '/app',
+    }))
     .sort((a, b) => a.order - b.order);
 }
 
@@ -185,7 +207,11 @@ export function groupNavItemsBySection(items: CrmNavItemConfig[]) {
   for (const section of CRM_NAV_SECTION_ORDER) {
     const sectionItems = items.filter((i) => i.section === section);
     if (!sectionItems.length) continue;
-    groups.push({ section, label: CRM_NAV_SECTION_LABELS[section], items: sectionItems });
+    groups.push({
+      section,
+      label: formatCrmNavLabel(CRM_NAV_SECTION_LABELS[section], section),
+      items: sectionItems,
+    });
   }
   return groups;
 }

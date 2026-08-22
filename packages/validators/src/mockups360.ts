@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mediaReferenceSchema, optionalMediaReferenceSchema } from './media';
+import { publicAccessTokenSchema } from './public-token';
 
 export const mockupStatusSchema = z.enum(['draft', 'in_review', 'approved', 'revision_requested', 'archived']);
 export const lightTypeSchema = z.enum(['c7', 'c9', 'rgb', 'permanent', 'mini', 'custom']);
@@ -81,7 +82,7 @@ export const linkMockupProposalSchema = z.object({
 });
 
 export const mockupCustomerApprovalSchema = z.object({
-  token: z.string().min(8),
+  token: publicAccessTokenSchema,
   action: z.enum(['approved', 'revision_requested']),
   customerName: z.string().max(200).optional(),
   notes: z.string().max(2000).optional(),

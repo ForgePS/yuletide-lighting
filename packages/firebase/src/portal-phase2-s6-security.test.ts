@@ -137,6 +137,78 @@ describe('P2-S6 payment amount authority', () => {
     if (prev === undefined) delete process.env.FIRESTORE_EMULATOR_HOST;
     else process.env.FIRESTORE_EMULATOR_HOST = prev;
   });
+
+  it('YL-S26: sk_live without PORTAL_ALLOW_LIVE_PAYMENTS stays safe', () => {
+    const prevKey = process.env.STRIPE_SECRET_KEY;
+    const prevAllow = process.env.PORTAL_ALLOW_LIVE_PAYMENTS;
+    const prevSafe = process.env.PORTAL_PAYMENT_SAFE_MODE;
+    const prevFs = process.env.FIRESTORE_EMULATOR_HOST;
+    const prevAuth = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    delete process.env.PORTAL_PAYMENT_SAFE_MODE;
+    delete process.env.FIRESTORE_EMULATOR_HOST;
+    delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    delete process.env.PORTAL_ALLOW_LIVE_PAYMENTS;
+    process.env.STRIPE_SECRET_KEY = 'sk_live_test_placeholder';
+    expect(portalPaymentSafeMode()).toBe(true);
+    if (prevKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = prevKey;
+    if (prevAllow === undefined) delete process.env.PORTAL_ALLOW_LIVE_PAYMENTS;
+    else process.env.PORTAL_ALLOW_LIVE_PAYMENTS = prevAllow;
+    if (prevSafe === undefined) delete process.env.PORTAL_PAYMENT_SAFE_MODE;
+    else process.env.PORTAL_PAYMENT_SAFE_MODE = prevSafe;
+    if (prevFs === undefined) delete process.env.FIRESTORE_EMULATOR_HOST;
+    else process.env.FIRESTORE_EMULATOR_HOST = prevFs;
+    if (prevAuth === undefined) delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    else process.env.FIREBASE_AUTH_EMULATOR_HOST = prevAuth;
+  });
+
+  it('YL-S26: sk_live + PORTAL_ALLOW_LIVE_PAYMENTS=1 exits safe mode', () => {
+    const prevKey = process.env.STRIPE_SECRET_KEY;
+    const prevAllow = process.env.PORTAL_ALLOW_LIVE_PAYMENTS;
+    const prevSafe = process.env.PORTAL_PAYMENT_SAFE_MODE;
+    const prevFs = process.env.FIRESTORE_EMULATOR_HOST;
+    const prevAuth = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    delete process.env.PORTAL_PAYMENT_SAFE_MODE;
+    delete process.env.FIRESTORE_EMULATOR_HOST;
+    delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    process.env.STRIPE_SECRET_KEY = 'sk_live_test_placeholder';
+    process.env.PORTAL_ALLOW_LIVE_PAYMENTS = '1';
+    expect(portalPaymentSafeMode()).toBe(false);
+    if (prevKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = prevKey;
+    if (prevAllow === undefined) delete process.env.PORTAL_ALLOW_LIVE_PAYMENTS;
+    else process.env.PORTAL_ALLOW_LIVE_PAYMENTS = prevAllow;
+    if (prevSafe === undefined) delete process.env.PORTAL_PAYMENT_SAFE_MODE;
+    else process.env.PORTAL_PAYMENT_SAFE_MODE = prevSafe;
+    if (prevFs === undefined) delete process.env.FIRESTORE_EMULATOR_HOST;
+    else process.env.FIRESTORE_EMULATOR_HOST = prevFs;
+    if (prevAuth === undefined) delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    else process.env.FIREBASE_AUTH_EMULATOR_HOST = prevAuth;
+  });
+
+  it('YL-S26: sk_test exits safe mode without live allow flag', () => {
+    const prevKey = process.env.STRIPE_SECRET_KEY;
+    const prevAllow = process.env.PORTAL_ALLOW_LIVE_PAYMENTS;
+    const prevSafe = process.env.PORTAL_PAYMENT_SAFE_MODE;
+    const prevFs = process.env.FIRESTORE_EMULATOR_HOST;
+    const prevAuth = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    delete process.env.PORTAL_PAYMENT_SAFE_MODE;
+    delete process.env.FIRESTORE_EMULATOR_HOST;
+    delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    delete process.env.PORTAL_ALLOW_LIVE_PAYMENTS;
+    process.env.STRIPE_SECRET_KEY = 'sk_test_placeholder';
+    expect(portalPaymentSafeMode()).toBe(false);
+    if (prevKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = prevKey;
+    if (prevAllow === undefined) delete process.env.PORTAL_ALLOW_LIVE_PAYMENTS;
+    else process.env.PORTAL_ALLOW_LIVE_PAYMENTS = prevAllow;
+    if (prevSafe === undefined) delete process.env.PORTAL_PAYMENT_SAFE_MODE;
+    else process.env.PORTAL_PAYMENT_SAFE_MODE = prevSafe;
+    if (prevFs === undefined) delete process.env.FIRESTORE_EMULATOR_HOST;
+    else process.env.FIRESTORE_EMULATOR_HOST = prevFs;
+    if (prevAuth === undefined) delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    else process.env.FIREBASE_AUTH_EMULATOR_HOST = prevAuth;
+  });
 });
 
 describe('P2-S6 mutation errors', () => {

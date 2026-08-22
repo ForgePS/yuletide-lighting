@@ -429,3 +429,45 @@ export function assertEmulatorPortalTokenMigration(): void {
     }
   }
 }
+
+/**
+ * YL-S12 — account is safe for HASH_ONLY lookups when hash is present and plaintext cleared.
+ * Does not flip production mode (BACKLOG-004).
+ */
+export function isPortalAccountHashReady(account: {
+  accessToken?: string | null;
+  accessTokenHash?: string | null;
+}): boolean {
+  const hash = typeof account.accessTokenHash === 'string' ? account.accessTokenHash.trim() : '';
+  const plaintext = typeof account.accessToken === 'string' ? account.accessToken.trim() : '';
+  return Boolean(hash) && !plaintext;
+}
+
+/** YL-S12 — org-level HASH_ONLY migrate-readiness summary (emulator tooling / staff audits). */
+export function summarizePortalHashReadiness(
+  accounts: Array<{ accessToken?: string | null; accessTokenHash?: string | null }>,
+): {
+  total: number;
+  hashReady: number;
+  stillHasPlaintext: number;
+  missingHash: number;
+  readyForHashOnly: boolean;
+} {
+  let hashReady = 0;
+  let stillHasPlaintext = 0;
+  let missingHash = 0;
+  for (const account of accounts) {
+    const hash = typeof account.accessTokenHash === 'string' ? account.accessTokenHash.trim() : '';
+    const plaintext = typeof account.accessToken === 'string' ? account.accessToken.trim() : '';
+    if (!hash) missingHash += 1;
+    if (plaintext) stillHasPlaintext += 1;
+    if (isPortalAccountHashReady(account)) hashReady += 1;
+  }
+  return {
+    total: accounts.length,
+    hashReady,
+    stillHasPlaintext,
+    missingHash,
+    readyForHashOnly: accounts.length > 0 && hashReady === accounts.length && stillHasPlaintext === 0,
+  };
+}

@@ -6,7 +6,7 @@ import type { CSSProperties } from 'react';
 import { logoDisplayUrl } from '@clcrm/types';
 import { AuthenticatedImage } from '@/components/authenticated-image';
 
-const DEFAULT_LOGO = '/logo.svg';
+const DEFAULT_LOGO = '/logo.png';
 
 type SidebarLogoProps = {
   href?: string;

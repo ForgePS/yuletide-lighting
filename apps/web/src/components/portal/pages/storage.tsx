@@ -2,6 +2,7 @@
 
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel, formatStoredItemConditionLabel } from '@clcrm/types';
 import { formatDate } from '@clcrm/ui';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { LoadingState } from '@/components/ui/states';
@@ -32,8 +33,8 @@ function StorageBody() {
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="font-semibold capitalize text-stone-900">
-                {String(rec.status).replace(/_/g, ' ')} ·{' '}
-                {String(rec.storageType).replace(/_/g, ' ')}
+                {formatPortalStatusLabel(String(rec.status))} ·{' '}
+                {formatPortalStatusLabel(String(rec.storageType))}
               </p>
               {rec.propertyAddress && (
                 <p className="text-sm text-stone-500">{rec.propertyAddress}</p>
@@ -54,12 +55,30 @@ function StorageBody() {
                 <li key={`${rec.id}-${idx}`} className="flex justify-between gap-2 text-stone-700">
                   <span>{item.name}</span>
                   <span className="text-stone-500">
-                    ×{item.quantity} · {item.condition}
+                    ×{item.quantity} · {formatStoredItemConditionLabel(item.condition)}
                   </span>
                 </li>
               ))}
             </ul>
           )}
+          {Array.isArray(rec.photos) && rec.photos.length > 0 ? (
+            <ul className="mt-3 flex flex-wrap gap-2 border-t border-stone-100 pt-3">
+              {rec.photos.map((photo) =>
+                photo.url ? (
+                  <li key={photo.id}>
+                    <a
+                      href={photo.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-red-800 underline"
+                    >
+                      View photo
+                    </a>
+                  </li>
+                ) : null,
+              )}
+            </ul>
+          ) : null}
         </li>
       ))}
     </ul>

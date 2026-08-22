@@ -194,17 +194,7 @@ export async function createPortalFileAccess(args: {
 
   const storagePath = resolvePortalStoragePath(scope.organizationId, args.sourceUrlOrPath);
   if (!storagePath) {
-    // External HTTPS URLs are not ticketed; do not expose permanent staff proxy paths.
-    // Compatibility: allow preview-only of https URLs that are not /api/files.
-    const raw = args.sourceUrlOrPath?.trim() ?? '';
-    if (raw.startsWith('https://') && !raw.includes('/api/files')) {
-      return {
-        ...denied,
-        canPreview: true,
-        canDownload: false,
-        accessUrl: null, // force UI to use controlled preview only if we add one later
-      };
-    }
+    // YL-S15: external HTTPS is not ticketed — deny (no previewable-null-URL dead-end).
     return denied;
   }
 

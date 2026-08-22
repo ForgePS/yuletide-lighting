@@ -6,6 +6,8 @@ import { useToast } from '@/lib/toast';
 import { PillSelect } from '@/components/ui/pill-select';
 import { AI_SUGGESTIONS, formatCurrency } from '@/lib/report-utils';
 import { ReportsLoading, ReportsError } from './reports-widgets';
+import { formatReportLabel, hasPermission } from '@clcrm/types';
+import { useAuth } from '@/lib/firebase-auth';
 
 export function AIAnalyticsAssistant() {
   const [question, setQuestion] = useState('');
@@ -87,6 +89,10 @@ export function CustomDashboardBuilder() {
   const [name, setName] = useState('');
   const [role, setRole] = useState<'owner' | 'sales_manager' | 'operations_manager' | 'crew_leader' | 'office_staff'>('owner');
   const { toast } = useToast();
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = !authLoading && !!idToken;
+  const { data: myPermissions } = trpc.settings360.myPermissions.useQuery(undefined, { enabled: ready });
+  const canCreate = myPermissions ? hasPermission(myPermissions, 'reports', 'create') : false;
   const { data, isLoading, isError, refetch } = trpc.reports360.customDashboards.useQuery({});
   const create = trpc.reports360.createDashboard.useMutation({
     onSuccess: () => {
@@ -103,6 +109,7 @@ export function CustomDashboardBuilder() {
 
   return (
     <div className="space-y-8">
+      {canCreate ? (
       <div className="card p-6">
         <h2 className="font-semibold">Create custom dashboard</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -115,10 +122,10 @@ export function CustomDashboardBuilder() {
             <option value="office_staff">Office staff</option>
           </select>
         </div>
-        <p className="mt-4 text-sm text-muted-foreground">Select widgets to include:</p>
+        <p className="mt-4 text-sm text-muted-foreground">Default widgets (first four saved):</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {widgets.map((w) => (
-            <span key={w} className="rounded border px-2 py-1 text-xs capitalize">{w.replace(/_/g, ' ')}</span>
+            <span key={w} className="rounded border px-2 py-1 text-xs capitalize">{formatReportLabel(w)}</span>
           ))}
         </div>
         <button
@@ -130,6 +137,7 @@ export function CustomDashboardBuilder() {
           Save dashboard
         </button>
       </div>
+      ) : null}
 
       <div className="card p-6">
         <h2 className="font-semibold">Saved dashboards</h2>
@@ -138,7 +146,7 @@ export function CustomDashboardBuilder() {
             <div key={d.id} className="flex items-center justify-between rounded-lg border p-4">
               <div>
                 <p className="font-medium">{d.name}</p>
-                <p className="text-xs text-muted-foreground capitalize">{d.role.replace(/_/g, ' ')} · {d.widgetIds.length} widgets{d.isDefault ? ' · default' : ''}</p>
+                <p className="text-xs text-muted-foreground capitalize">{formatReportLabel(d.role)} · {d.widgetIds.length} widgets{d.isDefault ? ' · default' : ''}</p>
               </div>
             </div>
           ))}
@@ -150,6 +158,10 @@ export function CustomDashboardBuilder() {
 
 export function ScheduledReportsManager() {
   const { toast } = useToast();
+  const { idToken, loading: authLoading } = useAuth();
+  const ready = !authLoading && !!idToken;
+  const { data: myPermissions } = trpc.settings360.myPermissions.useQuery(undefined, { enabled: ready });
+  const canRun = myPermissions ? hasPermission(myPermissions, 'reports', 'create') : false;
   const { data, isLoading, isError, refetch } = trpc.reports360.scheduledReports.useQuery();
   const run = trpc.reports360.runScheduledReport.useMutation({
     onSuccess: (r) => toast(`Report generated: ${r.reportName}`, 'success'),
@@ -178,11 +190,12 @@ export function ScheduledReportsManager() {
             {(data ?? []).map((r) => (
               <tr key={r.id}>
                 <td>{r.name}</td>
-                <td className="capitalize">{r.reportType}</td>
-                <td className="capitalize">{r.frequency}</td>
+                <td className="capitalize">{formatReportLabel(r.reportType)}</td>
+                <td className="capitalize">{formatReportLabel(r.frequency)}</td>
                 <td className="uppercase">{r.deliveryMethod}</td>
                 <td>{r.isActive ? 'Active' : 'Paused'}</td>
                 <td>
+                  {canRun ? (
                   <button
                     type="button"
                     className="text-sm text-primary hover:underline"
@@ -191,6 +204,7 @@ export function ScheduledReportsManager() {
                   >
                     Run now
                   </button>
+                  ) : null}
                 </td>
               </tr>
             ))}

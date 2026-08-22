@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { Plus, Search, Upload, FileText, ExternalLink } from 'lucide-react';
+import { Plus, Search, Upload, FileText, ExternalLink, Send, Copy, Link2 } from 'lucide-react';
 import type { MultiYearAgreement, MultiYearAgreementStatus } from '@clcrm/types';
+import { formatAgreementStatusLabel, isAgreementSignedStatus } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
@@ -23,16 +24,17 @@ function formatCurrency(cents: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100);
 }
 
-function statusLabel(status: MultiYearAgreementStatus) {
-  return status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function statusClass(status: MultiYearAgreementStatus) {
+function statusClass(status: MultiYearAgreementStatus | string | null | undefined) {
   if (status === 'active' || status === 'signed') return 'bg-emerald-500/10 text-emerald-700';
   if (status === 'awaiting_signature') return 'bg-sky-500/10 text-sky-700';
   if (status === 'renewal_due') return 'bg-amber-500/10 text-amber-700';
   if (status === 'cancelled') return 'bg-red-500/10 text-red-700';
   return 'bg-muted text-muted-foreground';
+}
+
+function publicAgreementUrl(token: string) {
+  if (typeof window === 'undefined') return `/a/${token}`;
+  return `${window.location.origin}/a/${token}`;
 }
 
 async function uploadAgreementFile(file: File) {
@@ -82,7 +84,7 @@ function AgreementForm({ onCancel, onSaved }: { onCancel: () => void; onSaved: (
           propertyId: '',
           propertyLabel: '',
           title,
-          status: 'active',
+          status: 'draft',
           optionCode,
           optionLabel,
           startSeason,
@@ -93,7 +95,7 @@ function AgreementForm({ onCancel, onSaved }: { onCancel: () => void; onSaved: (
           linkedProjectIds: [],
           notes: '',
           source: 'manual',
-          signedAt: new Date(),
+          signedAt: null,
           cancelledAt: null,
           nextRenewalDate: new Date(`${endSeason}-08-01T12:00:00`),
         });
@@ -355,6 +357,87 @@ function AssignCustomerControl({
   );
 }
 
+function AgreementActions({
+  agreement,
+  onChanged,
+}: {
+  agreement: MultiYearAgreement;
+  onChanged: () => void;
+}) {
+  const { toast } = useToast();
+  const utils = trpc.useUtils();
+  const send = trpc.agreements360.sendForSignature.useMutation({
+    onSuccess: async (updated) => {
+      toast('Sent for signature', 'success');
+      const token = updated?.publicToken;
+      if (token) {
+        try {
+          await navigator.clipboard.writeText(publicAgreementUrl(token));
+          toast('Signing link copied', 'success');
+        } catch {
+          /* clipboard optional */
+        }
+      }
+      await utils.agreements360.list.invalidate();
+      onChanged();
+    },
+    onError: (error) => toast(error.message || 'Could not send for signature', 'error'),
+  });
+
+  const canSend =
+    !isAgreementSignedStatus(agreement.status) &&
+    agreement.status !== 'completed' &&
+    agreement.status !== 'cancelled';
+
+  async function copyLink() {
+    const token = agreement.publicToken?.trim();
+    if (!token) {
+      toast('No signing link yet — send for signature first', 'error');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(publicAgreementUrl(token));
+      toast('Signing link copied', 'success');
+    } catch {
+      toast('Could not copy link', 'error');
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {canSend && (
+        <button
+          type="button"
+          className="btn-secondary px-2 py-1 text-xs"
+          disabled={send.isPending}
+          onClick={() => send.mutate({ agreementId: agreement.id })}
+        >
+          <Send className="h-3.5 w-3.5" />
+          {agreement.status === 'awaiting_signature' ? 'Resend' : 'Send for signature'}
+        </button>
+      )}
+      {(agreement.publicToken || agreement.status === 'awaiting_signature') && (
+        <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => void copyLink()}>
+          <Copy className="h-3.5 w-3.5" />
+          Copy link
+        </button>
+      )}
+      {agreement.publicToken && (
+        <a
+          href={publicAgreementUrl(agreement.publicToken)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-secondary px-2 py-1 text-xs"
+        >
+          <Link2 className="h-3.5 w-3.5" />
+          Open
+        </a>
+      )}
+      <AssignCustomerControl agreement={agreement} onAssigned={onChanged} />
+    </div>
+  );
+}
+
 function AgreementsTable({
   agreements,
   onChanged,
@@ -406,7 +489,7 @@ function AgreementsTable({
               </td>
               <td>
                 <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClass(agreement.status)}`}>
-                  {statusLabel(agreement.status)}
+                  {formatAgreementStatusLabel(agreement.status)}
                 </span>
               </td>
               <td className="text-muted-foreground">{agreement.startSeason}-{agreement.endSeason}</td>
@@ -429,7 +512,7 @@ function AgreementsTable({
                 )}
               </td>
               <td>
-                <AssignCustomerControl agreement={agreement} onAssigned={onChanged} />
+                <AgreementActions agreement={agreement} onChanged={onChanged} />
               </td>
             </tr>
           ))}

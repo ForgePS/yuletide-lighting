@@ -60,16 +60,16 @@ export function CmsMediaLibraryPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <input
-            className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm"
+            className="input w-full py-2 pl-9 pr-3 text-sm"
             placeholder="Search media…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <input
-          className="w-36 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          className="input w-36 text-sm"
           value={folder}
           onChange={(e) => setFolder(e.target.value)}
           placeholder="folder"
@@ -98,15 +98,15 @@ export function CmsMediaLibraryPanel() {
               type="button"
               onClick={() => setSelectedId(asset.id)}
               className={`overflow-hidden rounded-xl border text-left ${
-                selectedId === asset.id ? 'border-slate-900 ring-2 ring-slate-900' : 'border-slate-200'
+                selectedId === asset.id ? 'border-primary ring-2 ring-primary' : 'border-border'
               }`}
             >
-              <div className="flex aspect-square items-center justify-center bg-slate-100">
+              <div className="flex aspect-square items-center justify-center bg-muted">
                 {asset.kind === 'image' ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={asset.url} alt={asset.altText || asset.name} className="h-full w-full object-cover" />
                 ) : (
-                  <FolderOpen className="h-8 w-8 text-slate-400" />
+                  <FolderOpen className="h-8 w-8 text-muted-foreground" />
                 )}
               </div>
               <div className="p-2">
@@ -146,6 +146,67 @@ export function CmsMediaLibraryPanel() {
                   onBlur={(e) => update.mutate({ id: selected.id, caption: e.target.value })}
                 />
               </label>
+              {selected.kind === 'image' ? (
+                <div className="space-y-2 rounded-lg border border-border p-3">
+                  <p className="text-xs font-medium text-muted-foreground">Focal point (click image)</p>
+                  <button
+                    type="button"
+                    className="relative block w-full overflow-hidden rounded-lg bg-muted"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+                      const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+                      update.mutate({ id: selected.id, focalPoint: { x, y } });
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selected.url}
+                      alt={selected.altText || selected.name}
+                      className="max-h-40 w-full object-cover"
+                      style={
+                        selected.focalPoint
+                          ? {
+                              objectPosition: `${selected.focalPoint.x}% ${selected.focalPoint.y}%`,
+                            }
+                          : undefined
+                      }
+                    />
+                    {selected.focalPoint ? (
+                      <span
+                        className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary"
+                        style={{
+                          left: `${selected.focalPoint.x}%`,
+                          top: `${selected.focalPoint.y}%`,
+                        }}
+                      />
+                    ) : null}
+                  </button>
+                  <p className="text-[10px] text-muted-foreground">
+                    {selected.focalPoint
+                      ? `x ${selected.focalPoint.x}% · y ${selected.focalPoint.y}%`
+                      : 'No focal point set'}
+                  </p>
+                  <label className="block text-xs">
+                    Variants JSON ([{'{'}width, url{'}'}])
+                    <textarea
+                      className="mt-1 w-full rounded border px-2 py-1 font-mono text-[10px]"
+                      rows={3}
+                      defaultValue={JSON.stringify(selected.variants ?? [], null, 2)}
+                      onBlur={(e) => {
+                        try {
+                          update.mutate({
+                            id: selected.id,
+                            variants: JSON.parse(e.target.value),
+                          });
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : null}
               <p className="break-all text-xs text-muted-foreground">{selected.url}</p>
               <p className="text-xs text-muted-foreground">
                 {(selected.sizeBytes / 1024).toFixed(1)} KB · used in {selected.usedBy?.length ?? 0} places

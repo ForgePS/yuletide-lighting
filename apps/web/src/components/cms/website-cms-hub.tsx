@@ -24,21 +24,19 @@ export function WebsiteCmsHub() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Website CMS</h1>
+        <h1 className="page-title">Website CMS</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Full control over marketing pages, navigation, branding, media, forms, collections, SEO, and
           announcements — without code changes.
         </p>
       </div>
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+      <div className="flex flex-wrap gap-2 border-b border-border pb-3">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium ${
-              tab === t.id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
+            className={tab === t.id ? 'pill-tab-active' : 'pill-tab-idle'}
           >
             {t.label}
           </button>
@@ -50,7 +48,7 @@ export function WebsiteCmsHub() {
       {tab === 'forms' ? <CmsFormsPanel /> : null}
       {tab === 'collections' ? <CmsCollectionsPanel /> : null}
       {tab === 'pages' || tab === 'chrome' || tab === 'media' || tab === 'forms' || tab === 'collections' ? (
-        <details className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+        <details className="card p-4 text-sm">
           <summary className="cursor-pointer font-medium">Customization audit (live checklist)</summary>
           <AuditTable />
         </details>
@@ -72,7 +70,7 @@ function AuditTable() {
         </thead>
         <tbody>
           {CUSTOMIZATION_AUDIT.map((row) => (
-            <tr key={row.area} className="border-b border-slate-100">
+            <tr key={row.area} className="border-b border-border/70">
               <td className="py-1.5 pr-2">{row.area}</td>
               <td className="py-1.5 pr-2">
                 <span

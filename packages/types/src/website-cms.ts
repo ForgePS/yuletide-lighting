@@ -120,6 +120,9 @@ export type CmsBlockType =
   | 'image_text'
   | 'video'
   | 'gallery'
+  | 'slideshow'
+  | 'map'
+  | 'calendar'
   | 'testimonials'
   | 'stats'
   | 'feature_grid'
@@ -132,7 +135,8 @@ export type CmsBlockType =
   | 'spacer'
   | 'custom_html'
   | 'preview_dashboard'
-  | 'collection_list';
+  | 'collection_list'
+  | 'site_search';
 
 export type CmsBlockBase = {
   id: string;
@@ -236,6 +240,12 @@ export type ImageBlock = CmsBlockBase & {
   src: string;
   alt: string;
   caption?: string;
+  /** Optional focal point (percent 0–100) for object-position */
+  focalPoint?: { x: number; y: number } | null;
+  /** Optional crop window as % of image (0–100) */
+  crop?: { x: number; y: number; width: number; height: number } | null;
+  /** Optional responsive variants for srcset */
+  variants?: Array<{ width: number; url: string }> | null;
 };
 
 export type ImageTextBlock = CmsBlockBase & {
@@ -257,6 +267,37 @@ export type VideoBlock = CmsBlockBase & {
 export type GalleryBlock = CmsBlockBase & {
   type: 'gallery';
   images: Array<{ id: string; src: string; alt: string; caption?: string }>;
+};
+
+export type SlideshowBlock = CmsBlockBase & {
+  type: 'slideshow';
+  slides: Array<{ id: string; src: string; alt: string; caption?: string; href?: string }>;
+  autoplay?: boolean;
+  intervalMs?: number;
+  showDots?: boolean;
+};
+
+export type MapBlock = CmsBlockBase & {
+  type: 'map';
+  lat: number;
+  lng: number;
+  zoom?: number;
+  markerLabel?: string;
+  height?: number;
+};
+
+export type CalendarBlock = CmsBlockBase & {
+  type: 'calendar';
+  title?: string;
+  mode: 'events' | 'embed_url';
+  embedUrl?: string;
+  events?: Array<{
+    id: string;
+    title: string;
+    start: string;
+    end?: string;
+    location?: string;
+  }>;
 };
 
 export type TestimonialsBlock = CmsBlockBase & {
@@ -282,6 +323,12 @@ export type CollectionListBlock = CmsBlockBase & {
   layout?: 'grid' | 'list';
 };
 
+export type SiteSearchBlock = CmsBlockBase & {
+  type: 'site_search';
+  title?: string;
+  placeholder?: string;
+};
+
 export type CmsBlock =
   | HeroBlock
   | FeatureGridBlock
@@ -299,9 +346,25 @@ export type CmsBlock =
   | ImageTextBlock
   | VideoBlock
   | GalleryBlock
+  | SlideshowBlock
+  | MapBlock
+  | CalendarBlock
   | TestimonialsBlock
   | ContactFormBlock
-  | CollectionListBlock;
+  | CollectionListBlock
+  | SiteSearchBlock;
+
+export type CmsBreakpointOrder = {
+  desktop?: string[];
+  tablet?: string[];
+  mobile?: string[];
+};
+
+export type CmsPageLocaleContent = {
+  title?: string;
+  blocks?: CmsBlock[];
+  seo?: Partial<CmsSeoSettings>;
+};
 
 export type CmsPage = {
   id: string;
@@ -311,10 +374,38 @@ export type CmsPage = {
   blocks: CmsBlock[];
   seo: CmsSeoSettings;
   scheduledPublishAt?: Date | null;
+  /** YL-S28 — named footer override; null/undefined = site default */
+  footerId?: string | null;
+  /** YL-S30 — per-breakpoint block id order overrides */
+  blockOrderByBreakpoint?: CmsBreakpointOrder | null;
+  /** YL-S30 — primary locale code (default en) */
+  locale?: string;
+  /** YL-S30 — alternate locale overlays keyed by locale code */
+  translations?: Record<string, CmsPageLocaleContent> | null;
   createdAt: Date;
   updatedAt: Date;
   publishedAt?: Date | null;
   version: number;
+};
+
+/** YL-S28 — reusable block group saved to the section library */
+export type CmsSavedSection = {
+  id: string;
+  name: string;
+  description?: string;
+  blocks: CmsBlock[];
+  createdAt: Date;
+  updatedAt: Date;
+  createdByEmail?: string;
+};
+
+/** YL-S28 — named footer variant (default remains globals.footer) */
+export type CmsNamedFooter = {
+  id: string;
+  name: string;
+  footer: CmsFooterConfig;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type CmsSiteGlobals = {
@@ -322,6 +413,24 @@ export type CmsSiteGlobals = {
   header: CmsHeaderConfig;
   footer: CmsFooterConfig;
   defaultSeo: Omit<CmsSeoSettings, 'slug'>;
+  /** YL-S27 — injected into marketing page head as a style tag */
+  customHeadCss?: string | null;
+  /** YL-S27 — injected into marketing page as a deferred script (trusted Creator content) */
+  customHeadJs?: string | null;
+  /** YL-S28 — optional GTM container id (e.g. GTM-XXXX) injected when set */
+  gtmContainerId?: string | null;
+  /** YL-S28 — optional Meta Pixel id */
+  metaPixelId?: string | null;
+  /** YL-S30 — marketing theme mode */
+  themeMode?: 'light' | 'dark' | 'system';
+  /** YL-S30 — named color/layout preset */
+  themePreset?: 'default' | 'midnight' | 'forest' | 'snow';
+  /** YL-S30 — layout density / chrome template */
+  layoutTemplate?: 'classic' | 'centered' | 'minimal';
+  /** YL-S30 — default content locale */
+  defaultLocale?: string;
+  /** YL-S30 — enabled locales for language switcher */
+  availableLocales?: string[];
   updatedAt: Date;
 };
 
@@ -348,9 +457,9 @@ export type CmsPageVersion = {
 
 export const DEFAULT_SITE_BRANDING: CmsSiteBranding = {
   companyName: 'Yuletide Lighting',
-  primaryLogoUrl: '/logo.svg',
+  primaryLogoUrl: '/logo.png',
   alternateLogoUrl: null,
-  faviconUrl: '/logo.svg',
+  faviconUrl: '/logo.png',
   primaryColor: '#DC2626',
   secondaryColor: '#991B1B',
   accentColor: '#F59E0B',
@@ -366,7 +475,7 @@ export const DEFAULT_SITE_BRANDING: CmsSiteBranding = {
 export const DEFAULT_HEADER: CmsHeaderConfig = {
   sticky: true,
   transparent: false,
-  logoUrl: '/logo.svg',
+  logoUrl: '/logo.png',
   logoAlt: 'Yuletide Lighting',
   navItems: [
     {
@@ -418,6 +527,15 @@ export const DEFAULT_SITE_GLOBALS: CmsSiteGlobals = {
     noFollow: false,
     includeInSitemap: true,
   },
+  customHeadCss: null,
+  customHeadJs: null,
+  gtmContainerId: null,
+  metaPixelId: null,
+  themeMode: 'light',
+  themePreset: 'default',
+  layoutTemplate: 'classic',
+  defaultLocale: 'en',
+  availableLocales: ['en'],
   updatedAt: new Date(0),
 };
 

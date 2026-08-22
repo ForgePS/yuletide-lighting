@@ -17,6 +17,8 @@ export type CmsMediaAsset = {
   width?: number | null;
   height?: number | null;
   focalPoint?: { x: number; y: number } | null;
+  /** YL-S29 — optional responsive variants generated or pasted */
+  variants?: Array<{ width: number; url: string }> | null;
   usedBy: Array<{ type: string; id: string; label?: string }>;
   createdAt: Date;
   updatedAt: Date;
@@ -35,7 +37,14 @@ export type CmsFormFieldType =
   | 'date'
   | 'file'
   | 'consent'
-  | 'hidden';
+  | 'hidden'
+  | 'signature';
+
+export type CmsFormFieldVisibility = {
+  field: string;
+  op: 'eq' | 'neq' | 'truthy' | 'falsy';
+  value?: string;
+};
 
 export type CmsFormField = {
   id: string;
@@ -47,6 +56,10 @@ export type CmsFormField = {
   options?: string[];
   helpText?: string;
   width?: 'full' | 'half';
+  /** YL-S28 — 1-based step when settings.multiStep */
+  step?: number;
+  /** YL-S29 — show field only when condition matches */
+  visibleWhen?: CmsFormFieldVisibility | null;
   validation?: { min?: number; max?: number; pattern?: string };
 };
 
@@ -58,7 +71,8 @@ export type CmsFormSettings = {
   confirmationEmailEnabled: boolean;
   confirmationSubject?: string;
   confirmationBody?: string;
-  spamProtection: 'none' | 'honeypot';
+  /** turnstile = Cloudflare Turnstile (requires env keys; falls back to honeypot if unset) */
+  spamProtection: 'none' | 'honeypot' | 'turnstile';
   multiStep: boolean;
 };
 
@@ -175,6 +189,22 @@ export type CmsSeoGlobals = {
   twitterHandle?: string | null;
   organizationSchemaJson?: string | null;
   updatedAt: Date;
+};
+
+export type CmsBrokenLinkItem = {
+  url: string;
+  source: string;
+  status: 'ok' | 'broken' | 'skipped' | 'error';
+  httpStatus?: number | null;
+  detail?: string;
+};
+
+export type CmsLinkCheckReport = {
+  id: string;
+  ranAt: Date;
+  checked: number;
+  broken: number;
+  items: CmsBrokenLinkItem[];
 };
 
 export const DEFAULT_FORM_SETTINGS: CmsFormSettings = {

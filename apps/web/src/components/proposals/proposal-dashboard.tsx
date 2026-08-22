@@ -71,6 +71,10 @@ export function ProposalDashboard() {
   );
 }
 
-function statusClass(status: string) {
-  return status.includes('approved') || status === 'deposit_paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-muted-foreground';
+function statusClass(status: string | null | undefined) {
+  // YL-S7 / BACKLOG-003 — null/undefined status must not throw on .includes
+  const value = typeof status === 'string' ? status : '';
+  return value.includes('approved') || value === 'deposit_paid'
+    ? 'bg-emerald-100 text-emerald-800'
+    : 'bg-muted text-muted-foreground';
 }

@@ -16,31 +16,38 @@ import {
   multiYearAgreementInputSchema,
   multiYearAgreementListFiltersSchema,
   updateMultiYearAgreementInputSchema,
+  publicAccessTokenSchema,
 } from '@clcrm/validators';
-import { router, adminProcedure, officeProcedure, publicProcedure } from '../trpc';
+import { router, permissionProcedure, publicProcedure } from '../trpc';
 
 export const agreements360Router = router({
-  list: officeProcedure.input(multiYearAgreementListFiltersSchema.optional()).query(({ ctx, input }) =>
-    listMultiYearAgreements360(ctx.auth.organizationId, {
-      page: input?.page,
-      pageSize: input?.pageSize,
-      search: input?.search,
-      status: input?.status,
-      customerId: input?.customerId,
+  list: permissionProcedure('proposals', 'view')
+    .input(multiYearAgreementListFiltersSchema.optional())
+    .query(({ ctx, input }) =>
+      listMultiYearAgreements360(ctx.auth.organizationId, {
+        page: input?.page,
+        pageSize: input?.pageSize,
+        search: input?.search,
+        status: input?.status,
+        customerId: input?.customerId,
+      }),
+    ),
+
+  getById: permissionProcedure('proposals', 'view')
+    .input(z.object({ agreementId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const agreement = await getMultiYearAgreement360(ctx.auth.organizationId, input.agreementId);
+      if (!agreement) throw new TRPCError({ code: 'NOT_FOUND', message: 'Agreement not found' });
+      return agreement;
     }),
-  ),
 
-  getById: officeProcedure.input(z.object({ agreementId: z.string() })).query(async ({ ctx, input }) => {
-    const agreement = await getMultiYearAgreement360(ctx.auth.organizationId, input.agreementId);
-    if (!agreement) throw new TRPCError({ code: 'NOT_FOUND', message: 'Agreement not found' });
-    return agreement;
-  }),
+  create: permissionProcedure('proposals', 'create')
+    .input(multiYearAgreementInputSchema)
+    .mutation(({ ctx, input }) =>
+      createMultiYearAgreement360(ctx.auth.organizationId, input, ctx.auth.userId),
+    ),
 
-  create: officeProcedure.input(multiYearAgreementInputSchema).mutation(({ ctx, input }) =>
-    createMultiYearAgreement360(ctx.auth.organizationId, input, ctx.auth.userId),
-  ),
-
-  update: officeProcedure
+  update: permissionProcedure('proposals', 'edit')
     .input(z.object({ agreementId: z.string(), data: updateMultiYearAgreementInputSchema }))
     .mutation(async ({ ctx, input }) => {
       const agreement = await updateMultiYearAgreement360(
@@ -53,7 +60,7 @@ export const agreements360Router = router({
       return agreement;
     }),
 
-  sendForSignature: officeProcedure
+  sendForSignature: permissionProcedure('proposals', 'edit')
     .input(z.object({ agreementId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const agreement = await sendAgreementForSignature360(
@@ -65,7 +72,7 @@ export const agreements360Router = router({
       return agreement;
     }),
 
-  linkProject: officeProcedure
+  linkProject: permissionProcedure('proposals', 'edit')
     .input(z.object({ agreementId: z.string(), projectId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const agreement = await linkProjectToAgreement360(
@@ -78,12 +85,12 @@ export const agreements360Router = router({
       return agreement;
     }),
 
-  delete: adminProcedure.input(z.object({ agreementId: z.string() })).mutation(({ ctx, input }) =>
-    deleteMultiYearAgreement360(ctx.auth.organizationId, input.agreementId),
-  ),
+  delete: permissionProcedure('proposals', 'delete')
+    .input(z.object({ agreementId: z.string() }))
+    .mutation(({ ctx, input }) => deleteMultiYearAgreement360(ctx.auth.organizationId, input.agreementId)),
 
   public: router({
-    getByToken: publicProcedure.input(z.object({ token: z.string().min(8) })).query(async ({ input }) => {
+    getByToken: publicProcedure.input(z.object({ token: publicAccessTokenSchema })).query(async ({ input }) => {
       const result = await getAgreementByPublicToken(input.token);
       if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Agreement not found' });
       return result;

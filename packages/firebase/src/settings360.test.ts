@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { hasPermission, mapLegacyRole, SYSTEM_ROLES, DEFAULT_FEATURE_FLAGS } from '@clcrm/types';
+import {
+  hasPermission,
+  mapLegacyRole,
+  mapSettingsRoleToLegacyRole,
+  resolveLegacyRoleForRules,
+  SYSTEM_ROLES,
+  DEFAULT_FEATURE_FLAGS,
+} from '@clcrm/types';
 
 describe('settings360 helpers', () => {
   it('maps legacy roles to settings roles', () => {
@@ -7,6 +14,19 @@ describe('settings360 helpers', () => {
     expect(mapLegacyRole('admin')).toBe('administrator');
     expect(mapLegacyRole('office')).toBe('office_staff');
     expect(mapLegacyRole('crew')).toBe('installer');
+  });
+
+  it('YL-S6 maps settings roles to legacy rule buckets', () => {
+    expect(mapSettingsRoleToLegacyRole('owner')).toBe('owner');
+    expect(mapSettingsRoleToLegacyRole('administrator')).toBe('admin');
+    expect(mapSettingsRoleToLegacyRole('office_staff')).toBe('office');
+    expect(mapSettingsRoleToLegacyRole('dispatcher')).toBe('office');
+    expect(mapSettingsRoleToLegacyRole('installer')).toBe('crew');
+    expect(mapSettingsRoleToLegacyRole('read_only')).toBe('read_only');
+    expect(
+      resolveLegacyRoleForRules({ role: 'crew', settingsRole: 'office_staff' }),
+    ).toBe('office');
+    expect(resolveLegacyRoleForRules({ role: 'office', settingsRole: null })).toBe('office');
   });
 
   it('checks permissions correctly', () => {

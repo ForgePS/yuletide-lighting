@@ -3,6 +3,7 @@ import type {
   CmsCollection,
   CmsCollectionEntry,
   CmsForm,
+  CmsFormField,
   CmsFormSubmission,
   CmsMediaAsset,
   CmsNotice,
@@ -26,6 +27,21 @@ function ts() {
 
 function website() {
   return getAdminFirestore().collection('platform').doc('website');
+}
+
+export function isFormFieldVisible(
+  field: CmsFormField,
+  data: Record<string, unknown>,
+): boolean {
+  const rule = field.visibleWhen;
+  if (!rule?.field) return true;
+  const raw = data[rule.field];
+  if (rule.op === 'truthy') return Boolean(raw);
+  if (rule.op === 'falsy') return !raw;
+  const str = String(raw ?? '');
+  if (rule.op === 'eq') return str === (rule.value ?? '');
+  if (rule.op === 'neq') return str !== (rule.value ?? '');
+  return true;
 }
 
 function mapDates<T extends Record<string, unknown>>(data: T): T {
@@ -139,7 +155,7 @@ export async function registerUploadedMediaAsset(input: {
 
 export async function updateMediaAsset(
   id: string,
-  patch: Partial<Pick<CmsMediaAsset, 'name' | 'altText' | 'caption' | 'folder' | 'focalPoint'>>,
+  patch: Partial<Pick<CmsMediaAsset, 'name' | 'altText' | 'caption' | 'folder' | 'focalPoint' | 'variants'>>,
 ): Promise<CmsMediaAsset> {
   const ref = website().collection('media').doc(id);
   const snap = await ref.get();
@@ -376,6 +392,7 @@ export async function submitCmsForm(input: {
   formId: string;
   data: Record<string, unknown>;
   honeypot?: string;
+  captchaToken?: string;
 }): Promise<{ submissionId: string; successMessage: string; redirectUrl?: string | null }> {
   const form = await getCmsForm(input.formId);
   if (!form) throw new Error('Form not found');
@@ -386,7 +403,23 @@ export async function submitCmsForm(input: {
       redirectUrl: form.settings.redirectUrl,
     };
   }
+  if (form.settings.spamProtection === 'turnstile') {
+    const secret = process.env.TURNSTILE_SECRET_KEY;
+    if (secret) {
+      if (!input.captchaToken) throw new Error('Captcha verification required');
+      const ok = await verifyTurnstileToken(input.captchaToken, secret);
+      if (!ok) throw new Error('Captcha verification failed');
+    } else if (input.honeypot) {
+      // No Turnstile secret configured — treat honeypot fill as spam silently
+      return {
+        submissionId: 'ignored',
+        successMessage: form.settings.successMessage,
+        redirectUrl: form.settings.redirectUrl,
+      };
+    }
+  }
   for (const field of form.fields) {
+    if (!isFormFieldVisible(field, input.data)) continue;
     if (!field.required) continue;
     const value = input.data[field.name];
     if (value === undefined || value === null || value === '' || value === false) {
@@ -430,6 +463,20 @@ export async function submitCmsForm(input: {
     successMessage: form.settings.successMessage,
     redirectUrl: form.settings.redirectUrl,
   };
+}
+
+async function verifyTurnstileToken(token: string, secret: string): Promise<boolean> {
+  try {
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token }),
+    });
+    const json = (await res.json()) as { success?: boolean };
+    return Boolean(json.success);
+  } catch {
+    return false;
+  }
 }
 
 export async function listFormSubmissions(

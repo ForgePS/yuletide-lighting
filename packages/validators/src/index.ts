@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { logoReferenceSchema } from './settings360';
+import { publicAccessTokenSchema } from './public-token';
 
 export const userRoleSchema = z.enum(['owner', 'admin', 'office', 'crew']);
 export type UserRole = z.infer<typeof userRoleSchema>;
@@ -170,7 +171,7 @@ export const createProposalSchema = z.object({
 export type CreateProposalInput = z.infer<typeof createProposalSchema>;
 
 export const acceptProposalSchema = z.object({
-  token: z.string().min(1),
+  token: publicAccessTokenSchema,
   agreementCode: z.string().optional(),
   customerName: z.string().min(1).max(200),
 });
@@ -278,3 +279,4 @@ export * from './creator360';
 export * from './website-cms';
 export * from './site-cms-extended';
 export * from './portal360';
+export * from './public-token';

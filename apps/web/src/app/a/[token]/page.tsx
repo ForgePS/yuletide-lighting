@@ -5,7 +5,11 @@ import { useState, type FormEvent } from 'react';
 import { trpc } from '@/lib/trpc';
 import { LoadingState, ErrorState } from '@/components/ui/states';
 import { SignaturePad } from '@/components/ui/signature-pad';
-import { isAgreementSignedStatus } from '@clcrm/types';
+import {
+  canPublicSignAgreement,
+  formatAgreementStatusLabel,
+  isAgreementSignedStatus,
+} from '@clcrm/types';
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
@@ -24,7 +28,7 @@ export default function PublicAgreementSignPage() {
 
   const { agreement, organization } = data;
   const alreadySigned = isAgreementSignedStatus(agreement.status) || Boolean(agreement.signedAt);
-  const canSign = agreement.status === 'awaiting_signature' || agreement.status === 'draft';
+  const canSign = canPublicSignAgreement(agreement.status);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -46,7 +50,7 @@ export default function PublicAgreementSignPage() {
           </h1>
           <p className="mt-2 text-muted-foreground">Service agreement for {agreement.customerName}</p>
           <span className="mt-2 inline-block rounded-full bg-muted px-3 py-1 text-xs font-medium capitalize">
-            {agreement.status.replace(/_/g, ' ')}
+            {formatAgreementStatusLabel(agreement.status)}
           </span>
         </div>
 
@@ -116,6 +120,9 @@ export default function PublicAgreementSignPage() {
         ) : (
           <div className="mt-8 rounded-lg bg-muted/50 p-4 text-center text-muted-foreground">
             This agreement is not available for signature.
+            {agreement.status === 'draft'
+              ? ' Ask the company to send it for signature first.'
+              : ''}
           </div>
         )}
       </div>

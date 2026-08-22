@@ -3,6 +3,7 @@
  * Composes P2-S1..S5. ENVIRONMENT=EMULATOR for automated evidence.
  */
 import type { PortalAction, PortalFeatureKey } from '@clcrm/types';
+import { invoicePayableCents } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
 import {
   asPortalAuth,
@@ -70,7 +71,7 @@ const PORTAL_TRANSITIONS: Record<string, Record<string, string[]>> = {
   },
   agreement: {
     awaiting_signature: ['active'],
-    draft: ['active'],
+    // YL-S8: draft must be sent first (awaiting_signature) before public sign
   },
   mockup: {
     in_review: ['approved', 'revision_requested'],
@@ -317,33 +318,23 @@ export function portalInvoicePayableCents(invoice: {
   amountPaidCents?: number | null;
   depositCents?: number | null;
 }): { payable: boolean; amountCents: number; reason?: string } {
-  const status = String(invoice.status ?? '').toLowerCase();
-  if (['paid', 'void', 'cancelled', 'canceled', 'draft', 'refunded'].includes(status)) {
-    return { payable: false, amountCents: 0, reason: 'INVALID_STATE' };
-  }
-  const subtotal = Math.max(0, Number(invoice.subtotalCents ?? 0));
-  const paid = Math.max(0, Number(invoice.amountPaidCents ?? 0));
-  const balance = Math.max(0, subtotal - paid);
-  if (balance <= 0) {
-    return { payable: false, amountCents: 0, reason: 'INVALID_STATE' };
-  }
-  const deposit = Number(invoice.depositCents ?? 0);
-  if (deposit > 0) {
-    const depositDue = Math.max(0, deposit - paid);
-    if (depositDue > 0) {
-      return { payable: true, amountCents: Math.min(depositDue, balance) };
-    }
-  }
-  return { payable: true, amountCents: balance };
+  // YL-S13: shared pure helper (kept as portal alias for existing imports).
+  return invoicePayableCents(invoice);
 }
 
-/** True when live Stripe charges must be blocked (emulator / safe mode). */
+/**
+ * True when Stripe charges must be blocked (emulator / explicit safe mode / missing key).
+ * YL-S26: `sk_live` no longer forces safe mode by itself — require
+ * `PORTAL_ALLOW_LIVE_PAYMENTS=1` for live keys. `sk_test` may charge without that flag.
+ */
 export function portalPaymentSafeMode(): boolean {
   if (process.env.PORTAL_PAYMENT_SAFE_MODE === '1') return true;
   if (process.env.FIRESTORE_EMULATOR_HOST) return true;
   if (process.env.FIREBASE_AUTH_EMULATOR_HOST) return true;
   const key = process.env.STRIPE_SECRET_KEY ?? '';
   if (!key) return true;
-  if (key.startsWith('sk_live')) return true; // never live from this path during P2
+  if (key.startsWith('sk_live') && process.env.PORTAL_ALLOW_LIVE_PAYMENTS !== '1') {
+    return true;
+  }
   return false;
 }

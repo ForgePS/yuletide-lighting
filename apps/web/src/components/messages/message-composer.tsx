@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
+import { outboundSendToast } from '@/lib/message-utils';
 
 export function MessageComposer({
   customerId,
@@ -20,7 +21,11 @@ export function MessageComposer({
   const { data: templates } = trpc.messages360.templates.list.useQuery();
 
   const send = trpc.messages360.send.useMutation({
-    onSuccess: () => { toast('Message sent', 'success'); setBody(''); onSent?.(); },
+    onSuccess: (result) => {
+      toast(outboundSendToast(result?.status, channel === 'sms' ? 'SMS' : 'Message'), 'success');
+      setBody('');
+      onSent?.();
+    },
     onError: (e) => toast(e.message, 'error'),
   });
 

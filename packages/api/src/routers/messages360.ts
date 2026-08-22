@@ -13,6 +13,7 @@ import {
   sendBulkSms360,
   receiveSms360,
   resolveOrganizationIdByTwilioToPhone,
+  verifyTwilioRequestSignature,
   ensureMessageTemplates,
   createMessageTemplate,
   updateMessageTemplate,
@@ -50,56 +51,78 @@ import {
   portalMessageSchema,
   triggerAutomationSchema,
 } from '@clcrm/validators';
-import { router, officeProcedure, publicProcedure } from '../trpc';
+import { router, permissionProcedure, publicProcedure } from '../trpc';
 
 export const messages360Router = router({
-  dashboard: officeProcedure.query(({ ctx }) => getMessagingDashboard(ctx.auth.organizationId)),
-
-  aiGenerate: officeProcedure.input(aiCommunicationSchema).query(({ input }) =>
-    aiCommunicationAssistant(input.prompt),
+  dashboard: permissionProcedure('customers', 'view').query(({ ctx }) =>
+    getMessagingDashboard(ctx.auth.organizationId),
   ),
+
+  aiGenerate: permissionProcedure('customers', 'view')
+    .input(aiCommunicationSchema)
+    .query(({ input }) => aiCommunicationAssistant(input.prompt)),
 
   conversations: router({
-    list: officeProcedure.query(({ ctx }) => listConversations(ctx.auth.organizationId)),
-    getById: officeProcedure.input(z.object({ conversationId: z.string() })).query(async ({ ctx, input }) => {
-      const conv = await getConversation(ctx.auth.organizationId, input.conversationId);
-      if (!conv) throw new TRPCError({ code: 'NOT_FOUND' });
-      const messages = await getConversationMessages(ctx.auth.organizationId, input.conversationId);
-      return { conversation: conv, messages };
-    }),
-    getByCustomer: officeProcedure.input(z.object({ customerId: z.string() })).query(({ ctx, input }) =>
-      getConversationByCustomer(ctx.auth.organizationId, input.customerId),
+    list: permissionProcedure('customers', 'view').query(({ ctx }) =>
+      listConversations(ctx.auth.organizationId),
     ),
-    update: officeProcedure.input(updateConversationSchema).mutation(({ ctx, input }) =>
-      updateConversation(ctx.auth.organizationId, input.conversationId, input as never, ctx.auth.userId),
-    ),
-    timeline: officeProcedure.input(z.object({ customerId: z.string() })).query(({ ctx, input }) =>
-      getCustomerTimeline(ctx.auth.organizationId, input.customerId),
-    ),
-    markRead: officeProcedure.input(z.object({ conversationId: z.string(), messageId: z.string() })).mutation(({ ctx, input }) =>
-      markMessageRead(ctx.auth.organizationId, input.conversationId, input.messageId),
-    ),
+    getById: permissionProcedure('customers', 'view')
+      .input(z.object({ conversationId: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const conv = await getConversation(ctx.auth.organizationId, input.conversationId);
+        if (!conv) throw new TRPCError({ code: 'NOT_FOUND' });
+        const messages = await getConversationMessages(ctx.auth.organizationId, input.conversationId);
+        return { conversation: conv, messages };
+      }),
+    getByCustomer: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string() }))
+      .query(({ ctx, input }) => getConversationByCustomer(ctx.auth.organizationId, input.customerId)),
+    update: permissionProcedure('customers', 'edit')
+      .input(updateConversationSchema)
+      .mutation(({ ctx, input }) =>
+        updateConversation(ctx.auth.organizationId, input.conversationId, input as never, ctx.auth.userId),
+      ),
+    timeline: permissionProcedure('customers', 'view')
+      .input(z.object({ customerId: z.string() }))
+      .query(({ ctx, input }) => getCustomerTimeline(ctx.auth.organizationId, input.customerId)),
+    markRead: permissionProcedure('customers', 'edit')
+      .input(z.object({ conversationId: z.string(), messageId: z.string() }))
+      .mutation(({ ctx, input }) =>
+        markMessageRead(ctx.auth.organizationId, input.conversationId, input.messageId),
+      ),
   }),
 
-  send: officeProcedure.input(sendMessage360Schema).mutation(({ ctx, input }) =>
-    sendMessage360(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
-  ),
+  send: permissionProcedure('customers', 'edit')
+    .input(sendMessage360Schema)
+    .mutation(({ ctx, input }) =>
+      sendMessage360(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
+    ),
 
   sms: router({
-    sendBulk: officeProcedure.input(sendBulkSms360Schema).mutation(({ ctx, input }) =>
-      sendBulkSms360(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
-    ),
-    receive: officeProcedure.input(receiveSms360Schema).mutation(({ ctx, input }) =>
-      receiveSms360(ctx.auth.organizationId, input),
-    ),
+    sendBulk: permissionProcedure('customers', 'edit')
+      .input(sendBulkSms360Schema)
+      .mutation(({ ctx, input }) =>
+        sendBulkSms360(ctx.auth.organizationId, input, ctx.auth.userId, ctx.auth.email),
+      ),
+    receive: permissionProcedure('customers', 'edit')
+      .input(receiveSms360Schema)
+      .mutation(({ ctx, input }) => receiveSms360(ctx.auth.organizationId, input)),
   }),
 
   templates: router({
-    list: officeProcedure.query(({ ctx }) => ensureMessageTemplates(ctx.auth.organizationId)),
-    create: officeProcedure.input(createTemplate360Schema).mutation(({ ctx, input }) =>
-      createMessageTemplate(ctx.auth.organizationId, { ...input, isActive: true } as never, ctx.auth.userId),
+    list: permissionProcedure('customers', 'view').query(({ ctx }) =>
+      ensureMessageTemplates(ctx.auth.organizationId),
     ),
-    update: officeProcedure
+    create: permissionProcedure('customers', 'create')
+      .input(createTemplate360Schema)
+      .mutation(({ ctx, input }) =>
+        createMessageTemplate(
+          ctx.auth.organizationId,
+          { ...input, isActive: true } as never,
+          ctx.auth.userId,
+        ),
+      ),
+    update: permissionProcedure('customers', 'edit')
       .input(z.object({ templateId: z.string(), data: updateTemplate360Schema }))
       .mutation(({ ctx, input }) =>
         updateMessageTemplate(ctx.auth.organizationId, input.templateId, input.data, ctx.auth.userId),
@@ -107,52 +130,84 @@ export const messages360Router = router({
   }),
 
   automations: router({
-    list: officeProcedure.query(({ ctx }) => ensureAutomations(ctx.auth.organizationId)),
-    create: officeProcedure.input(createAutomationSchema).mutation(({ ctx, input }) =>
-      createAutomation(ctx.auth.organizationId, input as never, ctx.auth.userId),
+    list: permissionProcedure('customers', 'view').query(({ ctx }) =>
+      ensureAutomations(ctx.auth.organizationId),
     ),
-    toggle: officeProcedure.input(z.object({ automationId: z.string(), isActive: z.boolean() })).mutation(({ ctx, input }) =>
-      toggleAutomation(ctx.auth.organizationId, input.automationId, input.isActive, ctx.auth.userId),
-    ),
-    update: officeProcedure
+    create: permissionProcedure('customers', 'create')
+      .input(createAutomationSchema)
+      .mutation(({ ctx, input }) =>
+        createAutomation(ctx.auth.organizationId, input as never, ctx.auth.userId),
+      ),
+    toggle: permissionProcedure('customers', 'edit')
+      .input(z.object({ automationId: z.string(), isActive: z.boolean() }))
+      .mutation(({ ctx, input }) =>
+        toggleAutomation(ctx.auth.organizationId, input.automationId, input.isActive, ctx.auth.userId),
+      ),
+    update: permissionProcedure('customers', 'edit')
       .input(z.object({ automationId: z.string(), data: updateAutomation360Schema }))
       .mutation(({ ctx, input }) =>
         updateAutomation(ctx.auth.organizationId, input.automationId, input.data, ctx.auth.userId),
       ),
-    trigger: officeProcedure.input(triggerAutomationSchema).mutation(({ ctx, input }) =>
-      triggerAutomation(ctx.auth.organizationId, input.trigger, input.customerId, input.vars, ctx.auth.userId),
-    ),
+    trigger: permissionProcedure('customers', 'edit')
+      .input(triggerAutomationSchema)
+      .mutation(({ ctx, input }) =>
+        triggerAutomation(
+          ctx.auth.organizationId,
+          input.trigger,
+          input.customerId,
+          input.vars,
+          ctx.auth.userId,
+        ),
+      ),
   }),
 
   campaigns: router({
-    list: officeProcedure.query(({ ctx }) => listCampaigns(ctx.auth.organizationId)),
-    create: officeProcedure.input(createCampaignSchema).mutation(({ ctx, input }) =>
-      createCampaign(ctx.auth.organizationId, input as never, ctx.auth.userId),
-    ),
-    send: officeProcedure.input(z.object({ campaignId: z.string() })).mutation(({ ctx, input }) =>
-      sendCampaign(ctx.auth.organizationId, input.campaignId, ctx.auth.userId),
-    ),
+    list: permissionProcedure('customers', 'view').query(({ ctx }) => listCampaigns(ctx.auth.organizationId)),
+    create: permissionProcedure('customers', 'create')
+      .input(createCampaignSchema)
+      .mutation(({ ctx, input }) =>
+        createCampaign(ctx.auth.organizationId, input as never, ctx.auth.userId),
+      ),
+    send: permissionProcedure('customers', 'edit')
+      .input(z.object({ campaignId: z.string() }))
+      .mutation(({ ctx, input }) => sendCampaign(ctx.auth.organizationId, input.campaignId, ctx.auth.userId)),
   }),
 
   internal: router({
-    channels: officeProcedure.query(({ ctx }) => ensureInternalChannels(ctx.auth.organizationId)),
-    messages: officeProcedure.input(z.object({ channelId: z.string() })).query(({ ctx, input }) =>
-      listInternalMessages(ctx.auth.organizationId, input.channelId),
+    channels: permissionProcedure('customers', 'view').query(({ ctx }) =>
+      ensureInternalChannels(ctx.auth.organizationId),
     ),
-    send: officeProcedure.input(sendInternalMessageSchema).mutation(({ ctx, input }) =>
-      sendInternalMessage(ctx.auth.organizationId, input.channelId, input.body, ctx.auth.userId, ctx.auth.email, input.mentions, input.attachmentUrls),
-    ),
+    messages: permissionProcedure('customers', 'view')
+      .input(z.object({ channelId: z.string() }))
+      .query(({ ctx, input }) => listInternalMessages(ctx.auth.organizationId, input.channelId)),
+    send: permissionProcedure('customers', 'edit')
+      .input(sendInternalMessageSchema)
+      .mutation(({ ctx, input }) =>
+        sendInternalMessage(
+          ctx.auth.organizationId,
+          input.channelId,
+          input.body,
+          ctx.auth.userId,
+          ctx.auth.email,
+          input.mentions,
+          input.attachmentUrls,
+        ),
+      ),
   }),
 
   reviews: router({
-    list: officeProcedure.query(({ ctx }) => listReviewRequests(ctx.auth.organizationId)),
-    create: officeProcedure.input(createReviewRequestSchema).mutation(({ ctx, input }) =>
-      createReviewRequest(ctx.auth.organizationId, input, ctx.auth.userId),
+    list: permissionProcedure('customers', 'view').query(({ ctx }) =>
+      listReviewRequests(ctx.auth.organizationId),
     ),
+    create: permissionProcedure('customers', 'create')
+      .input(createReviewRequestSchema)
+      .mutation(({ ctx, input }) => createReviewRequest(ctx.auth.organizationId, input, ctx.auth.userId)),
   }),
 
   notifications: router({
-    list: officeProcedure.query(({ ctx }) => listNotifications(ctx.auth.organizationId)),
+    list: permissionProcedure('customers', 'view').query(({ ctx }) =>
+      listNotifications(ctx.auth.organizationId),
+    ),
   }),
 
   public: router({
@@ -161,6 +216,23 @@ export const messages360Router = router({
       throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'Use customer portal auth endpoint' });
     }),
     receiveSms: publicProcedure.input(receiveSmsPublicSchema).mutation(async ({ input }) => {
+      const verification = verifyTwilioRequestSignature({
+        authToken: process.env.TWILIO_AUTH_TOKEN,
+        signature: input.twilioSignature,
+        url: input.webhookUrl ?? '',
+        params: {
+          To: input.toPhone,
+          From: input.fromPhone ?? '',
+          Body: input.body,
+          ...(input.providerMessageId ? { MessageSid: input.providerMessageId } : {}),
+        },
+      });
+      if (!verification.ok) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: verification.reason ?? 'Invalid Twilio signature',
+        });
+      }
       const orgId = await resolveOrganizationIdByTwilioToPhone(input.toPhone);
       if (!orgId) {
         throw new TRPCError({

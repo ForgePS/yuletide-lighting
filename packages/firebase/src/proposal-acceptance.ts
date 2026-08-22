@@ -21,6 +21,22 @@ export function agreementSourceForProposal(proposalId: string) {
   return `proposal:${proposalId}`;
 }
 
+/** YL-S8 — shared deposit invoice match used by acceptance workflow + tests. */
+export function isDepositInvoiceForProposal(
+  inv: {
+    proposalId?: string | null;
+    notes?: string | null;
+    invoiceKind?: string | null;
+  },
+  proposalId: string,
+): boolean {
+  return (
+    inv.proposalId === proposalId &&
+    (inv.invoiceKind === 'deposit' ||
+      (typeof inv.notes === 'string' && inv.notes.startsWith(DEPOSIT_NOTE_PREFIX)))
+  );
+}
+
 export type ProposalAcceptanceResult = {
   proposalId: string;
   jobId: string;
@@ -109,12 +125,7 @@ export async function runProposalAcceptedWorkflow(
     status?: string | null;
   }>(orgId, 'invoices', 'createdAt', { limit: 500 });
   let depositInvoice =
-    invoices.find(
-      (i) =>
-        i.proposalId === proposalId &&
-        (i.invoiceKind === 'deposit' ||
-          (typeof i.notes === 'string' && i.notes.startsWith(DEPOSIT_NOTE_PREFIX))),
-    ) ?? null;
+    invoices.find((i) => isDepositInvoiceForProposal(i, proposalId)) ?? null;
   let createdDepositInvoice = false;
 
   if (!depositInvoice && depositCents > 0) {

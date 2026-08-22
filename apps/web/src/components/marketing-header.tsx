@@ -10,7 +10,7 @@ export function MarketingHeader() {
   return (
     <header className="glass-nav sticky top-0 z-50">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <Logo href="/" imageClassName="h-12 sm:h-14" priority />
+        <Logo href="/" imageClassName="h-14 sm:h-16" priority />
         <nav className="flex items-center gap-2 sm:gap-3">
           <Link href="/pricing" className="btn-ghost hidden px-3 py-2 sm:inline-flex">
             Pricing

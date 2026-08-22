@@ -13,6 +13,11 @@ import {
 } from 'lucide-react';
 import { createBlockId, type CmsBlock, type CmsPage } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
+import { CmsBlockStyleEditor, applyBlockStyleToDraft } from './cms-block-style-editor';
+import { CmsRichTextEditor } from './cms-rich-text-editor';
+import { CmsVersionHistoryPanel } from './cms-version-history';
+import { CmsSectionLibraryPanel } from './cms-section-library';
+import { CmsA11yPanel } from './cms-a11y-panel';
 
 const BLOCK_TYPES: Array<{ type: CmsBlock['type']; label: string }> = [
   { type: 'hero', label: 'Hero' },
@@ -24,13 +29,25 @@ const BLOCK_TYPES: Array<{ type: CmsBlock['type']; label: string }> = [
   { type: 'rich_text', label: 'Rich text' },
   { type: 'testimonials', label: 'Testimonials' },
   { type: 'image', label: 'Image' },
+  { type: 'image_text', label: 'Image + text' },
+  { type: 'video', label: 'Video' },
+  { type: 'gallery', label: 'Gallery' },
+  { type: 'slideshow', label: 'Slideshow' },
+  { type: 'map', label: 'Map' },
+  { type: 'calendar', label: 'Calendar' },
   { type: 'buttons', label: 'Buttons' },
   { type: 'contact_form', label: 'Contact form' },
   { type: 'collection_list', label: 'Collection list' },
+  { type: 'site_search', label: 'Site search' },
   { type: 'spacer', label: 'Spacer' },
   { type: 'divider', label: 'Divider' },
   { type: 'custom_html', label: 'Custom HTML' },
 ];
+
+function toDatetimeLocalValue(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 function emptyBlock(type: CmsBlock['type']): CmsBlock {
   const id = createBlockId();
@@ -69,6 +86,55 @@ function emptyBlock(type: CmsBlock['type']): CmsBlock {
       return { id, type, enabled: true, label: 'Testimonials', items: [] };
     case 'image':
       return { id, type, enabled: true, label: 'Image', src: '', alt: '' };
+    case 'image_text':
+      return {
+        id,
+        type,
+        enabled: true,
+        label: 'Image + text',
+        title: 'Title',
+        body: 'Supporting copy',
+        imageUrl: '',
+        imageAlt: '',
+        imagePosition: 'left',
+      };
+    case 'video':
+      return { id, type, enabled: true, label: 'Video', embedUrl: '', title: '' };
+    case 'gallery':
+      return { id, type, enabled: true, label: 'Gallery', images: [] };
+    case 'slideshow':
+      return {
+        id,
+        type,
+        enabled: true,
+        label: 'Slideshow',
+        slides: [],
+        autoplay: true,
+        intervalMs: 5000,
+        showDots: true,
+      };
+    case 'map':
+      return {
+        id,
+        type,
+        enabled: true,
+        label: 'Map',
+        lat: 39.8283,
+        lng: -98.5795,
+        zoom: 4,
+        markerLabel: '',
+        height: 320,
+      };
+    case 'calendar':
+      return {
+        id,
+        type,
+        enabled: true,
+        label: 'Calendar',
+        title: 'Upcoming',
+        mode: 'events',
+        events: [],
+      };
     case 'buttons':
       return { id, type, enabled: true, label: 'Buttons', buttons: [] };
     case 'contact_form':
@@ -83,6 +149,15 @@ function emptyBlock(type: CmsBlock['type']): CmsBlock {
         title: 'Latest',
         limit: 6,
         layout: 'grid',
+      };
+    case 'site_search':
+      return {
+        id,
+        type,
+        enabled: true,
+        label: 'Search',
+        title: 'Search',
+        placeholder: 'Search pages…',
       };
     case 'spacer':
       return { id, type, enabled: true, label: 'Spacer', height: 48 };
@@ -267,7 +342,16 @@ function BlockEditor({
     );
   }
 
-  if (block.type === 'rich_text' || block.type === 'custom_html') {
+  if (block.type === 'rich_text') {
+    return (
+      <CmsRichTextEditor
+        value={block.html}
+        onChange={(html) => onChange({ ...block, html })}
+      />
+    );
+  }
+
+  if (block.type === 'custom_html') {
     return (
       <TextArea
         label="HTML"
@@ -308,6 +392,241 @@ function BlockEditor({
     );
   }
 
+  if (block.type === 'image') {
+    const focal = block.focalPoint ?? { x: 50, y: 50 };
+    return (
+      <div className="space-y-3">
+        <Field label="Image URL" value={block.src} onChange={(v) => onChange({ ...block, src: v })} />
+        <Field label="Alt text" value={block.alt} onChange={(v) => onChange({ ...block, alt: v })} />
+        <Field
+          label="Caption"
+          value={block.caption ?? ''}
+          onChange={(v) => onChange({ ...block, caption: v })}
+        />
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <p className="text-xs font-medium text-muted-foreground">Focal point (%)</p>
+          {block.src ? (
+            <div className="relative overflow-hidden rounded-lg bg-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={block.src}
+                alt={block.alt || 'Preview'}
+                className="max-h-40 w-full object-cover"
+                style={{ objectPosition: `${focal.x}% ${focal.y}%` }}
+              />
+            </div>
+          ) : null}
+          <label className="block text-xs">
+            X ({focal.x})
+            <input
+              type="range"
+              min={0}
+              max={100}
+              className="w-full"
+              value={focal.x}
+              onChange={(e) =>
+                onChange({
+                  ...block,
+                  focalPoint: { x: Number(e.target.value), y: focal.y },
+                })
+              }
+            />
+          </label>
+          <label className="block text-xs">
+            Y ({focal.y})
+            <input
+              type="range"
+              min={0}
+              max={100}
+              className="w-full"
+              value={focal.y}
+              onChange={(e) =>
+                onChange({
+                  ...block,
+                  focalPoint: { x: focal.x, y: Number(e.target.value) },
+                })
+              }
+            />
+          </label>
+          <TextArea
+            label="Responsive variants JSON ([{width,url}])"
+            value={JSON.stringify(block.variants ?? [], null, 2)}
+            onChange={(v) => {
+              try {
+                onChange({ ...block, variants: JSON.parse(v) });
+              } catch {
+                /* ignore */
+              }
+            }}
+            rows={4}
+          />
+          <TextArea
+            label="Crop JSON ({x,y,width,height} %)"
+            value={JSON.stringify(block.crop ?? null, null, 2)}
+            onChange={(v) => {
+              try {
+                onChange({ ...block, crop: JSON.parse(v) });
+              } catch {
+                /* ignore */
+              }
+            }}
+            rows={3}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === 'image_text') {
+    return (
+      <div className="space-y-3">
+        <Field label="Title" value={block.title ?? ''} onChange={(v) => onChange({ ...block, title: v })} />
+        <TextArea label="Body" value={block.body ?? ''} onChange={(v) => onChange({ ...block, body: v })} />
+        <Field label="Image URL" value={block.imageUrl} onChange={(v) => onChange({ ...block, imageUrl: v })} />
+        <Field label="Image alt" value={block.imageAlt} onChange={(v) => onChange({ ...block, imageAlt: v })} />
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-muted-foreground">Image position</span>
+          <select
+            className="w-full rounded-lg border border-border px-3 py-2"
+            value={block.imagePosition}
+            onChange={(e) =>
+              onChange({ ...block, imagePosition: e.target.value as 'left' | 'right' })
+            }
+          >
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+      </div>
+    );
+  }
+
+  if (block.type === 'video') {
+    return (
+      <div className="space-y-3">
+        <Field label="Title" value={block.title ?? ''} onChange={(v) => onChange({ ...block, title: v })} />
+        <Field
+          label="Embed URL (YouTube/Vimeo)"
+          value={block.embedUrl}
+          onChange={(v) => onChange({ ...block, embedUrl: v })}
+        />
+      </div>
+    );
+  }
+
+  if (block.type === 'gallery' || block.type === 'slideshow') {
+    const key = block.type === 'gallery' ? 'images' : 'slides';
+    const items = block.type === 'gallery' ? block.images : block.slides;
+    return (
+      <div className="space-y-3">
+        {block.type === 'slideshow' ? (
+          <>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={block.autoplay ?? true}
+                onChange={(e) => onChange({ ...block, autoplay: e.target.checked })}
+              />
+              Autoplay
+            </label>
+            <Field
+              label="Interval (ms)"
+              value={String(block.intervalMs ?? 5000)}
+              onChange={(v) => onChange({ ...block, intervalMs: Number(v) || 5000 })}
+            />
+          </>
+        ) : null}
+        <TextArea
+          label={`${key} JSON`}
+          value={JSON.stringify(items, null, 2)}
+          onChange={(v) => {
+            try {
+              const parsed = JSON.parse(v);
+              if (block.type === 'gallery') onChange({ ...block, images: parsed });
+              else onChange({ ...block, slides: parsed });
+            } catch {
+              /* ignore */
+            }
+          }}
+          rows={10}
+        />
+      </div>
+    );
+  }
+
+  if (block.type === 'map') {
+    return (
+      <div className="space-y-3">
+        <Field
+          label="Latitude"
+          value={String(block.lat)}
+          onChange={(v) => onChange({ ...block, lat: Number(v) })}
+        />
+        <Field
+          label="Longitude"
+          value={String(block.lng)}
+          onChange={(v) => onChange({ ...block, lng: Number(v) })}
+        />
+        <Field
+          label="Zoom"
+          value={String(block.zoom ?? 12)}
+          onChange={(v) => onChange({ ...block, zoom: Number(v) || 12 })}
+        />
+        <Field
+          label="Marker label"
+          value={block.markerLabel ?? ''}
+          onChange={(v) => onChange({ ...block, markerLabel: v })}
+        />
+        <Field
+          label="Height (px)"
+          value={String(block.height ?? 320)}
+          onChange={(v) => onChange({ ...block, height: Number(v) || 320 })}
+        />
+      </div>
+    );
+  }
+
+  if (block.type === 'calendar') {
+    return (
+      <div className="space-y-3">
+        <Field label="Title" value={block.title ?? ''} onChange={(v) => onChange({ ...block, title: v })} />
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-muted-foreground">Mode</span>
+          <select
+            className="w-full rounded-lg border border-border px-3 py-2"
+            value={block.mode}
+            onChange={(e) =>
+              onChange({ ...block, mode: e.target.value as 'events' | 'embed_url' })
+            }
+          >
+            <option value="events">Event list</option>
+            <option value="embed_url">Embed URL</option>
+          </select>
+        </label>
+        {block.mode === 'embed_url' ? (
+          <Field
+            label="Embed URL"
+            value={block.embedUrl ?? ''}
+            onChange={(v) => onChange({ ...block, embedUrl: v })}
+          />
+        ) : (
+          <TextArea
+            label="Events JSON"
+            value={JSON.stringify(block.events ?? [], null, 2)}
+            onChange={(v) => {
+              try {
+                onChange({ ...block, events: JSON.parse(v) });
+              } catch {
+                /* ignore */
+              }
+            }}
+            rows={8}
+          />
+        )}
+      </div>
+    );
+  }
+
   if (block.type === 'contact_form') {
     return (
       <div className="space-y-3">
@@ -344,6 +663,19 @@ function BlockEditor({
     );
   }
 
+  if (block.type === 'site_search') {
+    return (
+      <div className="space-y-3">
+        <Field label="Title" value={block.title ?? ''} onChange={(v) => onChange({ ...block, title: v })} />
+        <Field
+          label="Placeholder"
+          value={block.placeholder ?? ''}
+          onChange={(v) => onChange({ ...block, placeholder: v })}
+        />
+      </div>
+    );
+  }
+
   return (
     <p className="text-sm text-muted-foreground">
       Editor for <code>{block.type}</code> — use status/enable controls and save. Expand fields in a later
@@ -363,9 +695,9 @@ function Field({
 }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-700">{label}</span>
+      <span className="mb-1 block font-medium text-muted-foreground">{label}</span>
       <input
-        className="w-full rounded-lg border border-slate-200 px-3 py-2"
+        className="w-full rounded-lg border border-border px-3 py-2"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -386,9 +718,9 @@ function TextArea({
 }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-700">{label}</span>
+      <span className="mb-1 block font-medium text-muted-foreground">{label}</span>
       <textarea
-        className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs"
+        className="w-full rounded-lg border border-border px-3 py-2 font-mono text-xs"
         rows={rows}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -406,6 +738,9 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
   const [history, setHistory] = useState<CmsPage[]>([]);
   const [future, setFuture] = useState<CmsPage[]>([]);
   const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [showLivePreview, setShowLivePreview] = useState(false);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [orderBreakpoint, setOrderBreakpoint] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [message, setMessage] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [newSlug, setNewSlug] = useState('');
@@ -415,8 +750,27 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
     { id: selectedId! },
     { enabled: !!selectedId },
   );
+  const { data: namedFooters } = trpc.websiteCms.footers.list.useQuery();
 
   const activePage = draft?.id === selectedId ? draft : pageQuery.data ?? null;
+  const previewHref = activePage
+    ? `/creator/website/preview?pageId=${encodeURIComponent(activePage.id)}&cmsEdit=1&lang=${encodeURIComponent(activePage.locale || 'en')}`
+    : '/';
+  const previewWidth =
+    device === 'mobile' ? 390 : device === 'tablet' ? 768 : 1200;
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      const data = event.data as { type?: string; blockId?: string } | null;
+      if (!data || data.type !== 'yl-cms-select-block' || !data.blockId) return;
+      setSelectedBlockId(data.blockId);
+      setMessage(`Selected block ${data.blockId}`);
+      const el = document.getElementById(`cms-editor-block-${data.blockId}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
 
   const savePage = trpc.websiteCms.pages.update.useMutation({
     onSuccess: (page) => {
@@ -525,7 +879,7 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
       {!embedded ? (
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Website CMS</h1>
+            <h1 className="page-title">Website CMS</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Edit marketing pages, sections, navigation, footer, and branding without code.
             </p>
@@ -547,20 +901,27 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
           <button
             key={d}
             type="button"
-            className={`rounded-full px-3 py-1 text-xs ${device === d ? 'bg-slate-900 text-white' : 'bg-slate-100'}`}
+            className={device === d ? 'pill-tab-active px-3 py-1 text-xs' : 'pill-tab-idle px-3 py-1 text-xs'}
             onClick={() => setDevice(d)}
           >
             {d}
           </button>
         ))}
+        <button
+          type="button"
+          className={showLivePreview ? 'pill-tab-active px-3 py-1 text-xs' : 'pill-tab-idle px-3 py-1 text-xs'}
+          onClick={() => setShowLivePreview((v) => !v)}
+        >
+          Live preview
+        </button>
         {activePage ? (
           <a
-            href={activePage.slug === 'home' ? '/' : `/${activePage.slug}`}
+            href={previewHref}
             target="_blank"
             rel="noreferrer"
             className="btn-ghost"
           >
-            Preview
+            Open tab
           </a>
         ) : null}
       </div>
@@ -577,7 +938,7 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
         }`}
       >
         <aside className="card space-y-2 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pages</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pages</p>
           {isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
           {pages?.map((page) => (
             <button
@@ -589,24 +950,22 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
                 setHistory([]);
                 setFuture([]);
               }}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${
-                selectedId === page.id ? 'bg-slate-900 text-white' : 'hover:bg-slate-100'
-              }`}
+              className={`flex w-full items-center justify-between ${selectedId === page.id ? 'list-item-active' : 'list-item-idle'}`}
             >
               <span>{page.title}</span>
               <span className="text-xs opacity-70">{page.status}</span>
             </button>
           ))}
-          <div className="border-t border-slate-200 pt-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">New page</p>
+          <div className="border-t border-border pt-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">New page</p>
             <input
-              className="mb-2 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+              className="input mb-2 w-full text-sm"
               placeholder="Title"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
             />
             <input
-              className="mb-2 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+              className="input mb-2 w-full text-sm"
               placeholder="slug"
               value={newSlug}
               onChange={(e) => setNewSlug(e.target.value)}
@@ -638,9 +997,9 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
                     onChange={(v) => setDraft({ ...activePage, slug: v })}
                   />
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-slate-700">Status</span>
+                    <span className="mb-1 block font-medium text-muted-foreground">Status</span>
                     <select
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                      className="w-full rounded-lg border border-border px-3 py-2"
                       value={activePage.status}
                       onChange={(e) =>
                         setDraft({
@@ -655,6 +1014,34 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
                       <option value="archived">Archived</option>
                     </select>
                   </label>
+                  {activePage.status === 'scheduled' ? (
+                    <label className="block text-sm sm:col-span-3">
+                      <span className="mb-1 block font-medium text-muted-foreground">
+                        Publish at (local time)
+                      </span>
+                      <input
+                        type="datetime-local"
+                        className="w-full rounded-lg border border-border px-3 py-2"
+                        value={
+                          activePage.scheduledPublishAt
+                            ? toDatetimeLocalValue(
+                                activePage.scheduledPublishAt instanceof Date
+                                  ? activePage.scheduledPublishAt
+                                  : new Date(activePage.scheduledPublishAt),
+                              )
+                            : ''
+                        }
+                        onChange={(e) =>
+                          setDraft({
+                            ...activePage,
+                            scheduledPublishAt: e.target.value
+                              ? new Date(e.target.value)
+                              : null,
+                          })
+                        }
+                      />
+                    </label>
+                  ) : null}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -669,6 +1056,18 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
                         status: activePage.status,
                         blocks: activePage.blocks,
                         seo: { ...activePage.seo, slug: activePage.slug },
+                        scheduledPublishAt:
+                          activePage.status === 'scheduled'
+                            ? activePage.scheduledPublishAt
+                              ? activePage.scheduledPublishAt instanceof Date
+                                ? activePage.scheduledPublishAt
+                                : new Date(activePage.scheduledPublishAt)
+                              : null
+                            : null,
+                        footerId: activePage.footerId ?? null,
+                        blockOrderByBreakpoint: activePage.blockOrderByBreakpoint ?? null,
+                        locale: activePage.locale || 'en',
+                        translations: activePage.translations ?? null,
                         changeSummary: 'Editor save',
                       })
                     }
@@ -703,15 +1102,106 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
                     setDraft({ ...activePage, seo: { ...activePage.seo, description: v } })
                   }
                 />
+                <label className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block font-medium text-muted-foreground">Footer</span>
+                  <select
+                    className="w-full rounded-lg border border-border px-3 py-2"
+                    value={activePage.footerId ?? ''}
+                    onChange={(e) =>
+                      setDraft({
+                        ...activePage,
+                        footerId: e.target.value || null,
+                      })
+                    }
+                  >
+                    <option value="">Site default</option>
+                    {namedFooters?.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Field
+                  label="Locale"
+                  value={activePage.locale || 'en'}
+                  onChange={(v) => setDraft({ ...activePage, locale: v || 'en' })}
+                />
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-muted-foreground">
+                    Order for breakpoint
+                  </span>
+                  <select
+                    className="mb-2 w-full rounded-lg border border-border px-3 py-2"
+                    value={orderBreakpoint}
+                    onChange={(e) =>
+                      setOrderBreakpoint(e.target.value as 'desktop' | 'tablet' | 'mobile')
+                    }
+                  >
+                    <option value="desktop">Desktop</option>
+                    <option value="tablet">Tablet</option>
+                    <option value="mobile">Mobile</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    onClick={() =>
+                      setDraft({
+                        ...activePage,
+                        blockOrderByBreakpoint: {
+                          ...(activePage.blockOrderByBreakpoint ?? {}),
+                          [orderBreakpoint]: activePage.blocks.map((b) => b.id),
+                        },
+                      })
+                    }
+                  >
+                    Capture current block order for {orderBreakpoint}
+                  </button>
+                </label>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-                <span className="text-sm font-medium text-slate-700">Add block:</span>
+              {showLivePreview ? (
+                <div className="overflow-x-auto rounded-xl border border-border bg-muted/40 p-3">
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Draft preview ({device}) with click-to-select — save page first so the iframe loads
+                    current draft.
+                    {selectedBlockId ? ` Selected: ${selectedBlockId}` : ''}
+                  </p>
+                  <div className="mx-auto overflow-hidden rounded-lg border bg-background shadow-sm" style={{ width: previewWidth, maxWidth: '100%' }}>
+                    <iframe
+                      title="CMS live preview"
+                      src={previewHref}
+                      className="h-[640px] w-full border-0"
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              <CmsA11yPanel page={activePage} />
+
+              <CmsSectionLibraryPanel
+                selectedBlocks={activePage.blocks}
+                onInsert={(blocks) =>
+                  pushDraft({ ...activePage, blocks: [...activePage.blocks, ...blocks] })
+                }
+              />
+
+              <CmsVersionHistoryPanel
+                pageId={activePage.id}
+                onRestored={() => {
+                  setDraft(null);
+                  setMessage('Version restored');
+                  void pageQuery.refetch();
+                }}
+              />
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-border/70 pt-4">
+                <span className="text-sm font-medium text-muted-foreground">Add block:</span>
                 {BLOCK_TYPES.map((bt) => (
                   <button
                     key={bt.type}
                     type="button"
-                    className="rounded-full border border-slate-200 px-3 py-1 text-xs hover:bg-slate-50"
+                    className="rounded-full border border-border px-3 py-1 text-xs hover:bg-muted"
                     onClick={() =>
                       pushDraft({
                         ...activePage,
@@ -726,12 +1216,20 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
 
               <div className="space-y-4">
                 {activePage.blocks.map((block, index) => (
-                  <div key={block.id} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                  <div
+                    key={block.id}
+                    id={`cms-editor-block-${block.id}`}
+                    className={`rounded-xl border p-4 ${
+                      selectedBlockId === block.id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border bg-muted/40'
+                    }`}
+                  >
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="font-medium text-slate-900">
+                        <p className="font-medium text-foreground">
                           {block.label || block.type}{' '}
-                          <span className="text-xs font-normal text-slate-500">({block.type})</span>
+                          <span className="text-xs font-normal text-muted-foreground">({block.type})</span>
                         </p>
                       </div>
                       <div className="flex gap-1">
@@ -784,6 +1282,12 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
                       </div>
                     </div>
                     <BlockEditor block={block} onChange={(next) => updateBlock(index, next)} />
+                    <CmsBlockStyleEditor
+                      style={block.style}
+                      onChange={(style) =>
+                        updateBlock(index, applyBlockStyleToDraft(block, style))
+                      }
+                    />
                   </div>
                 ))}
               </div>
@@ -799,7 +1303,7 @@ export function WebsiteCmsConsole({ embedded = false }: { embedded?: boolean }) 
               Prefer the Chrome & SEO tab for visual editing. Raw JSON fallback:
             </p>
             <textarea
-              className="min-h-[280px] w-full rounded-lg border border-slate-200 p-3 font-mono text-xs"
+              className="min-h-[280px] w-full rounded-lg border border-border p-3 font-mono text-xs"
               value={globalsJson || (globals ? JSON.stringify(globals, null, 2) : '')}
               onChange={(e) => setGlobalsJson(e.target.value)}
             />

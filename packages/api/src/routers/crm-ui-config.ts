@@ -1,25 +1,28 @@
 import { z } from 'zod';
 import { crmUiConfigUpdateSchema } from '@clcrm/validators';
 import { getCrmUiConfig, getResolvedCrmNav, updateCrmUiConfig } from '@yuletide/firebase';
-import { router, adminProcedure, officeProcedure } from '../trpc';
+import { router, permissionProcedure, protectedProcedure } from '../trpc';
 
 export const crmUiConfigRouter = router({
-  get: officeProcedure.query(({ ctx }) => getCrmUiConfig(ctx.auth.organizationId)),
+  get: permissionProcedure('settings', 'view').query(({ ctx }) => getCrmUiConfig(ctx.auth.organizationId)),
 
-  resolvedNav: officeProcedure.query(({ ctx }) =>
+  /** YL-S18: any authenticated staff — fail-closed module/permission filtered nav. */
+  resolvedNav: protectedProcedure.query(({ ctx }) =>
     getResolvedCrmNav(ctx.auth.organizationId, ctx.auth.permissions),
   ),
 
-  update: adminProcedure.input(crmUiConfigUpdateSchema).mutation(({ ctx, input }) =>
-    updateCrmUiConfig(ctx.auth.organizationId, {
-      navItems: input.navItems as Awaited<ReturnType<typeof getCrmUiConfig>>['navItems'],
-      labelOverrides: input.labelOverrides,
-      theme: input.theme,
-      customFields: input.customFields,
-    }),
-  ),
+  update: permissionProcedure('settings', 'edit')
+    .input(crmUiConfigUpdateSchema)
+    .mutation(({ ctx, input }) =>
+      updateCrmUiConfig(ctx.auth.organizationId, {
+        navItems: input.navItems as Awaited<ReturnType<typeof getCrmUiConfig>>['navItems'],
+        labelOverrides: input.labelOverrides,
+        theme: input.theme,
+        customFields: input.customFields,
+      }),
+    ),
 
-  upsertCustomField: adminProcedure
+  upsertCustomField: permissionProcedure('settings', 'edit')
     .input(crmUiConfigUpdateSchema.shape.customFields.element)
     .mutation(async ({ ctx, input }) => {
       const current = await getCrmUiConfig(ctx.auth.organizationId);
@@ -33,7 +36,7 @@ export const crmUiConfigRouter = router({
       });
     }),
 
-  deleteCustomField: adminProcedure
+  deleteCustomField: permissionProcedure('settings', 'edit')
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const current = await getCrmUiConfig(ctx.auth.organizationId);

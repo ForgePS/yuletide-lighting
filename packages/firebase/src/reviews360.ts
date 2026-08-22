@@ -6,11 +6,12 @@ import type {
   ReviewsDashboard,
 } from '@clcrm/types';
 import { getAdminFirestore } from './admin';
-import { colCreate, colGet, colList, colUpdate, getOrganization, nanoid } from './firestore';
+import { colCreate, colGet, colList, colUpdate, getOrganization, generatePublicAccessToken, nanoid } from './firestore';
 import { mapTimestampsFromData } from './firestore-utils';
 import { sendMessage360 } from './messages360';
 import { logCustomerActivity } from './customer360';
 import { syncCustomerPipelineFromJob } from './jobs360';
+import { parsePublicAccessToken } from '@clcrm/types';
 
 function appBase() {
   return process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app';
@@ -27,10 +28,13 @@ function mapReferral(raw: Record<string, unknown>, id: string): ReferralRecord {
 async function findReviewByToken(
   token: string,
 ): Promise<(ReviewRequest360 & { _orgId: string }) | null> {
+  const parsed = parsePublicAccessToken(token);
+  if (!parsed) return null;
+
   const db = getAdminFirestore();
   const snap = await db
     .collectionGroup('reviewRequests')
-    .where('publicToken', '==', token)
+    .where('publicToken', '==', parsed)
     .limit(1)
     .get();
   if (snap.empty) return null;
@@ -126,7 +130,7 @@ export async function sendReviewRequest360(
   const customerName =
     `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || 'Customer';
   const channel = input.channel ?? pickChannel(customer);
-  const publicToken = nanoid(32);
+  const publicToken = generatePublicAccessToken();
   const reviewPageUrl = `${appBase()}/review/${publicToken}`;
   const referral = await ensureReferralCode(orgId, input.customerId, userId);
 

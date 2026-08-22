@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getAuth, signInAnonymously } from 'firebase/auth';
+import { portalInviteSuccessPath } from '@clcrm/types';
 import { getFirebaseApp } from '@/lib/firebase';
 import { LoadingState } from '@/components/ui/states';
 
@@ -55,7 +56,8 @@ export default function PortalInviteClaimPage() {
 
       setState('success');
       setMessage('Access confirmed. Opening your portal…');
-      router.replace('/portal/login');
+      // YL-S12: session cookie already minted — go to session-first home, not login.
+      router.replace(portalInviteSuccessPath());
     } catch {
       setState('unavailable');
       setMessage(ACCESS_UNAVAILABLE);

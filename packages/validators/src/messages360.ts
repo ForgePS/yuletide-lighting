@@ -42,6 +42,10 @@ export const receiveSms360Schema = z.object({
 
 export const receiveSmsPublicSchema = receiveSms360Schema.extend({
   toPhone: z.string().min(5).max(40),
+  /** Twilio X-Twilio-Signature header value. */
+  twilioSignature: z.string().min(1).max(200).optional(),
+  /** Absolute webhook URL Twilio posted to (required for signature verify). */
+  webhookUrl: z.string().url().max(2000).optional(),
 });
 
 export const updateConversationSchema = z.object({

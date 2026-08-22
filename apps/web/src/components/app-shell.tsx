@@ -7,8 +7,8 @@ import { useAuth } from '@/lib/firebase-auth';
 import { trpc } from '@/lib/trpc';
 import {
   groupNavItemsBySection,
+  formatCrmNavLabel,
   type CrmNavSection,
-  DEFAULT_CRM_NAV_ITEMS,
 } from '@clcrm/types';
 import {
   LayoutDashboard,
@@ -39,6 +39,7 @@ import {
   Zap,
   Globe,
   ChevronDown,
+  Flag,
   type LucideIcon,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
@@ -63,6 +64,7 @@ const ICON_BY_HREF: Record<string, LucideIcon> = {
   '/app/messages': MessageSquare,
   '/app/automation': Zap,
   '/app/reviews': Star,
+  '/app/marketing/sign-tracker': Flag,
   '/app/schedule': Calendar,
   '/app/time-clock': Timer,
   '/app/routes': MapPin,
@@ -143,8 +145,8 @@ function SectionedNav({
 }) {
   const groups = useMemo(() => {
     const asConfig = items.map((item, index) => ({
-      key: (DEFAULT_CRM_NAV_ITEMS.find((d) => d.href === item.href)?.key ?? `item_${index}`) as never,
-      label: item.label,
+      key: `item_${index}` as never,
+      label: formatCrmNavLabel(item.label),
       href: item.href,
       enabled: true,
       order: index,
@@ -152,6 +154,8 @@ function SectionedNav({
     }));
     return groupNavItemsBySection(asConfig);
   }, [items]);
+
+  const itemsByHref = useMemo(() => new Map(items.map((item) => [item.href, item])), [items]);
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -187,7 +191,8 @@ function SectionedNav({
             {group.section === 'home' ? (
               <div className="space-y-0.5">
                 {group.items.map((cfg) => {
-                  const item = items.find((i) => i.href === cfg.href)!;
+                  const item = itemsByHref.get(cfg.href);
+                  if (!item) return null;
                   return (
                     <NavItemLink
                       key={cfg.href}
@@ -224,7 +229,8 @@ function SectionedNav({
                 {!isCollapsed && (
                   <div className="mt-0.5 space-y-0.5">
                     {group.items.map((cfg) => {
-                      const item = items.find((i) => i.href === cfg.href)!;
+                      const item = itemsByHref.get(cfg.href);
+                      if (!item) return null;
                       return (
                         <NavItemLink
                           key={cfg.href}
@@ -273,10 +279,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     staleTime: 60_000,
     retry: false,
   });
-  const { data: resolvedNav } = trpc.crmUiConfig.resolvedNav.useQuery(undefined, {
-    enabled: deferSecondaryQueries && !authLoading && !!user,
-    staleTime: 60_000,
-  });
+  const { data: resolvedNav, isLoading: resolvedNavLoading, isError: resolvedNavError } =
+    trpc.crmUiConfig.resolvedNav.useQuery(undefined, {
+      enabled: deferSecondaryQueries && !authLoading && !!user,
+      staleTime: 60_000,
+      retry: false,
+    });
   const { data: branding } = trpc.settings360.branding.useQuery(undefined, {
     enabled: deferSecondaryQueries && !authLoading && !!user,
     staleTime: 60_000,
@@ -299,16 +307,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [subscriptionRedirectPending, router]);
 
   const configNav = useMemo<ShellNavItem[]>(() => {
-    const source = resolvedNav?.navItems?.length
-      ? resolvedNav.navItems
-      : DEFAULT_CRM_NAV_ITEMS.filter((i) => i.enabled);
-    return source.map((item) => ({
-      href: item.href,
-      label: item.label,
-      icon: ICON_BY_HREF[item.href] ?? LayoutDashboard,
-      exact: item.href === '/app',
-      section: item.section ?? 'administration',
-    }));
+    // YL-S18: never fall back to unfiltered DEFAULT_CRM_NAV_ITEMS (fail-open).
+    const source = resolvedNav?.navItems ?? [];
+    return source
+      .filter((item) => typeof item.href === 'string' && item.href.trim())
+      .map((item) => ({
+        href: item.href,
+        label: formatCrmNavLabel(item.label),
+        icon: ICON_BY_HREF[item.href] ?? LayoutDashboard,
+        exact: item.href === '/app',
+        section: item.section ?? 'administration',
+      }));
   }, [resolvedNav]);
 
   const visibleNav = subscriptionRedirectPending
@@ -349,7 +358,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     logoAlign === 'center' ? 'justify-center' : logoAlign === 'right' ? 'justify-end' : 'justify-start';
   const logoObject =
     logoAlign === 'center' ? 'object-center' : logoAlign === 'right' ? 'object-right' : 'object-left';
-  const logoSrc = branding?.primaryLogoUrl || '/logo.svg';
+  const logoSrc = branding?.primaryLogoUrl || '/logo.png';
 
   async function handleSignOut() {
     await signOut();
@@ -383,6 +392,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           onNavigate={() => setMobileOpen(false)}
           customChrome={customChrome}
         />
+        {!subscriptionRedirectPending && !resolvedNavLoading && !resolvedNavError && configNav.length === 0 ? (
+          <p
+            className={cn(
+              'px-4 py-2 text-xs',
+              customChrome ? 'text-white/50' : 'text-sidebar-muted',
+            )}
+          >
+            No modules enabled for your role.
+          </p>
+        ) : null}
+        {!subscriptionRedirectPending && resolvedNavError ? (
+          <p
+            className={cn(
+              'px-4 py-2 text-xs',
+              customChrome ? 'text-red-200' : 'text-red-600',
+            )}
+          >
+            Could not load navigation.
+          </p>
+        ) : null}
       </nav>
       <div
         className={cn(

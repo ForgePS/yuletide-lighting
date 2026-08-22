@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { formatCrewActivityLabel } from '@clcrm/types';
+import { formatStage, toValidDate } from '@clcrm/ui';
 import { trpc } from '@/lib/trpc';
 import { LoadingState, ErrorState } from '@/components/ui/states';
 import { AuthenticatedImage } from '@/components/authenticated-image';
@@ -24,8 +26,11 @@ export function CrewJobDetail({ jobId }: { jobId: string }) {
         <Link href="/app/crew" className="text-sm text-muted-foreground hover:text-primary">← Crew hub</Link>
         <h1 className="mt-1 text-2xl font-bold">{data.job.title}</h1>
         <p className="text-muted-foreground">
-          {data.customer.businessName || `${data.customer.firstName} ${data.customer.lastName}`.trim()} · {data.property.addressLine1}
+          {formatStage(data.job.stage)} · {data.customer.businessName || `${data.customer.firstName} ${data.customer.lastName}`.trim()} · {data.property.addressLine1}
         </p>
+        <Link href={`/app/jobs/${jobId}`} className="mt-2 inline-block text-sm text-primary hover:underline">
+          Open job record
+        </Link>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -125,12 +130,15 @@ export function CrewJobDetail({ jobId }: { jobId: string }) {
       <div className="card p-6">
         <h2 className="font-semibold">Activity log</h2>
         <ul className="mt-4 space-y-3 text-sm">
-          {data.activity.map((a) => (
-            <li key={a.id} className="flex justify-between border-b border-dashed pb-2">
-              <span className="capitalize">{a.action.replace(/_/g, ' ')}</span>
-              <span className="text-muted-foreground">{a.createdAt.toLocaleString()}</span>
-            </li>
-          ))}
+          {data.activity.map((a) => {
+            const created = toValidDate(a.createdAt);
+            return (
+              <li key={a.id} className="flex justify-between border-b border-dashed pb-2">
+                <span className="capitalize">{formatCrewActivityLabel(a.action)}</span>
+                <span className="text-muted-foreground">{created ? created.toLocaleString() : '—'}</span>
+              </li>
+            );
+          })}
           {!data.activity.length && <li className="text-muted-foreground">No field activity yet.</li>}
         </ul>
       </div>

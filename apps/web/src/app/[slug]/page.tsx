@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { loadCmsPageBundle } from '@/lib/cms-content';
 import { CmsPageView } from '@/components/cms/cms-page-view';
+import { applyCmsLocale } from '@/lib/cms-runtime';
 
 const RESERVED = new Set([
   'app',
@@ -17,25 +18,37 @@ const RESERVED = new Set([
   'review',
 ]);
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ lang?: string }>;
+};
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug } = await params;
+  const { lang } = await searchParams;
   if (RESERVED.has(slug)) return {};
   const { page, globals } = await loadCmsPageBundle(slug);
   if (!page) return {};
+  const localized = applyCmsLocale(page, lang || globals.defaultLocale);
   return {
-    title: page.seo.title || globals.defaultSeo.title,
-    description: page.seo.description || globals.defaultSeo.description,
+    title: localized.seo.title || globals.defaultSeo.title,
+    description: localized.seo.description || globals.defaultSeo.description,
   };
 }
 
-export default async function CmsDynamicPage({ params }: Props) {
+export default async function CmsDynamicPage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const { lang } = await searchParams;
   if (RESERVED.has(slug)) notFound();
 
   const { page, globals } = await loadCmsPageBundle(slug);
-  if (!page || page.slug !== slug || page.status !== 'published') notFound();
+  if (!page || page.slug !== slug) notFound();
+  const dueScheduled =
+    page.status === 'scheduled' &&
+    page.scheduledPublishAt &&
+    new Date(page.scheduledPublishAt) <= new Date();
+  if (page.status !== 'published' && !dueScheduled) notFound();
 
-  return <CmsPageView page={page} globals={globals} />;
+  const localized = applyCmsLocale(page, lang || globals.defaultLocale);
+  return <CmsPageView page={localized} globals={globals} locale={lang || globals.defaultLocale} />;
 }

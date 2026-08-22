@@ -105,9 +105,7 @@ export function CmsFormsPanel() {
             <button
               key={form.id}
               type="button"
-              className={`w-full rounded-lg px-3 py-2 text-left text-sm ${
-                selectedId === form.id ? 'bg-slate-900 text-white' : 'hover:bg-slate-100'
-              }`}
+              className={selectedId === form.id ? 'list-item-active' : 'list-item-idle'}
               onClick={() => setSelectedId(form.id)}
             >
               {form.name}
@@ -180,11 +178,56 @@ export function CmsFormsPanel() {
                     }
                   />
                 </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={draft.settings.multiStep}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        settings: { ...draft.settings, multiStep: e.target.checked },
+                      })
+                    }
+                  />
+                  Multi-step form
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block font-medium">Spam protection</span>
+                  <select
+                    className="w-full rounded border px-2 py-1.5"
+                    value={draft.settings.spamProtection}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        settings: {
+                          ...draft.settings,
+                          spamProtection: e.target.value as typeof draft.settings.spamProtection,
+                        },
+                      })
+                    }
+                  >
+                    <option value="none">None</option>
+                    <option value="honeypot">Honeypot</option>
+                    <option value="turnstile">Turnstile (needs env keys)</option>
+                  </select>
+                </label>
               </div>
 
               <div className="flex flex-wrap gap-2 border-t pt-3">
                 {(
-                  ['text', 'email', 'phone', 'textarea', 'select', 'checkbox', 'radio', 'date', 'consent'] as const
+                  [
+                    'text',
+                    'email',
+                    'phone',
+                    'textarea',
+                    'select',
+                    'checkbox',
+                    'radio',
+                    'date',
+                    'consent',
+                    'signature',
+                    'hidden',
+                  ] as const
                 ).map((type) => (
                   <button
                     key={type}
@@ -199,7 +242,7 @@ export function CmsFormsPanel() {
 
               <div className="space-y-2">
                 {draft.fields.map((field, index) => (
-                  <div key={field.id} className="flex flex-wrap items-center gap-2 rounded-lg border bg-slate-50 p-2">
+                  <div key={field.id} className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2">
                     <input
                       className="rounded border px-2 py-1 text-sm"
                       value={field.label}
@@ -210,6 +253,94 @@ export function CmsFormsPanel() {
                       }}
                     />
                     <code className="text-xs">{field.type}</code>
+                    <input
+                      className="w-24 rounded border px-1 py-0.5 text-xs"
+                      placeholder="name"
+                      value={field.name}
+                      onChange={(e) => {
+                        const fields = [...draft.fields];
+                        fields[index] = { ...field, name: e.target.value };
+                        setDraft({ ...draft, fields });
+                      }}
+                    />
+                    {draft.settings.multiStep ? (
+                      <label className="flex items-center gap-1 text-xs">
+                        Step
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          className="w-14 rounded border px-1 py-0.5"
+                          value={field.step ?? 1}
+                          onChange={(e) => {
+                            const fields = [...draft.fields];
+                            fields[index] = {
+                              ...field,
+                              step: Math.max(1, Number(e.target.value) || 1),
+                            };
+                            setDraft({ ...draft, fields });
+                          }}
+                        />
+                      </label>
+                    ) : null}
+                    <label className="flex items-center gap-1 text-xs">
+                      Show if
+                      <input
+                        className="w-20 rounded border px-1 py-0.5"
+                        placeholder="field"
+                        value={field.visibleWhen?.field ?? ''}
+                        onChange={(e) => {
+                          const fields = [...draft.fields];
+                          const fieldName = e.target.value;
+                          fields[index] = {
+                            ...field,
+                            visibleWhen: fieldName
+                              ? {
+                                  field: fieldName,
+                                  op: field.visibleWhen?.op ?? 'eq',
+                                  value: field.visibleWhen?.value ?? '',
+                                }
+                              : null,
+                          };
+                          setDraft({ ...draft, fields });
+                        }}
+                      />
+                      <select
+                        className="rounded border px-1 py-0.5"
+                        value={field.visibleWhen?.op ?? 'eq'}
+                        onChange={(e) => {
+                          if (!field.visibleWhen?.field) return;
+                          const fields = [...draft.fields];
+                          fields[index] = {
+                            ...field,
+                            visibleWhen: {
+                              ...field.visibleWhen,
+                              op: e.target.value as NonNullable<typeof field.visibleWhen>['op'],
+                            },
+                          };
+                          setDraft({ ...draft, fields });
+                        }}
+                      >
+                        <option value="eq">=</option>
+                        <option value="neq">≠</option>
+                        <option value="truthy">truthy</option>
+                        <option value="falsy">falsy</option>
+                      </select>
+                      <input
+                        className="w-16 rounded border px-1 py-0.5"
+                        placeholder="value"
+                        value={field.visibleWhen?.value ?? ''}
+                        onChange={(e) => {
+                          if (!field.visibleWhen?.field) return;
+                          const fields = [...draft.fields];
+                          fields[index] = {
+                            ...field,
+                            visibleWhen: { ...field.visibleWhen, value: e.target.value },
+                          };
+                          setDraft({ ...draft, fields });
+                        }}
+                      />
+                    </label>
                     <label className="flex items-center gap-1 text-xs">
                       <input
                         type="checkbox"

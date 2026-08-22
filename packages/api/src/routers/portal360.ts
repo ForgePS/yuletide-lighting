@@ -87,7 +87,7 @@ import {
   portalEstablishSessionSchema,
   portalAuthorizeRouteSchema,
 } from '@clcrm/validators';
-import { router, officeProcedure, adminProcedure, portalPublicProcedure } from '../trpc';
+import { router, permissionProcedure, portalPublicProcedure } from '../trpc';
 
 function mapPortalErr(err: unknown, fallback: string): never {
   if (err instanceof PortalAccessDeniedError) {
@@ -549,13 +549,13 @@ export const portal360Router = router({
     }),
   }),
 
-  logoutAllSessions: officeProcedure
+  logoutAllSessions: permissionProcedure('customers', 'edit')
     .input(portalAccountActionSchema)
     .mutation(({ ctx, input }) =>
       logoutAllPortalSessions(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
     ),
 
-  changeUserRole: officeProcedure
+  changeUserRole: permissionProcedure('customers', 'edit')
     .input(
       z.object({
         portalUserId: z.string().min(1),
@@ -577,54 +577,60 @@ export const portal360Router = router({
       ),
     ),
 
-  enable: officeProcedure.input(portalEnableSchema).mutation(async ({ ctx, input }) => {
-    try {
-      return await enableCustomerPortal(ctx.auth.organizationId, input.customerId, ctx.auth.userId);
-    } catch (err) {
-      mapPortalErr(err, 'Could not enable portal');
-    }
-  }),
+  enable: permissionProcedure('customers', 'create')
+    .input(portalEnableSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await enableCustomerPortal(ctx.auth.organizationId, input.customerId, ctx.auth.userId);
+      } catch (err) {
+        mapPortalErr(err, 'Could not enable portal');
+      }
+    }),
 
-  invite: officeProcedure.input(portalEnableSchema).mutation(async ({ ctx, input }) => {
-    try {
-      return await sendPortalInviteEmail(
-        ctx.auth.organizationId,
-        input.customerId,
-        ctx.auth.userId,
-      );
-    } catch (err) {
-      mapPortalErr(err, 'Could not send portal invite');
-    }
-  }),
+  invite: permissionProcedure('customers', 'create')
+    .input(portalEnableSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await sendPortalInviteEmail(
+          ctx.auth.organizationId,
+          input.customerId,
+          ctx.auth.userId,
+        );
+      } catch (err) {
+        mapPortalErr(err, 'Could not send portal invite');
+      }
+    }),
 
-  inviteUser: officeProcedure.input(portalInviteUserSchema).mutation(async ({ ctx, input }) => {
-    try {
-      const result = await createPortalUserInvitation({
-        organizationId: ctx.auth.organizationId,
-        customerId: input.customerId,
-        role: input.role,
-        email: input.email,
-        displayName: input.displayName,
-        contactId: input.contactId,
-        propertyIds: input.propertyIds,
-        actorId: ctx.auth.userId,
-      });
-      return {
-        portalUserId: result.portalUser.id,
-        invitationStatus: result.portalUser.invitationStatus,
-        invitationExpiresAt: result.portalUser.invitationExpiresAt?.toISOString() ?? null,
-        role: result.portalUser.role,
-        deliveryChannel: result.delivery.channel,
-        message: result.delivery.message,
-        // Raw token only at emulator/test delivery boundary — never from live staff list/detail.
-        invitationToken: result.delivery.invitationToken ?? null,
-      };
-    } catch (err) {
-      mapPortalErr(err, 'Could not create portal invitation');
-    }
-  }),
+  inviteUser: permissionProcedure('customers', 'create')
+    .input(portalInviteUserSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await createPortalUserInvitation({
+          organizationId: ctx.auth.organizationId,
+          customerId: input.customerId,
+          role: input.role,
+          email: input.email,
+          displayName: input.displayName,
+          contactId: input.contactId,
+          propertyIds: input.propertyIds,
+          actorId: ctx.auth.userId,
+        });
+        return {
+          portalUserId: result.portalUser.id,
+          invitationStatus: result.portalUser.invitationStatus,
+          invitationExpiresAt: result.portalUser.invitationExpiresAt?.toISOString() ?? null,
+          role: result.portalUser.role,
+          deliveryChannel: result.delivery.channel,
+          message: result.delivery.message,
+          // Raw token only at emulator/test delivery boundary — never from live staff list/detail.
+          invitationToken: result.delivery.invitationToken ?? null,
+        };
+      } catch (err) {
+        mapPortalErr(err, 'Could not create portal invitation');
+      }
+    }),
 
-  resendInvitation: officeProcedure
+  resendInvitation: permissionProcedure('customers', 'edit')
     .input(portalInviteActionSchema)
     .mutation(async ({ ctx, input }) => {
       try {
@@ -647,7 +653,7 @@ export const portal360Router = router({
       }
     }),
 
-  revokeInvitation: officeProcedure
+  revokeInvitation: permissionProcedure('customers', 'edit')
     .input(portalInviteActionSchema)
     .mutation(async ({ ctx, input }) => {
       return revokePortalInvitation({
@@ -657,73 +663,81 @@ export const portal360Router = router({
       });
     }),
 
-  qrList: officeProcedure
+  qrList: permissionProcedure('customers', 'view')
     .input(portalAccountActionSchema)
     .query(({ ctx, input }) => getStaffPortalQrView(ctx.auth.organizationId, input.customerId)),
 
-  qrGenerate: officeProcedure.input(portalQrGenerateSchema).mutation(async ({ ctx, input }) => {
-    try {
-      return await generatePortalQrCode(ctx.auth.organizationId, {
-        customerId: input.customerId,
-        propertyId: input.propertyId,
-        type: input.type,
-        targetRecordId: input.targetRecordId,
-        label: input.label,
-        internalDescription: input.internalDescription,
-        expiresAt: input.expiresAt ?? null,
-        reusable: input.reusable,
-        requireIdentityVerification: input.requireIdentityVerification,
-        accessMode: input.accessMode,
-        replaceExistingActivation: input.replaceExistingActivation,
-        userId: ctx.auth.userId,
-      });
-    } catch (err) {
-      mapPortalErr(err, 'Could not generate QR code');
-    }
-  }),
+  qrGenerate: permissionProcedure('customers', 'create')
+    .input(portalQrGenerateSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await generatePortalQrCode(ctx.auth.organizationId, {
+          customerId: input.customerId,
+          propertyId: input.propertyId,
+          type: input.type,
+          targetRecordId: input.targetRecordId,
+          label: input.label,
+          internalDescription: input.internalDescription,
+          expiresAt: input.expiresAt ?? null,
+          reusable: input.reusable,
+          requireIdentityVerification: input.requireIdentityVerification,
+          accessMode: input.accessMode,
+          replaceExistingActivation: input.replaceExistingActivation,
+          userId: ctx.auth.userId,
+        });
+      } catch (err) {
+        mapPortalErr(err, 'Could not generate QR code');
+      }
+    }),
 
-  qrRevoke: officeProcedure.input(portalQrCodeActionSchema).mutation(async ({ ctx, input }) => {
-    try {
-      return await revokePortalQrCode(ctx.auth.organizationId, input.qrCodeId, ctx.auth.userId);
-    } catch (err) {
-      mapPortalErr(err, 'Could not revoke QR code');
-    }
-  }),
+  qrRevoke: permissionProcedure('customers', 'edit')
+    .input(portalQrCodeActionSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await revokePortalQrCode(ctx.auth.organizationId, input.qrCodeId, ctx.auth.userId);
+      } catch (err) {
+        mapPortalErr(err, 'Could not revoke QR code');
+      }
+    }),
 
-  qrReplace: officeProcedure.input(portalQrReplaceSchema).mutation(async ({ ctx, input }) => {
-    try {
-      return await replacePortalQrCode(ctx.auth.organizationId, input.qrCodeId, {
-        label: input.label,
-        expiresAt: input.expiresAt ?? null,
-        reusable: input.reusable,
-        userId: ctx.auth.userId,
-      });
-    } catch (err) {
-      mapPortalErr(err, 'Could not replace QR code');
-    }
-  }),
+  qrReplace: permissionProcedure('customers', 'edit')
+    .input(portalQrReplaceSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await replacePortalQrCode(ctx.auth.organizationId, input.qrCodeId, {
+          label: input.label,
+          expiresAt: input.expiresAt ?? null,
+          reusable: input.reusable,
+          userId: ctx.auth.userId,
+        });
+      } catch (err) {
+        mapPortalErr(err, 'Could not replace QR code');
+      }
+    }),
 
-  qrBulkGenerate: officeProcedure.input(portalQrBulkSchema).mutation(async ({ ctx, input }) => {
-    try {
-      return await bulkGeneratePortalQrCodes(ctx.auth.organizationId, input.customerIds, {
-        label: input.label,
-        expiresAt: input.expiresAt ?? null,
-        type: input.type,
-        replaceExistingActivation: input.replaceExistingActivation,
-        userId: ctx.auth.userId,
-      });
-    } catch (err) {
-      mapPortalErr(err, 'Could not bulk generate QR codes');
-    }
-  }),
+  qrBulkGenerate: permissionProcedure('customers', 'create')
+    .input(portalQrBulkSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await bulkGeneratePortalQrCodes(ctx.auth.organizationId, input.customerIds, {
+          label: input.label,
+          expiresAt: input.expiresAt ?? null,
+          type: input.type,
+          replaceExistingActivation: input.replaceExistingActivation,
+          userId: ctx.auth.userId,
+        });
+      } catch (err) {
+        mapPortalErr(err, 'Could not bulk generate QR codes');
+      }
+    }),
 
-  qrScans: officeProcedure
+  qrScans: permissionProcedure('customers', 'view')
     .input(portalQrCodeActionSchema.extend({ limit: z.number().int().min(1).max(100).optional() }))
     .query(({ ctx, input }) =>
       listPortalQrScans(ctx.auth.organizationId, input.qrCodeId, input.limit ?? 50),
     ),
 
-  qrOrgList: officeProcedure
+  qrOrgList: permissionProcedure('customers', 'view')
     .input(
       z
         .object({
@@ -752,35 +766,39 @@ export const portal360Router = router({
       }),
     ),
 
-  qrAnalytics: officeProcedure.query(({ ctx }) => getPortalQrAnalytics(ctx.auth.organizationId)),
+  qrAnalytics: permissionProcedure('customers', 'view').query(({ ctx }) =>
+    getPortalQrAnalytics(ctx.auth.organizationId),
+  ),
 
-  revoke: officeProcedure
+  revoke: permissionProcedure('customers', 'edit')
     .input(portalAccountActionSchema)
     .mutation(({ ctx, input }) =>
       revokeCustomerPortal(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
     ),
 
-  suspend: officeProcedure
+  suspend: permissionProcedure('customers', 'edit')
     .input(portalAccountActionSchema)
     .mutation(({ ctx, input }) =>
       suspendCustomerPortal(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
     ),
 
-  rotateToken: officeProcedure
+  rotateToken: permissionProcedure('customers', 'edit')
     .input(portalAccountActionSchema)
     .mutation(({ ctx, input }) =>
       rotatePortalAccessToken(ctx.auth.organizationId, input.customerId, ctx.auth.userId),
     ),
 
-  getAccount: officeProcedure
+  getAccount: permissionProcedure('customers', 'view')
     .input(portalAccountActionSchema)
     .query(({ ctx, input }) =>
       getStaffPortalAccountView(ctx.auth.organizationId, input.customerId),
     ),
 
-  features: officeProcedure.query(({ ctx }) => resolvePortalFeatures(ctx.auth.organizationId)),
+  features: permissionProcedure('customers', 'view').query(({ ctx }) =>
+    resolvePortalFeatures(ctx.auth.organizationId),
+  ),
 
-  backfillAccounts: adminProcedure.mutation(({ ctx }) =>
+  backfillAccounts: permissionProcedure('settings', 'edit').mutation(({ ctx }) =>
     backfillPortalAccountsForOrg(ctx.auth.organizationId),
   ),
 });

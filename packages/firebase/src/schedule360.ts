@@ -21,6 +21,9 @@ import {
   DEFAULT_VEHICLES,
   detectConflicts,
   EVENT_CATEGORY_COLORS,
+  jobStageFromAppointmentComplete,
+  normalizeOptionalId,
+  resolveJobCrewAssignment,
   SEASON_PLAN,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
@@ -99,8 +102,9 @@ export async function listCalendarEvents(
   });
   let events = rows.map((r) => normalizeEvent({ ...r, organizationId: orgId }));
   const hadAnyEvents = events.length > 0;
-  if (start) events = events.filter((e) => e.startAt >= start);
-  if (end) events = events.filter((e) => e.startAt <= end);
+  // YL-S10: do not drop in-progress events with startAt before the window (overlap filter below).
+  if (start && !end) events = events.filter((e) => e.endAt >= start);
+  if (end && !start) events = events.filter((e) => e.startAt <= end);
 
   // Migrate legacy scheduleBlocks (never on read-only dashboard — that path must stay fast)
   if (!hadAnyEvents && !opts?.readOnly) {
@@ -189,8 +193,9 @@ export async function createCalendarEvent(
 
   let customerName: string | null = null;
   let propertyAddress: string | null = null;
-  if (input.customerId) {
-    const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', input.customerId);
+  const resolvedCustomerId = normalizeOptionalId(input.customerId);
+  if (resolvedCustomerId) {
+    const customer = await colGet<{ firstName?: string; lastName?: string }>(orgId, 'customers', resolvedCustomerId);
     customerName = customer ? `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() : null;
   }
   if (input.propertyId) {
@@ -200,15 +205,19 @@ export async function createCalendarEvent(
 
   const crews = await ensureCrews(orgId);
   const crew = input.crewId ? crews.find((c) => c.id === input.crewId) : null;
+  const crewAssignment = resolveJobCrewAssignment(
+    crew ? { id: crew.id, assignedUserId: crew.assignedUserId } : input.crewId ? { id: input.crewId } : null,
+  );
   // Weather risk requires a live provider — never fabricate from mock forecasts.
   const weatherRisk = false;
+  const customerId = resolvedCustomerId ?? null;
 
   const allEvents = await listCalendarEvents(orgId);
   const draft = {
     id: 'new',
     crewId: input.crewId ?? null,
     vehicleId: input.vehicleId ?? null,
-    customerId: input.customerId ?? null,
+    customerId,
     propertyId: input.propertyId ?? null,
     startAt: input.startAt,
     endAt,
@@ -220,7 +229,7 @@ export async function createCalendarEvent(
     title: input.title,
     appointmentType: input.appointmentType,
     category,
-    customerId: input.customerId ?? null,
+    customerId,
     customerName,
     propertyId: input.propertyId ?? null,
     propertyAddress,
@@ -245,29 +254,33 @@ export async function createCalendarEvent(
   const normalized = normalizeEvent({ ...event, organizationId: orgId });
 
   if (input.jobId) {
-    await colUpdate(orgId, 'jobs', input.jobId, {
+    const jobPatch: Record<string, unknown> = {
       scheduledStart: input.startAt,
       scheduledEnd: endAt,
       stage: 'scheduled',
-      assignedCrewUserId: input.crewId ?? null,
-    });
+      assignedCrewId: crewAssignment.assignedCrewId,
+    };
+    // YL-S10: never write crewSchedules profile id into assignedCrewUserId.
+    if (crewAssignment.assignedCrewUserId) {
+      jobPatch.assignedCrewUserId = crewAssignment.assignedCrewUserId;
+    } else if (!input.crewId) {
+      jobPatch.assignedCrewUserId = null;
+    }
+    await colUpdate(orgId, 'jobs', input.jobId, jobPatch);
     await colCreate(orgId, 'scheduleBlocks', { jobId: input.jobId, startAt: input.startAt, endAt });
   }
 
-  if (input.customerId) {
-    await syncCustomerPipelineFromAppointment(orgId, input.customerId, input.appointmentType, 'scheduled', userId);
+  if (customerId) {
+    await syncCustomerPipelineFromAppointment(orgId, customerId, input.appointmentType, 'scheduled', userId);
   }
 
   await syncDispatchBoard(orgId);
-  if (input.customerId) {
-    await triggerAutomation(orgId, 'job_scheduled', input.customerId, {
-      appointmentDate: input.startAt.toLocaleDateString(),
-      address: propertyAddress ?? '',
-    }, userId).catch(() => {});
+  if (customerId) {
+    // YL-S21: single path via automation360 (messaging fallback inside fireAutomationTrigger).
     try {
       const { fireAutomationTrigger } = await import('./automation360');
       await fireAutomationTrigger(orgId, 'job_scheduled', {
-        customerId: input.customerId,
+        customerId,
         jobId: input.jobId,
         vars: {
           appointmentDate: input.startAt.toLocaleDateString(),
@@ -288,8 +301,8 @@ export async function createEventFromJob(orgId: string, input: { jobId: string; 
   return createCalendarEvent(orgId, {
     title: String(job.title ?? 'Job'),
     appointmentType: input.appointmentType,
-    customerId: String(job.customerId ?? ''),
-    propertyId: (job.propertyId as string) ?? undefined,
+    customerId: normalizeOptionalId(job.customerId as string | null | undefined),
+    propertyId: normalizeOptionalId(job.propertyId as string | null | undefined),
     jobId: input.jobId,
     crewId: input.crewId,
     startAt: input.startAt,
@@ -299,34 +312,67 @@ export async function createEventFromJob(orgId: string, input: { jobId: string; 
 }
 
 export async function updateCalendarEvent(orgId: string, eventId: string, data: Partial<CalendarEvent>, userId?: string | null) {
+  const existing = await getCalendarEvent(orgId, eventId);
   await colUpdate(orgId, 'calendarEvents', eventId, { ...data, updatedBy: userId });
+  const updated = await getCalendarEvent(orgId, eventId);
+  if (existing?.jobId && updated) {
+    const shouldSyncJob =
+      data.startAt !== undefined ||
+      data.endAt !== undefined ||
+      data.crewId !== undefined;
+    if (shouldSyncJob) {
+      await syncJobFromCalendarEvent(orgId, existing.jobId, updated);
+    }
+  }
   await syncDispatchBoard(orgId);
-  return getCalendarEvent(orgId, eventId);
+  return updated;
 }
 
 export async function moveCalendarEvent(orgId: string, input: { eventId: string; startAt: Date; endAt: Date; crewId?: string }, userId?: string | null) {
   const event = await getCalendarEvent(orgId, input.eventId);
   if (!event) throw new Error('Event not found');
   const crews = await ensureCrews(orgId);
-  const crew = input.crewId ? crews.find((c) => c.id === input.crewId) : null;
+  const nextCrewId = input.crewId ?? event.crewId ?? undefined;
+  const crew = nextCrewId ? crews.find((c) => c.id === nextCrewId) : null;
   const allEvents = await listCalendarEvents(orgId);
   const conflicts = detectConflicts(allEvents, { ...event, ...input, id: input.eventId });
 
   await colUpdate(orgId, 'calendarEvents', input.eventId, {
     startAt: input.startAt,
     endAt: input.endAt,
-    crewId: input.crewId ?? event.crewId,
-    crewName: crew?.name ?? event.crewName,
+    crewId: nextCrewId ?? null,
+    crewName: crew?.name ?? (input.crewId ? null : event.crewName),
     updatedBy: userId,
   });
 
   if (event.jobId) {
-    await colUpdate(orgId, 'jobs', event.jobId, { scheduledStart: input.startAt, scheduledEnd: input.endAt });
+    const updated = await getCalendarEvent(orgId, input.eventId);
+    if (updated) await syncJobFromCalendarEvent(orgId, event.jobId, updated);
   }
 
   await syncDispatchBoard(orgId);
   const updated = await getCalendarEvent(orgId, input.eventId);
   return { event: updated, conflicts };
+}
+
+/** YL-S10 — keep linked job times/crew in sync with calendar event edits. */
+async function syncJobFromCalendarEvent(orgId: string, jobId: string, event: CalendarEvent) {
+  const crews = event.crewId ? await ensureCrews(orgId) : [];
+  const crew = event.crewId ? crews.find((c) => c.id === event.crewId) : null;
+  const assignment = resolveJobCrewAssignment(
+    crew ? { id: crew.id, assignedUserId: crew.assignedUserId } : event.crewId ? { id: event.crewId } : null,
+  );
+  const jobPatch: Record<string, unknown> = {
+    scheduledStart: event.startAt,
+    scheduledEnd: event.endAt,
+    assignedCrewId: assignment.assignedCrewId,
+  };
+  if (assignment.assignedCrewUserId) {
+    jobPatch.assignedCrewUserId = assignment.assignedCrewUserId;
+  } else if (!event.crewId) {
+    jobPatch.assignedCrewUserId = null;
+  }
+  await colUpdate(orgId, 'jobs', jobId, jobPatch);
 }
 
 export async function duplicateCalendarEvent(orgId: string, eventId: string, startAt: Date, userId?: string | null) {
@@ -397,6 +443,23 @@ export async function ensureCrews(orgId: string): Promise<CrewProfile[]> {
     crews.push(mapDoc<CrewProfile>({ id: ref.id, ...data }));
   }
   return crews;
+}
+
+/** YL-S11 — link a schedule crew profile to a Firebase Auth user for field assignment. */
+export async function updateCrewProfileAssignedUser(
+  orgId: string,
+  crewId: string,
+  assignedUserId: string | null,
+  userId?: string | null,
+) {
+  await ensureCrews(orgId);
+  const existing = await colGet<CrewProfile>(orgId, 'crewSchedules', crewId);
+  if (!existing) throw new Error('Crew profile not found');
+  const normalized = typeof assignedUserId === 'string' ? assignedUserId.trim() : '';
+  return colUpdate(orgId, 'crewSchedules', crewId, {
+    assignedUserId: normalized || null,
+    updatedBy: userId ?? null,
+  }) as Promise<CrewProfile>;
 }
 
 async function recalcCrewUtilization(orgId: string, crews: CrewProfile[]) {
@@ -502,7 +565,7 @@ export async function updateDispatchStatus(orgId: string, dispatchId: string, st
       await triggerAutomation(orgId, 'job_completed', event.customerId, {}, userId).catch(() => {});
       await syncCustomerPipelineFromAppointment(orgId, event.customerId, event.appointmentType, 'completed', userId);
       if (event.jobId) {
-        const jobStage = event.appointmentType === 'takedown' ? 'removed' : 'installed';
+        const jobStage = jobStageFromAppointmentComplete(event.appointmentType) ?? 'installed';
         await colUpdate(orgId, 'jobs', event.jobId, {
           stage: jobStage,
           ...(jobStage === 'installed' ? { installedAt: new Date() } : { removedAt: new Date() }),

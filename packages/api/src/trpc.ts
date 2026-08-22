@@ -73,7 +73,7 @@ export const authProcedure = t.procedure.use(({ ctx, next }) => {
 });
 
 export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  // YL-S3: capability-based (settings.edit), not legacy role === 'admin'
+  // YL-S3 capability (settings.edit). Prefer permissionProcedure('settings', 'edit') for new code (YL-S5).
   if (!hasAdminCapability(ctx.auth)) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
   }
@@ -81,7 +81,7 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 });
 
 export const officeProcedure = protectedProcedure.use(({ ctx, next }) => {
-  // YL-S3: desk CRM capability from permission matrix (+ field-role exclusions)
+  // YL-S3 desk capability. Prefer resource-scoped permissionProcedure (YL-S5 / BACKLOG-012).
   if (!hasOfficeCapability(ctx.auth)) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Office access required' });
   }

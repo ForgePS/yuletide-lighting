@@ -19,7 +19,8 @@ import {
 import { getAdminFirestore, Timestamp } from './admin';
 import { randomUUID } from 'crypto';
 import { mapTimestampsFromData } from './firestore-utils';
-import { colCreate, colGet, colList, colUpdate } from './firestore';
+import { colCreate, colGet, colList, colUpdate, generatePublicAccessToken } from './firestore';
+import { parsePublicAccessToken } from '@clcrm/types';
 import { createProposal360 } from './proposals';
 
 function ts() {
@@ -466,7 +467,7 @@ export async function ensureMockupApprovalToken(orgId: string, mockupId: string)
   const mockup = await getMockup360(orgId, mockupId);
   if (!mockup) throw new Error('Mockup not found');
   if (mockup.approvalToken) return mockup.approvalToken;
-  const token = nanoid(32);
+  const token = generatePublicAccessToken();
   await colUpdate(orgId, 'mockups', mockupId, { approvalToken: token });
   return token;
 }
@@ -500,10 +501,13 @@ export async function sendMockupForApproval(
 }
 
 export async function getMockupByApprovalToken(token: string) {
+  const parsed = parsePublicAccessToken(token);
+  if (!parsed) return null;
+
   const db = getAdminFirestore();
   const snap = await db
     .collectionGroup('mockups')
-    .where('approvalToken', '==', token)
+    .where('approvalToken', '==', parsed)
     .limit(1)
     .get();
   if (snap.empty) return null;

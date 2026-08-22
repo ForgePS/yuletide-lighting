@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatPortalStatusLabel } from '@clcrm/types';
 import { formatCurrency, formatDate } from '@clcrm/ui';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { PortalResponsiveTable, PortalStatusPill } from '@/components/portal/portal-mobile';
@@ -56,7 +57,7 @@ function AgreementsBody() {
         {
           key: 'status',
           header: 'Status',
-          cell: (a) => <PortalStatusPill>{a.status.replace(/_/g, ' ')}</PortalStatusPill>,
+          cell: (a) => <PortalStatusPill>{formatPortalStatusLabel(a.status)}</PortalStatusPill>,
         },
         {
           key: 'action',
@@ -112,7 +113,7 @@ function AgreementsBody() {
                 </p>
               )}
             </div>
-            <PortalStatusPill>{a.status.replace(/_/g, ' ')}</PortalStatusPill>
+            <PortalStatusPill>{formatPortalStatusLabel(a.status)}</PortalStatusPill>
           </div>
           <div className="mt-4 flex flex-col gap-2">
             {a.publicToken && ['awaiting_signature', 'sent', 'draft'].includes(a.status) && (

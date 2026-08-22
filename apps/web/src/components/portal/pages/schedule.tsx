@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
+import { formatScheduleLabel } from '@clcrm/types';
 import { formatDate } from '@clcrm/ui';
 import { PortalAuthedFrame } from '@/components/portal/portal-shell';
 import { PortalSection, PortalStatusPill } from '@/components/portal/portal-mobile';
@@ -48,7 +49,7 @@ function ScheduleBody({ canRequest }: { canRequest: boolean }) {
               <li key={item.id} className="rounded-xl border border-stone-100 p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <PortalStatusPill tone="info">
-                    {item.appointmentType.replace(/_/g, ' ')}
+                    {formatScheduleLabel(item.appointmentType)}
                   </PortalStatusPill>
                 </div>
                 <p className="mt-2 text-lg font-semibold text-stone-900">{item.title}</p>

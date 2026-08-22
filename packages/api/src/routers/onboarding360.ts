@@ -4,7 +4,7 @@ import {
   updateOnboardingStep,
   completeOnboarding,
 } from '@yuletide/firebase';
-import { router, officeProcedure } from '../trpc';
+import { router, permissionProcedure } from '../trpc';
 
 const onboardingStepSchema = z.enum([
   'company',
@@ -16,11 +16,15 @@ const onboardingStepSchema = z.enum([
 ]);
 
 export const onboarding360Router = router({
-  state: officeProcedure.query(({ ctx }) => getOnboardingState(ctx.auth.organizationId)),
+  state: permissionProcedure('settings', 'view').query(({ ctx }) =>
+    getOnboardingState(ctx.auth.organizationId),
+  ),
 
-  updateStep: officeProcedure
+  updateStep: permissionProcedure('customers', 'edit')
     .input(z.object({ step: onboardingStepSchema }))
     .mutation(({ ctx, input }) => updateOnboardingStep(ctx.auth.organizationId, input.step)),
 
-  complete: officeProcedure.mutation(({ ctx }) => completeOnboarding(ctx.auth.organizationId)),
+  complete: permissionProcedure('customers', 'edit').mutation(({ ctx }) =>
+    completeOnboarding(ctx.auth.organizationId),
+  ),
 });

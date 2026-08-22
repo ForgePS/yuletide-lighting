@@ -41,6 +41,7 @@ export type SeedUser = {
   organizationId: string;
   role: string;
   status?: string;
+  settingsRole?: string;
 };
 
 export type OrganizationLifecycleStatus =
@@ -63,6 +64,9 @@ export async function seedUsers(
       };
       if (user.status !== undefined) {
         data.status = user.status;
+      }
+      if (user.settingsRole !== undefined) {
+        data.settingsRole = user.settingsRole;
       }
       await setDoc(doc(db, 'users', user.uid), data);
     }

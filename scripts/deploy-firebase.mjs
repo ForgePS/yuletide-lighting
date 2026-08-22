@@ -195,11 +195,14 @@ function restoreFirebaseJson() {
 }
 
 const nodeMajor = Number(process.version.slice(1).split('.')[0]);
-if (nodeMajor > 20) {
+// YL-S24 — keep in sync with packages/types/src/runtime-policy.ts (FIREBASE_NODE_ENGINE_MAJOR).
+const FIREBASE_NODE_ENGINE_MAJOR = 22;
+if (nodeMajor !== FIREBASE_NODE_ENGINE_MAJOR) {
   console.warn(
-    `\n⚠️  Node ${process.version} detected. Firebase recommends Node 20 for deploy.\n` +
-      `   On Windows without nvm: winget install OpenJS.NodeJS.20\n` +
-      `   Or: winget install CoreyButler.NVMforWindows  then  nvm install 20 && nvm use 20\n`,
+    `\n⚠️  Node ${process.version} detected. Yuletide Firebase Hosting SSR expects Node ${FIREBASE_NODE_ENGINE_MAJOR} ` +
+      `(engines "22", runtime nodejs22; nodejs20 decommissions 2026-10-30).\n` +
+      `   On Windows: winget install OpenJS.NodeJS.22\n` +
+      `   Or: nvm install 22 && nvm use 22\n`,
   );
 }
 

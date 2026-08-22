@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import { formatDate } from '@clcrm/ui';
-import type { CustomerListItem } from '@clcrm/types';
+import { formatMessageLabel, type CustomerListItem } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
 import { useToast } from '@/lib/toast';
 import { EmptyState, LoadingState } from '@/components/ui/states';
+import { deliveryStatusBadge, deliveryStatusLabel, outboundSendToast } from '@/lib/message-utils';
 
 function customerName(customer: CustomerListItem) {
   return customer.businessName || `${customer.firstName} ${customer.lastName}`.trim();
@@ -44,8 +45,8 @@ export function SmsCenter() {
   const smsMessages = thread?.messages.filter((message) => message.channel === 'sms') ?? [];
 
   const sendSingle = trpc.messages360.send.useMutation({
-    onSuccess: () => {
-      toast('SMS sent', 'success');
+    onSuccess: (result) => {
+      toast(outboundSendToast(result?.status, 'SMS'), 'success');
       setSingleBody('');
       refetchThread();
       utils.messages360.conversations.list.invalidate();
@@ -54,7 +55,10 @@ export function SmsCenter() {
   });
   const sendBulk = trpc.messages360.sms.sendBulk.useMutation({
     onSuccess: (result) => {
-      toast(`Bulk SMS sent to ${result.sent} customer(s)`, 'success');
+      toast(
+        `Bulk SMS recorded for ${result.sent} customer(s) (check each thread for delivery status)`,
+        'success',
+      );
       setBulkBody('');
       setSelectedBulkIds([]);
       utils.messages360.conversations.list.invalidate();
@@ -86,7 +90,14 @@ export function SmsCenter() {
         <section className="card space-y-4 p-6">
           <div>
             <h2 className="font-semibold">Send Individual SMS</h2>
-            <p className="text-sm text-muted-foreground">Send a text to one customer and keep it in their conversation log.</p>
+            <p className="text-sm text-muted-foreground">
+              Send a text to one customer and keep it in their conversation log.
+            </p>
+            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              Provider delivery stays off until <code className="font-mono">REAL_SMS=1</code> and Twilio
+              credentials are configured. Without that, messages are saved as{' '}
+              <strong>recorded only</strong> and customers do not receive SMS.
+            </p>
           </div>
           <select className="input" value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)}>
             <option value="">Select a customer</option>
@@ -193,7 +204,7 @@ export function SmsCenter() {
                 >
                   <p className="font-medium">{conversation.customerName || 'Customer'}</p>
                   <p className="truncate text-xs text-muted-foreground">{conversation.lastMessagePreview || 'No messages'}</p>
-                  <p className="mt-1 text-xs capitalize text-muted-foreground">{conversation.status.replace(/_/g, ' ')}</p>
+                  <p className="mt-1 text-xs capitalize text-muted-foreground">{formatMessageLabel(conversation.status)}</p>
                 </button>
               ))
             )}
@@ -215,7 +226,14 @@ export function SmsCenter() {
                       key={message.id}
                       className={`rounded-lg p-3 text-sm ${message.direction === 'outbound' ? 'bg-red-50 text-red-900' : 'bg-muted'}`}
                     >
-                      <p className="text-xs capitalize text-muted-foreground">{message.direction} - {message.status}</p>
+                      <p className="text-xs capitalize text-muted-foreground">
+                        {message.direction}{' '}
+                        <span
+                          className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium normal-case ${deliveryStatusBadge(message.status)}`}
+                        >
+                          {deliveryStatusLabel(message.status)}
+                        </span>
+                      </p>
                       <p className="mt-1 whitespace-pre-wrap">{message.body}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{formatDate(message.createdAt)}</p>
                     </div>

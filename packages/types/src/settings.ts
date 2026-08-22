@@ -596,7 +596,25 @@ export const SYSTEM_ROLES: Array<{
     slug: 'office_staff',
     name: 'Office Staff',
     description: 'Office administration',
-    permissions: resourcePermissions(['customers', 'invoices', 'jobs', 'sign_tracker'], false),
+    // YL-S5: desk CRM resources matching prior officeProcedure breadth (no delete/manage).
+    // settings.view only — settings.edit remains owner/administrator.
+    permissions: (() => {
+      const matrix = resourcePermissions(
+        [
+          'customers',
+          'mockups',
+          'proposals',
+          'jobs',
+          'invoices',
+          'inventory',
+          'reports',
+          'sign_tracker',
+        ],
+        false,
+      );
+      matrix.settings.view = true;
+      return matrix;
+    })(),
   },
   {
     slug: 'read_only',
@@ -949,6 +967,9 @@ export function hasPermission(
   return permissions[resource]?.[action] ?? false;
 }
 
+/** Legacy 4 (+ read_only) role strings used by Firestore rules `hasRole`. */
+export type LegacyUserRole = 'owner' | 'admin' | 'office' | 'crew' | 'read_only';
+
 export function mapLegacyRole(role: string): SettingsRole {
   const map: Record<string, SettingsRole> = {
     owner: 'owner',
@@ -957,4 +978,37 @@ export function mapLegacyRole(role: string): SettingsRole {
     crew: 'installer',
   };
   return map[role] ?? 'read_only';
+}
+
+/**
+ * YL-S6 / BACKLOG-007 — map settings roles onto legacy rule buckets.
+ * Prefer this when syncing `users.role` and when evaluating client rules.
+ * Desk roles (incl. dispatcher) → office; field-only → crew; read_only stays read_only.
+ */
+export function mapSettingsRoleToLegacyRole(
+  settingsRole: string | null | undefined,
+): LegacyUserRole | null {
+  if (!settingsRole) return null;
+  const map: Record<string, LegacyUserRole> = {
+    owner: 'owner',
+    administrator: 'admin',
+    sales_manager: 'office',
+    sales_rep: 'office',
+    operations_manager: 'office',
+    dispatcher: 'office',
+    office_staff: 'office',
+    crew_leader: 'crew',
+    installer: 'crew',
+    warehouse_staff: 'crew',
+    read_only: 'read_only',
+  };
+  return map[settingsRole] ?? null;
+}
+
+/** Prefer settingsRole mapping; fall back to legacy `users.role`. */
+export function resolveLegacyRoleForRules(input: {
+  role?: string | null;
+  settingsRole?: string | null;
+}): string {
+  return mapSettingsRoleToLegacyRole(input.settingsRole) ?? input.role ?? 'read_only';
 }

@@ -40,6 +40,35 @@ describe('firestore.rules', () => {
       { uid: 'pendingA', organizationId: ORG_A, role: 'admin', status: 'pending' },
       { uid: 'nostatusA', organizationId: ORG_A, role: 'office' },
       { uid: 'portalUserA', organizationId: ORG_A, role: 'portal', status: 'active' },
+      // YL-S6: settingsRole overrides mismatched legacy role
+      {
+        uid: 'settingsOfficeOverCrew',
+        organizationId: ORG_A,
+        role: 'crew',
+        status: 'active',
+        settingsRole: 'office_staff',
+      },
+      {
+        uid: 'settingsInstaller',
+        organizationId: ORG_A,
+        role: 'office',
+        status: 'active',
+        settingsRole: 'installer',
+      },
+      {
+        uid: 'settingsReadOnly',
+        organizationId: ORG_A,
+        role: 'office',
+        status: 'active',
+        settingsRole: 'read_only',
+      },
+      {
+        uid: 'settingsDispatcher',
+        organizationId: ORG_A,
+        role: 'crew',
+        status: 'active',
+        settingsRole: 'dispatcher',
+      },
     ]);
 
     // Org roots required for belongsToOrg lifecycle checks (YL-S4 / BACKLOG-010).
@@ -203,6 +232,43 @@ describe('firestore.rules', () => {
           name: 'Updated by office',
         }),
       );
+    });
+  });
+
+  describe('D2. settingsRole bridge (YL-S6 / BACKLOG-007)', () => {
+    it('settingsRole office_staff overrides stale legacy crew for customer access', async () => {
+      const db = testEnv.authenticatedContext('settingsOfficeOverCrew').firestore();
+      await assertSucceeds(getDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA')));
+      await assertSucceeds(
+        setDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA'), { name: 'via settingsRole' }),
+      );
+    });
+
+    it('settingsRole installer maps to crew bucket (jobs read, customers denied)', async () => {
+      const db = testEnv.authenticatedContext('settingsInstaller').firestore();
+      await assertSucceeds(getDoc(doc(db, 'organizations', ORG_A, 'jobs', 'jobA')));
+      await assertFails(getDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA')));
+      await assertFails(
+        setDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA'), { name: 'nope' }),
+      );
+    });
+
+    it('settingsRole dispatcher maps to office (desk), not crew', async () => {
+      const db = testEnv.authenticatedContext('settingsDispatcher').firestore();
+      await assertSucceeds(getDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA')));
+    });
+
+    it('settingsRole read_only is denied office hasRole paths', async () => {
+      const db = testEnv.authenticatedContext('settingsReadOnly').firestore();
+      await assertFails(getDoc(doc(db, 'organizations', ORG_A, 'customers', 'custA')));
+      await assertFails(getDoc(doc(db, 'organizations', ORG_A, 'jobs', 'jobA')));
+    });
+
+    it('legacy role still used when settingsRole absent', async () => {
+      const officeDb = testEnv.authenticatedContext('officeA').firestore();
+      await assertSucceeds(getDoc(doc(officeDb, 'organizations', ORG_A, 'customers', 'custA')));
+      const crewDb = testEnv.authenticatedContext('crewA').firestore();
+      await assertFails(getDoc(doc(crewDb, 'organizations', ORG_A, 'customers', 'custA')));
     });
   });
 

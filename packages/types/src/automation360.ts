@@ -105,6 +105,94 @@ export const AUTOMATION360_TRIGGER_LABELS: Record<Automation360Trigger, string> 
   rebooking_season_begins: 'Rebooking season begins',
 };
 
+export const AUTOMATION360_ACTION_LABELS: Record<AutomationActionType, string> = {
+  send_email: 'Send email',
+  send_sms: 'Send SMS',
+  create_task: 'Create task',
+  change_stage: 'Change pipeline stage',
+  notify_user: 'Notify team',
+  create_invoice: 'Create invoice',
+  create_follow_up_reminder: 'Follow-up reminder',
+};
+
+/** YL-S21 — null-safe automation labels (trigger / action / run status). */
+export function formatAutomationLabel(value: string | null | undefined, fallback = 'Unknown'): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return fallback;
+  return text
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
+export function formatAutomationTriggerLabel(trigger: string | null | undefined): string {
+  if (!trigger) return 'Unknown';
+  if (trigger in AUTOMATION360_TRIGGER_LABELS) {
+    return AUTOMATION360_TRIGGER_LABELS[trigger as Automation360Trigger];
+  }
+  return formatAutomationLabel(trigger);
+}
+
+export function formatAutomationActionLabel(actionType: string | null | undefined): string {
+  if (!actionType) return 'Unknown';
+  if (actionType in AUTOMATION360_ACTION_LABELS) {
+    return AUTOMATION360_ACTION_LABELS[actionType as AutomationActionType];
+  }
+  return formatAutomationLabel(actionType);
+}
+
+export function formatAutomationRunStatus(status: string | null | undefined): string {
+  return formatAutomationLabel(status, 'Unknown');
+}
+
+/**
+ * YL-S21 — when automation360 has rules for a trigger, do not also fire messaging automations.
+ * Legacy messaging fallback only when the 360 rule set for that trigger is empty.
+ */
+export function shouldFallbackToMessagingAutomations(automation360RuleCount: number): boolean {
+  return automation360RuleCount <= 0;
+}
+
+export function evaluateAutomationConditions(
+  conditions: AutomationCondition[] | null | undefined,
+  ctx: AutomationTriggerContext,
+): boolean {
+  const list = conditions ?? [];
+  if (!list.length) return true;
+  return list.every((c) => {
+    const actual = resolveAutomationFieldValue(c.field, ctx);
+    switch (c.operator) {
+      case 'exists':
+        return actual != null && actual !== '';
+      case 'equals':
+        return String(actual ?? '') === String(c.value ?? '');
+      case 'not_equals':
+        return String(actual ?? '') !== String(c.value ?? '');
+      case 'greater_than':
+        return Number(actual ?? 0) > Number(c.value ?? 0);
+      case 'less_than':
+        return Number(actual ?? 0) < Number(c.value ?? 0);
+      default:
+        return true;
+    }
+  });
+}
+
+export function resolveAutomationFieldValue(
+  field: string | null | undefined,
+  ctx: AutomationTriggerContext,
+): unknown {
+  const key = typeof field === 'string' ? field.trim() : '';
+  if (!key) return undefined;
+  if (key.startsWith('metadata.')) {
+    return ctx.metadata?.[key.slice(9)];
+  }
+  if (key.startsWith('vars.')) {
+    return ctx.vars?.[key.slice(5)];
+  }
+  return (ctx as Record<string, unknown>)[key] ?? ctx.metadata?.[key] ?? ctx.vars?.[key];
+}
+
 export const DEFAULT_AUTOMATION360_RULES: Array<
   Omit<AutomationRule360, keyof AutomationAuditFields | 'id' | 'organizationId' | 'runCount' | 'lastRunAt'>
 > = [

@@ -34,7 +34,9 @@ import {
   getCustomerPortalAccess,
   getCustomerPipeline,
   updateCustomerPipelineStage,
+  updateCustomerPipelineDetails,
   updateCustomerNextAction,
+  bulkUpdateCustomers360,
   logCustomerActivity,
   seedCustomer360Demo,
   listConsultations360,
@@ -64,9 +66,11 @@ import {
   customerPipelineFiltersSchema,
   updateCustomerPipelineStageSchema,
   updateCustomerNextActionSchema,
+  updatePipelineCustomerSchema,
+  bulkUpdateCustomers360Schema,
   propertyListFiltersSchema,
 } from '@clcrm/validators';
-import { router, permissionProcedure } from '../trpc';
+import { router, permissionProcedure, officeProcedure } from '../trpc';
 
 function emptyToNull(value?: string | null) {
   return value?.trim() ? value.trim() : null;
@@ -175,6 +179,30 @@ export const customer360Router = router({
         ctx.auth.email ?? 'Office',
       ),
     ),
+
+  updatePipelineCustomer: officeProcedure
+    .input(updatePipelineCustomerSchema)
+    .mutation(({ ctx, input }) => {
+      const { customerId, ...data } = input;
+      return updateCustomerPipelineDetails(
+        ctx.auth.organizationId,
+        customerId,
+        {
+          stage: data.stage,
+          nextAction: data.nextAction ?? undefined,
+          nextActionDue: data.nextActionDue ?? undefined,
+          pipelineEstimatedValueCents: data.pipelineEstimatedValueCents ?? undefined,
+          pipelineAssignedTo: data.pipelineAssignedTo ?? undefined,
+        },
+        ctx.auth.userId,
+        ctx.auth.email ?? 'Office',
+      );
+    }),
+
+  bulkUpdate: officeProcedure.input(bulkUpdateCustomers360Schema).mutation(({ ctx, input }) => {
+    const { customerIds, ...patch } = input;
+    return bulkUpdateCustomers360(ctx.auth.organizationId, customerIds, patch, ctx.auth.userId);
+  }),
 
   updateNextAction: permissionProcedure('customers', 'edit')
     .input(updateCustomerNextActionSchema)

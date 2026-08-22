@@ -12,6 +12,7 @@ import {
 } from '@/lib/pipeline-utils';
 import { LoadingState, EmptyState } from '@/components/ui/states';
 import { CustomerPipelineCard } from './customer-pipeline-card';
+import { PipelineCustomerPanel } from './pipeline-customer-panel';
 import { StageRevenueSummary } from './stage-revenue-summary';
 
 export function PipelineBoard() {
@@ -19,12 +20,15 @@ export function PipelineBoard() {
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState<CustomerStage[]>([]);
   const [overdueOnly, setOverdueOnly] = useState(false);
+  const [assignedTo, setAssignedTo] = useState('');
   const [dragId, setDragId] = useState<string | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<import('@clcrm/types').CustomerPipelineItem | null>(null);
 
   const { data, isLoading, refetch } = trpc.customer360.pipeline.useQuery({
     search: search.trim() || undefined,
     stages: stageFilter.length ? stageFilter : undefined,
     overdueOnly: overdueOnly || undefined,
+    assignedTo: assignedTo.trim() || undefined,
   });
 
   const updateStage = trpc.customer360.updatePipelineStage.useMutation({
@@ -82,6 +86,13 @@ export function PipelineBoard() {
           />
           Overdue only
         </label>
+        <input
+          type="search"
+          placeholder="Filter by rep..."
+          value={assignedTo}
+          onChange={(e) => setAssignedTo(e.target.value)}
+          className="input max-w-xs"
+        />
         {stageFilter.length > 0 && (
           <button type="button" className="btn-ghost text-sm" onClick={() => setStageFilter([])}>
             Clear stage filters ({stageFilter.length})
@@ -125,6 +136,7 @@ export function PipelineBoard() {
                       key={customer.id}
                       customer={customer}
                       onDragStart={() => setDragId(customer.customerId)}
+                      onEdit={() => setEditingCustomer(customer)}
                     />
                   ))
                 )}
@@ -151,6 +163,14 @@ export function PipelineBoard() {
           ))}
         </div>
       </details>
+
+      {editingCustomer ? (
+        <PipelineCustomerPanel
+          customer={editingCustomer}
+          onClose={() => setEditingCustomer(null)}
+          onSaved={() => refetch()}
+        />
+      ) : null}
     </div>
   );
 }

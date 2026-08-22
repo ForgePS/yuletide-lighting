@@ -46,7 +46,7 @@ export function SmsCenter() {
 
   const sendSingle = trpc.messages360.send.useMutation({
     onSuccess: (result) => {
-      toast(outboundSendToast(result?.status, 'SMS'), 'success');
+      toast(outboundSendToast(result?.message?.status, 'SMS'), 'success');
       setSingleBody('');
       refetchThread();
       utils.messages360.conversations.list.invalidate();

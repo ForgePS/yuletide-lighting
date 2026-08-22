@@ -22,7 +22,7 @@ export function MessageComposer({
 
   const send = trpc.messages360.send.useMutation({
     onSuccess: (result) => {
-      toast(outboundSendToast(result?.status, channel === 'sms' ? 'SMS' : 'Message'), 'success');
+      toast(outboundSendToast(result?.message?.status, channel === 'sms' ? 'SMS' : 'Message'), 'success');
       setBody('');
       onSent?.();
     },

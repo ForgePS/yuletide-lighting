@@ -89,3 +89,34 @@ export const updateCrewAssignedUserSchema = z.object({
   crewId: z.string().min(1),
   assignedUserId: z.string().min(1).nullable(),
 });
+
+export const crewSkillLevelSchema = z.enum(['junior', 'mid', 'senior', 'lead']);
+
+export const crewAvailabilitySchema = z.enum([
+  'available',
+  'assigned',
+  'vacation',
+  'sick_leave',
+  'training',
+  'off_duty',
+]);
+
+export const createCrewSchema = z.object({
+  name: z.string().min(1).max(100),
+  position: z.string().min(1).max(100).default('Installer'),
+  skillLevel: crewSkillLevelSchema.default('mid'),
+  availabilityStatus: crewAvailabilitySchema.default('available'),
+  certifications: z.array(z.string()).default([]),
+  assignedVehicleId: z.string().optional().nullable(),
+});
+
+export const updateCrewSchema = createCrewSchema.partial().extend({
+  crewId: z.string().min(1),
+  leaderUserId: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const crewMemberSchema = z.object({
+  crewId: z.string().min(1),
+  userId: z.string().min(1),
+});

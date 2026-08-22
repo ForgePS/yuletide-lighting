@@ -105,6 +105,10 @@ function monthStart(d = new Date()) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 
+function yearStart(year: number) {
+  return new Date(year, 0, 1);
+}
+
 function seasonStart() {
   const now = new Date();
   const year = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;

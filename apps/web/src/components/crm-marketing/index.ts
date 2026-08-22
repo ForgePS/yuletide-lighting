@@ -1,0 +1,11 @@
+export { CrmPromoStrip } from './crm-promo-strip';
+export { CrmMarketingHeader } from './crm-marketing-header';
+export { CrmMarketingFooter } from './crm-marketing-footer';
+export { CrmHeroSection } from './crm-hero-section';
+export { CrmModulesPreview } from './crm-modules-preview';
+export { CrmWorkflowSection } from './crm-workflow-section';
+export { CrmTestimonialsSection } from './crm-testimonials-section';
+export { CrmFaqSection } from './crm-faq-section';
+export { CrmCtaSection } from './crm-cta-section';
+export { CrmFeaturesGrid } from './crm-features-grid';
+export { CrmPricingView, CrmContactForm } from './crm-pricing-contact';

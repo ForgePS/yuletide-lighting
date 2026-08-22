@@ -5,6 +5,7 @@ import {
   getInventoryItem360,
   createInventoryItem360,
   updateInventoryItem360,
+  bulkUpdateInventoryItems360,
   listCategories,
   ensureDefaultWarehouses,
   createWarehouse,
@@ -37,6 +38,7 @@ import {
 import {
   createInventoryItem360Schema,
   updateInventoryItem360Schema,
+  bulkUpdateInventoryItemsSchema,
   createWarehouseSchema,
   createWarehouseLocationSchema,
   createVendorSchema,
@@ -48,7 +50,7 @@ import {
   barcodeActionSchema,
   aiInventoryQuerySchema,
 } from '@clcrm/validators';
-import { router, permissionProcedure } from '../trpc';
+import { router, permissionProcedure, officeProcedure } from '../trpc';
 
 export const inventory360Router = router({
   dashboard: permissionProcedure('inventory', 'view').query(({ ctx }) =>
@@ -99,6 +101,10 @@ export const inventory360Router = router({
       .mutation(({ ctx, input }) =>
         updateInventoryItem360(ctx.auth.organizationId, input.itemId, input.data as never, ctx.auth.userId),
       ),
+    bulkUpdate: officeProcedure.input(bulkUpdateInventoryItemsSchema).mutation(({ ctx, input }) => {
+      const { itemIds, ...patch } = input;
+      return bulkUpdateInventoryItems360(ctx.auth.organizationId, itemIds, patch, ctx.auth.userId);
+    }),
     markDamaged: permissionProcedure('inventory', 'edit')
       .input(
         z.object({

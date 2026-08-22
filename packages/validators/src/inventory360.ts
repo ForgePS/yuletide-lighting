@@ -142,4 +142,12 @@ export const aiInventoryQuerySchema = z.object({
   question: z.string().min(1).max(500),
 });
 
+export const bulkUpdateInventoryItemsSchema = z.object({
+  itemIds: z.array(z.string().min(1)).min(1).max(500),
+  categoryId: z.string().optional(),
+  categoryName: z.string().max(100).optional(),
+  reorderLevel: z.number().min(0).optional(),
+  stockAdjustment: z.number().int().optional(),
+});
+
 export type CreateInventoryItem360Input = z.infer<typeof createInventoryItem360Schema>;

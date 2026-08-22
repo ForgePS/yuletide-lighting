@@ -25,6 +25,13 @@ import {
   getSeasonPlan,
   aiScheduleQuery,
   sendScheduleNotifications,
+  getCrewProfile,
+  createCrewProfile,
+  updateCrewProfile,
+  archiveCrewProfile,
+  deleteCrewProfile,
+  addCrewMember,
+  removeCrewMember,
 } from '@yuletide/firebase';
 import {
   createCalendarEventSchema,
@@ -38,8 +45,11 @@ import {
   aiSchedulingQuerySchema,
   calendarRangeSchema,
   updateCrewAssignedUserSchema,
+  createCrewSchema,
+  updateCrewSchema,
+  crewMemberSchema,
 } from '@clcrm/validators';
-import { router, permissionProcedure, requireModule } from '../trpc';
+import { router, permissionProcedure, requireModule, officeProcedure } from '../trpc';
 
 export const schedule360Router = router({
   dashboard: permissionProcedure('jobs', 'view').query(({ ctx }) =>
@@ -108,6 +118,32 @@ export const schedule360Router = router({
 
   crews: router({
     list: permissionProcedure('jobs', 'view').query(({ ctx }) => ensureCrews(ctx.auth.organizationId)),
+    get: permissionProcedure('jobs', 'view')
+      .input(z.object({ crewId: z.string().min(1) }))
+      .query(async ({ ctx, input }) => {
+        const crew = await getCrewProfile(ctx.auth.organizationId, input.crewId);
+        if (!crew || !crew.isActive) throw new TRPCError({ code: 'NOT_FOUND' });
+        return crew;
+      }),
+    create: officeProcedure.input(createCrewSchema).mutation(({ ctx, input }) =>
+      createCrewProfile(ctx.auth.organizationId, input, ctx.auth.userId),
+    ),
+    update: officeProcedure.input(updateCrewSchema).mutation(({ ctx, input }) => {
+      const { crewId, ...data } = input;
+      return updateCrewProfile(ctx.auth.organizationId, crewId, data, ctx.auth.userId);
+    }),
+    archive: officeProcedure.input(z.object({ crewId: z.string().min(1) })).mutation(({ ctx, input }) =>
+      archiveCrewProfile(ctx.auth.organizationId, input.crewId, ctx.auth.userId),
+    ),
+    delete: officeProcedure.input(z.object({ crewId: z.string().min(1) })).mutation(({ ctx, input }) =>
+      deleteCrewProfile(ctx.auth.organizationId, input.crewId, ctx.auth.userId),
+    ),
+    addMember: officeProcedure.input(crewMemberSchema).mutation(({ ctx, input }) =>
+      addCrewMember(ctx.auth.organizationId, input.crewId, input.userId, ctx.auth.userId),
+    ),
+    removeMember: officeProcedure.input(crewMemberSchema).mutation(({ ctx, input }) =>
+      removeCrewMember(ctx.auth.organizationId, input.crewId, input.userId, ctx.auth.userId),
+    ),
     updateAssignedUser: permissionProcedure('jobs', 'edit')
       .input(updateCrewAssignedUserSchema)
       .mutation(async ({ ctx, input }) => {

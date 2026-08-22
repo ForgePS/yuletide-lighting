@@ -5,10 +5,12 @@ import { useParams } from 'next/navigation';
 import { trpc } from '@/lib/trpc';
 import { CustomerForm, customerToFormValues } from '@/components/customers';
 import { LoadingState, ErrorState } from '@/components/ui/states';
+import { useAnalyticsYear } from '@/lib/analytics-year-context';
 
 export default function EditCustomerPage() {
   const customerId = useParams().customerId as string;
-  const { data, isLoading, isError, refetch } = trpc.customer360.getById.useQuery({ customerId });
+  const { year } = useAnalyticsYear();
+  const { data, isLoading, isError, refetch } = trpc.customer360.getById.useQuery({ customerId, year });
 
   if (isLoading) return <LoadingState />;
   if (isError || !data) return <ErrorState message="Could not load customer." onRetry={() => refetch()} />;

@@ -5,6 +5,7 @@ import {
   getCrewMobileJobDetail,
   crewClockIn,
   crewClockOut,
+  getCrewActiveClockIn,
   crewStartJob,
   crewCompleteJob,
   crewUploadPhoto,
@@ -104,6 +105,10 @@ export const crewMobileRouter = router({
     runCrewMutation(() =>
       crewClockOut(ctx.auth.organizationId, ctx.auth.userId, ctx.auth.email, input.entryId),
     ),
+  ),
+
+  getActiveClockIn: protectedProcedure.query(({ ctx }) =>
+    getCrewActiveClockIn(ctx.auth.organizationId, ctx.auth.userId),
   ),
 
   startJob: protectedProcedure.input(z.object({ jobId: z.string().min(1) })).mutation(({ ctx, input }) =>

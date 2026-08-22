@@ -12,14 +12,14 @@ import {
   recordPublicApproval,
   collectDeposit,
   getProposalAnalytics,
-  listProposalTemplates,
   ensureProposalTemplates,
   createProposalTemplate,
+  updateProposalTemplate,
+  deleteProposalTemplate,
   updateProposalPackage,
   generateAiAssist,
   calculateUpsells,
   calculatePricingFromComponents,
-  getAdminFirestore,
 } from '@yuletide/firebase';
 import {
   createProposal360Schema,
@@ -29,9 +29,10 @@ import {
   publicAccessTokenSchema,
   createProposalTemplateSchema,
   updateProposalTemplateSchema,
+  deleteProposalTemplateSchema,
   depositPaymentSchema,
 } from '@clcrm/validators';
-import { router, publicProcedure, permissionProcedure } from '../trpc';
+import { router, publicProcedure, permissionProcedure, officeProcedure } from '../trpc';
 
 export const proposals360Router = router({
   list: permissionProcedure('proposals', 'view').query(({ ctx }) => listProposals360(ctx.auth.organizationId)),
@@ -111,14 +112,12 @@ export const proposals360Router = router({
     ),
     update: permissionProcedure('proposals', 'edit')
       .input(z.object({ templateId: z.string(), data: updateProposalTemplateSchema }))
-      .mutation(async ({ ctx, input }) => {
-        const db = getAdminFirestore();
-        await db.doc(`organizations/${ctx.auth.organizationId}/proposalTemplates/${input.templateId}`).update({
-          ...input.data,
-          updatedAt: new Date(),
-        });
-        return listProposalTemplates(ctx.auth.organizationId);
-      }),
+      .mutation(({ ctx, input }) =>
+        updateProposalTemplate(ctx.auth.organizationId, input.templateId, input.data as never, ctx.auth.userId),
+      ),
+    delete: officeProcedure.input(deleteProposalTemplateSchema).mutation(({ ctx, input }) =>
+      deleteProposalTemplate(ctx.auth.organizationId, input.templateId),
+    ),
   }),
 
   public: router({

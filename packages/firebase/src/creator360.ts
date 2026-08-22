@@ -29,6 +29,7 @@ import {
   type UserRecord,
 } from './firestore';
 import { getOrgSubscriptionState, isSubscriptionLocked, listSubscriptionPayments } from './billing';
+import { inviteOrgUser } from './settings360';
 
 function ts() {
   return Timestamp.now();
@@ -856,10 +857,37 @@ export async function provisionCreatorOrganization(
     },
   });
 
+  let ownerInviteSent = false;
+  if (input.ownerEmail?.trim()) {
+    try {
+      await inviteOrgUser(
+        orgRef.id,
+        { email: input.ownerEmail.trim(), role: 'owner' },
+        actor.userId,
+        actor.email,
+      );
+      ownerInviteSent = true;
+    } catch (err) {
+      await logPlatformAudit({
+        action: 'org_note',
+        actorEmail: actor.email,
+        actorUserId: actor.userId,
+        organizationId: orgRef.id,
+        organizationName: input.companyName.trim(),
+        details: {
+          note: 'Owner invite failed during provision',
+          ownerEmail: input.ownerEmail,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    }
+  }
+
   return {
     organizationId: orgRef.id,
     companyName: input.companyName.trim(),
     trialEndsAt: trialDays > 0 && subscriptionStatus === 'trialing' ? trialEndsAt : trialEndsAt,
+    ownerInviteSent,
   };
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
-import type { CmsBlock, CmsLink, CmsPage, CmsSiteGlobals } from '@clcrm/types';
+import type { CmsBlock, CmsFormField, CmsLink, CmsPage, CmsSiteGlobals } from '@clcrm/types';
 import { marketingIcon } from '@/lib/marketing-icons';
 import { ArrowRight, Check, Sparkles, X } from 'lucide-react';
 import { useAuth } from '@/lib/firebase-auth';

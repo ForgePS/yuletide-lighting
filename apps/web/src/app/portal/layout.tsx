@@ -1,6 +1,7 @@
 'use client';
 
 import { TRPCProvider } from '@/lib/trpc';
+import { ToastProvider } from '@/lib/toast';
 import { useEffect } from 'react';
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
@@ -17,5 +18,9 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     };
   }, []);
 
-  return <TRPCProvider>{children}</TRPCProvider>;
+  return (
+    <TRPCProvider>
+      <ToastProvider>{children}</ToastProvider>
+    </TRPCProvider>
+  );
 }

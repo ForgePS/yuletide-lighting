@@ -130,7 +130,10 @@ function defaultForm(initial?: Record<string, unknown>, prefillCustomerId?: stri
       }>
     | undefined;
   const pricing = initial?.pricing as { linearFootage?: number } | undefined;
-  const drafts = buildPackageEditorDraftsFromProposalPackages(packagesRaw, pricing);
+  const drafts = buildPackageEditorDraftsFromProposalPackages(
+    packagesRaw as Parameters<typeof buildPackageEditorDraftsFromProposalPackages>[0],
+    pricing?.linearFootage != null ? { linearFootage: pricing.linearFootage } : undefined,
+  );
   const filled = proposalPackagesAreFilled(drafts);
   const lineItems = (initial?.lineItems as ProposalLineItem[]) ?? [];
   return {

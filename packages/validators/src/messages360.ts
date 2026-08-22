@@ -65,18 +65,6 @@ export const createTemplate360Schema = z.object({
   body: z.string().min(1).max(10000),
 });
 
-export const updateTemplate360Schema = createTemplate360Schema.partial().extend({
-  isActive: z.boolean().optional(),
-});
-
-export const updateAutomation360Schema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  subject: z.string().max(500).optional().nullable(),
-  body: z.string().min(1).max(10000).optional(),
-  delayDays: z.number().int().min(0).optional(),
-  isActive: z.boolean().optional(),
-});
-
 export const createCampaignSchema = z.object({
   name: z.string().min(1).max(200),
   campaignType: campaignTypeSchema,
@@ -122,6 +110,35 @@ export const portalMessageSchema = z.object({
   body: z.string().min(1).max(5000),
   attachmentUrls: z.array(z.string().url()).default([]),
 });
+
+export const portalTokenMessageSchema = z.object({
+  token: z.string().min(8),
+  body: z.string().min(1).max(5000),
+});
+
+export const updateTemplate360Schema = createTemplate360Schema.partial().extend({
+  isActive: z.boolean().optional(),
+});
+
+export const deleteTemplate360Schema = z.object({ templateId: z.string().min(1) });
+
+export const updateAutomation360Schema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  subject: z.string().max(500).optional().nullable(),
+  body: z.string().min(1).max(10000).optional(),
+  delayDays: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const deleteAutomation360Schema = z.object({ automationId: z.string().min(1) });
+
+export const updateCampaign360Schema = createCampaignSchema.partial().extend({
+  campaignId: z.string().min(1),
+});
+
+export const deleteCampaign360Schema = z.object({ campaignId: z.string().min(1) });
+
+export const deleteConversation360Schema = z.object({ conversationId: z.string().min(1) });
 
 export const triggerAutomationSchema = z.object({
   trigger: automationTriggerSchema,

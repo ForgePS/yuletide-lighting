@@ -97,6 +97,8 @@ export const creator360Router = router({
         hostingUrl: input.hostingUrl ?? null,
         docsUrl: input.docsUrl ?? null,
         announcementBanner: input.announcementBanner ?? null,
+        platformCreatorEmails: input.platformCreatorEmails ?? [],
+        platformCreatorUids: input.platformCreatorUids ?? [],
       }, { userId: ctx.auth.userId, email: ctx.auth.email }),
     ),
   }),

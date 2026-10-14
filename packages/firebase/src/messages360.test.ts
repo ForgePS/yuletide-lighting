@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyMessage,
   aiGenerateMessage,
+  fillMessagePlaceholders,
   formatMessageLabel,
+  hasMessagePlaceholders,
   isMessageProviderSendEnabled,
   renderMessageTemplate,
   resolveMessageDeliveryMode,
@@ -32,6 +34,19 @@ describe('messages360 helpers', () => {
   it('renders template variables', () => {
     expect(renderMessageTemplate('Hi {{customerName}}', { customerName: 'Jane' })).toBe('Hi Jane');
     expect(renderMessageTemplate(null, { customerName: 'Jane' })).toBe('');
+  });
+
+  it('fills customer placeholders and keeps unknown ones for a later pass', () => {
+    const text = 'Hi {{customerName}}, your property at {{ address }} — {{paymentLink}}';
+    expect(fillMessagePlaceholders(text, { customerName: 'Jane Doe', address: '12 Elm St, Austin' })).toBe(
+      'Hi Jane Doe, your property at 12 Elm St, Austin — {{paymentLink}}',
+    );
+    expect(fillMessagePlaceholders(text, { address: '' })).toBe(
+      'Hi {{customerName}}, your property at  — {{paymentLink}}',
+    );
+    expect(hasMessagePlaceholders(text)).toBe(true);
+    expect(hasMessagePlaceholders('No variables here')).toBe(false);
+    expect(hasMessagePlaceholders(undefined)).toBe(false);
   });
 
   it('generates proposal follow-up', () => {

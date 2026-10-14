@@ -750,6 +750,7 @@ export async function provisionCreatorOrganization(
     subscriptionPlan?: 'monthly' | 'yearly' | null;
     slug?: string;
     environmentMarker?: string;
+    isDemoTenant?: boolean;
   },
   actor: { userId: string; email: string },
 ): Promise<CreatorProvisionResult> {
@@ -782,6 +783,7 @@ export async function provisionCreatorOrganization(
     availableModules: settings.availableModules ?? DEFAULT_AVAILABLE_MODULES,
     slug: input.slug ?? null,
     environmentMarker: input.environmentMarker ?? null,
+    isDemoTenant: input.isDemoTenant ?? false,
     provisioningStatus: 'active',
   });
 

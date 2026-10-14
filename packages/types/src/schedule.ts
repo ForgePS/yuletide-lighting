@@ -178,6 +178,34 @@ export type ResourceReservation = ScheduleAuditFields & {
   endAt: Date;
 };
 
+/** Whole days (inclusive, `YYYY-MM-DD` in the company time zone) when nothing can be booked. */
+export type ScheduleBlackout = ScheduleAuditFields & {
+  id: string;
+  organizationId: string;
+  startDate: string;
+  endDate: string;
+  reason?: string | null;
+};
+
+/** Calendar day (`YYYY-MM-DD`) of `date` as seen in `timeZone`; falls back to the runtime zone. */
+export function dateKeyInTimeZone(date: Date, timeZone?: string | null): string {
+  try {
+    if (timeZone) {
+      return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+    }
+  } catch {
+    // Invalid IANA zone — use the runtime zone below.
+  }
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function findBlackoutForDateKey(blackouts: ScheduleBlackout[], dateKey: string): ScheduleBlackout | null {
+  return blackouts.find((b) => b.startDate <= dateKey && dateKey <= b.endDate) ?? null;
+}
+
 export type ScheduleConflict = {
   id: string;
   type: ConflictType;

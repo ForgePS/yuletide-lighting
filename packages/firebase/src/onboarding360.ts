@@ -1,23 +1,64 @@
+import {
+  COMPANY_SETUP_STEP_IDS,
+  COMPANY_SETUP_VERSION,
+  DEFAULT_PROPOSAL_PACKAGE_DEFAULTS,
+  SKIPPABLE_COMPANY_SETUP_STEPS,
+  type CompanySetupCategory,
+  type CompanySetupStepId,
+  type OnboardingStatus,
+} from '@clcrm/types';
 import { getAdminFirestore } from './admin';
 import { getOrganization, updateOrganization, type OrganizationRecord } from './firestore';
-import { getCompanySettings, listOrgUsers } from './settings360';
+import {
+  getBrandingSettings,
+  getCompanySettings,
+  getInvoiceSettings,
+  getProposalSettings,
+  listOrgUsers,
+} from './settings360';
+import { isDemoOrganization } from './demo-tenant';
 
 export type OnboardingChecklistItem = {
-  id: string;
+  id: CompanySetupStepId;
   label: string;
+  description: string;
   done: boolean;
+  skipped: boolean;
+  skippable: boolean;
+  href: string | null;
+  category: CompanySetupCategory;
 };
 
 export type OnboardingState = {
-  step: string | null;
+  version: number;
+  status: OnboardingStatus;
+  step: CompanySetupStepId | null;
   completed: boolean;
+  dismissed: boolean;
   checklist: OnboardingChecklistItem[];
+  completedCount: number;
+  totalCount: number;
+  progressPercent: number;
 };
 
-const STEP_ORDER = ['company', 'season', 'products', 'invite_team', 'payments', 'complete'] as const;
-type OnboardingStepId = (typeof STEP_ORDER)[number];
-
-const PAST_PRODUCTS = new Set<string>(['invite_team', 'payments', 'complete']);
+const STEP_HREFS: Record<CompanySetupStepId, string | null> = {
+  company_profile: '/app/settings/company',
+  branding: '/app/settings/branding',
+  business_address: '/app/settings/company',
+  service_areas: '/app/settings/company',
+  users: '/app/settings/users',
+  crews: '/app/schedule/crews',
+  services: '/app/settings/proposals',
+  pricing: '/app/settings/proposals',
+  tax_settings: '/app/settings/invoices',
+  payment_settings: '/app/settings/integrations',
+  inventory: '/app/settings/inventory',
+  customer_import: '/app/settings/import',
+  first_customer: '/app/customers',
+  first_proposal: '/app/proposals/new',
+  scheduling: '/app/settings/season',
+  launch_readiness: null,
+};
 
 function isPaidOrConnected(org: OrganizationRecord): boolean {
   if (org.stripeConnectAccountId) return true;
@@ -25,103 +66,367 @@ function isPaidOrConnected(org: OrganizationRecord): boolean {
   return status === 'trialing' || status === 'active' || status === 'past_due';
 }
 
+async function collectionHasRows(orgId: string, collection: string): Promise<boolean> {
+  const snap = await getAdminFirestore()
+    .collection(`organizations/${orgId}/${collection}`)
+    .limit(1)
+    .get();
+  return !snap.empty;
+}
+
 async function seasonSettingsExist(orgId: string): Promise<boolean> {
   const snap = await getAdminFirestore().doc(`organizations/${orgId}/settings/season`).get();
   return snap.exists;
 }
 
-async function inventoryItemCount(orgId: string): Promise<number> {
-  const snap = await getAdminFirestore()
-    .collection(`organizations/${orgId}/inventoryItems`)
-    .limit(1)
-    .get();
-  return snap.size;
+async function hasCustomCrews(orgId: string): Promise<boolean> {
+  return collectionHasRows(orgId, 'crewSchedules');
 }
 
-function firstIncompleteStep(checklist: OnboardingChecklistItem[]): OnboardingStepId {
-  const incomplete = checklist.find((item) => !item.done);
-  return (incomplete?.id as OnboardingStepId | undefined) ?? 'complete';
+function serviceAreaConfigured(
+  serviceArea: Awaited<ReturnType<typeof getCompanySettings>>['serviceArea'],
+): boolean {
+  return (
+    serviceArea.states.length > 0
+    || serviceArea.counties.length > 0
+    || serviceArea.cities.length > 0
+    || serviceArea.zipCodes.length > 0
+    || serviceArea.maxTravelDistanceMiles > 0
+  );
+}
+
+function proposalServicesConfigured(
+  settings: Awaited<ReturnType<typeof getProposalSettings>>,
+): boolean {
+  for (const tier of ['good', 'better', 'best'] as const) {
+    const current = settings.packageDefaults[tier];
+    const defaults = DEFAULT_PROPOSAL_PACKAGE_DEFAULTS[tier];
+    if (current.description !== defaults.description) return true;
+    if (current.inclusions.join('|') !== defaults.inclusions.join('|')) return true;
+  }
+  return false;
+}
+
+function pricingConfigured(settings: Awaited<ReturnType<typeof getProposalSettings>>): boolean {
+  const defaultTerms =
+    'Payment due upon acceptance. Installation scheduled upon deposit receipt.';
+  if (settings.defaultTerms !== defaultTerms) return true;
+  if (settings.defaultDepositPercent !== 50) return true;
+  for (const tier of ['good', 'better', 'best'] as const) {
+    if (
+      settings.packageDefaults[tier].markupPercent
+      !== DEFAULT_PROPOSAL_PACKAGE_DEFAULTS[tier].markupPercent
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function labelForStep(id: CompanySetupStepId): string {
+  const labels: Record<CompanySetupStepId, string> = {
+    company_profile: 'Company profile',
+    branding: 'Branding',
+    business_address: 'Business address',
+    service_areas: 'Service areas',
+    users: 'Users',
+    crews: 'Crews',
+    services: 'Services',
+    pricing: 'Pricing',
+    tax_settings: 'Tax settings',
+    payment_settings: 'Payment settings',
+    inventory: 'Inventory',
+    customer_import: 'Customer import',
+    first_customer: 'First customer',
+    first_proposal: 'First proposal',
+    scheduling: 'Scheduling',
+    launch_readiness: 'Launch readiness',
+  };
+  return labels[id];
+}
+
+function descriptionForStep(id: CompanySetupStepId): string {
+  const descriptions: Record<CompanySetupStepId, string> = {
+    company_profile: 'Add your company name and contact details.',
+    branding: 'Upload your logo and set brand colors.',
+    business_address: 'Enter your business mailing address.',
+    service_areas: 'Define where you install holiday lighting.',
+    users: 'Invite at least one teammate to the workspace.',
+    crews: 'Create a field crew for scheduling.',
+    services: 'Configure your standard proposal packages.',
+    pricing: 'Set default deposits and package pricing.',
+    tax_settings: 'Configure tax ID or invoice tax rate.',
+    payment_settings: 'Connect Stripe or activate your subscription.',
+    inventory: 'Add products you install and maintain.',
+    customer_import: 'Import existing customers from a spreadsheet.',
+    first_customer: 'Create or import your first customer record.',
+    first_proposal: 'Build your first sales proposal.',
+    scheduling: 'Set your season calendar or schedule a job.',
+    launch_readiness: 'Mark setup complete when you are ready to operate.',
+  };
+  return descriptions[id];
+}
+
+function categoryForStep(id: CompanySetupStepId): CompanySetupCategory {
+  if (['company_profile', 'branding', 'business_address', 'service_areas'].includes(id)) {
+    return 'foundation';
+  }
+  if (['users', 'crews'].includes(id)) return 'team';
+  if (['services', 'pricing', 'tax_settings', 'payment_settings'].includes(id)) return 'commercial';
+  if (['inventory', 'customer_import', 'first_customer', 'first_proposal', 'scheduling'].includes(id)) {
+    return 'operations';
+  }
+  return 'launch';
+}
+
+function isSkipped(org: OrganizationRecord, stepId: CompanySetupStepId): boolean {
+  return (org.onboardingSkippedSteps ?? []).includes(stepId);
+}
+
+function firstIncompleteStep(checklist: OnboardingChecklistItem[]): CompanySetupStepId {
+  const incomplete = checklist.find((item) => !item.done && item.id !== 'launch_readiness');
+  return incomplete?.id ?? 'launch_readiness';
+}
+
+function deriveStatus(completed: boolean, completedCount: number): OnboardingStatus {
+  if (completed) return 'complete';
+  if (completedCount === 0) return 'not-started';
+  return 'in-progress';
 }
 
 export async function getOnboardingState(orgId: string): Promise<OnboardingState> {
   const org = await getOrganization(orgId);
   if (!org) {
-    return {
-      step: 'company',
-      completed: false,
-      checklist: STEP_ORDER.map((id) => ({
-        id,
-        label: labelForStep(id),
-        done: false,
-      })),
-    };
+    return emptyOnboardingState();
+  }
+
+  if (isDemoOrganization(org)) {
+    return completedOnboardingState();
   }
 
   const completed = Boolean(org.onboardingCompletedAt);
-  const [company, seasonExists, productCount, users] = await Promise.all([
+  const skippedSteps = new Set(org.onboardingSkippedSteps ?? []);
+
+  const [
+    company,
+    branding,
+    proposalSettings,
+    invoiceSettings,
+    seasonExists,
+    hasCustomers,
+    hasProposals,
+    hasInventory,
+    hasCrews,
+    hasEvents,
+    users,
+  ] = await Promise.all([
     getCompanySettings(orgId).catch(() => null),
+    getBrandingSettings(orgId).catch(() => null),
+    getProposalSettings(orgId).catch(() => null),
+    getInvoiceSettings(orgId).catch(() => null),
     seasonSettingsExist(orgId),
-    inventoryItemCount(orgId),
+    collectionHasRows(orgId, 'customers'),
+    collectionHasRows(orgId, 'proposals'),
+    collectionHasRows(orgId, 'inventoryItems'),
+    hasCustomCrews(orgId),
+    collectionHasRows(orgId, 'calendarEvents'),
     listOrgUsers(orgId).catch(() => []),
   ]);
 
-  const companyDone = Boolean(
-    company &&
-      ((company.phone && company.phone.trim()) ||
-        (company.email && company.email.trim()) ||
-        (company.addressLine1 && company.addressLine1.trim())),
-  );
-  const productsSkipped = PAST_PRODUCTS.has(org.onboardingStep ?? '');
-  const productsDone = productCount > 0 || productsSkipped || completed;
-  const inviteDone = users.length > 1 || completed;
-  const paymentsDone = isPaidOrConnected(org) || completed;
+  const companyProfileDone =
+    completed
+    || Boolean(
+      company?.companyName?.trim()
+        && (company.phone?.trim() || company.email?.trim()),
+    );
 
-  const checklist: OnboardingChecklistItem[] = [
-    { id: 'company', label: labelForStep('company'), done: companyDone || completed },
-    { id: 'season', label: labelForStep('season'), done: seasonExists || completed },
-    { id: 'products', label: labelForStep('products'), done: productsDone },
-    { id: 'invite_team', label: labelForStep('invite_team'), done: inviteDone },
-    { id: 'payments', label: labelForStep('payments'), done: paymentsDone },
-    { id: 'complete', label: labelForStep('complete'), done: completed },
-  ];
+  const brandingDone =
+    completed
+    || Boolean(
+      company?.logoUrl?.trim()
+        || branding?.primaryLogoUrl?.trim()
+        || org.logoUrl?.trim(),
+    );
 
-  const step = completed
-    ? 'complete'
-    : org.onboardingStep && STEP_ORDER.includes(org.onboardingStep as OnboardingStepId)
-      ? org.onboardingStep
+  const addressDone =
+    completed
+    || Boolean(
+      company?.addressLine1?.trim()
+        && company.city?.trim()
+        && company.state?.trim(),
+    );
+
+  const serviceAreasDone =
+    completed || Boolean(company && serviceAreaConfigured(company.serviceArea));
+
+  const usersDone = completed || users.length > 1;
+  const crewsDone = completed || hasCrews;
+  const servicesDone =
+    completed || skippedSteps.has('services') || Boolean(proposalSettings && proposalServicesConfigured(proposalSettings));
+  const pricingDone =
+    completed || Boolean(proposalSettings && pricingConfigured(proposalSettings));
+  const taxDone =
+    completed
+    || Boolean(company?.taxId?.trim())
+    || (invoiceSettings?.taxRatePercent ?? 0) > 0;
+  const paymentsDone = completed || isPaidOrConnected(org);
+  const inventoryDone = completed || skippedSteps.has('inventory') || hasInventory;
+  const importDone = completed || skippedSteps.has('customer_import') || hasCustomers;
+  const firstCustomerDone = completed || hasCustomers;
+  const firstProposalDone = completed || hasProposals;
+  const schedulingDone = completed || seasonExists || hasEvents;
+  const launchDone = completed;
+
+  const completionByStep: Record<CompanySetupStepId, boolean> = {
+    company_profile: companyProfileDone,
+    branding: brandingDone,
+    business_address: addressDone,
+    service_areas: serviceAreasDone,
+    users: usersDone,
+    crews: crewsDone,
+    services: servicesDone,
+    pricing: pricingDone,
+    tax_settings: taxDone,
+    payment_settings: paymentsDone,
+    inventory: inventoryDone,
+    customer_import: importDone,
+    first_customer: firstCustomerDone,
+    first_proposal: firstProposalDone,
+    scheduling: schedulingDone,
+    launch_readiness: launchDone,
+  };
+
+  const checklist: OnboardingChecklistItem[] = COMPANY_SETUP_STEP_IDS.map((id) => ({
+    id,
+    label: labelForStep(id),
+    description: descriptionForStep(id),
+    done: completionByStep[id],
+    skipped: isSkipped(org, id),
+    skippable: SKIPPABLE_COMPANY_SETUP_STEPS.includes(id),
+    href: STEP_HREFS[id],
+    category: categoryForStep(id),
+  }));
+
+  const actionableSteps = checklist.filter((item) => item.id !== 'launch_readiness');
+  const completedCount = actionableSteps.filter((item) => item.done).length;
+  const totalCount = actionableSteps.length;
+  const progressPercent = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
+
+  const step: CompanySetupStepId = completed
+    ? 'launch_readiness'
+    : org.onboardingStep && COMPANY_SETUP_STEP_IDS.includes(org.onboardingStep as CompanySetupStepId)
+      ? (org.onboardingStep as CompanySetupStepId)
       : firstIncompleteStep(checklist);
 
-  return { step, completed, checklist };
-}
-
-function labelForStep(id: OnboardingStepId): string {
-  switch (id) {
-    case 'company':
-      return 'Company profile';
-    case 'season':
-      return 'Season calendar';
-    case 'products':
-      return 'Products / inventory';
-    case 'invite_team':
-      return 'Invite your team';
-    case 'payments':
-      return 'Payments & subscription';
-    case 'complete':
-      return 'Finish onboarding';
-    default:
-      return id;
+  if (!completed && !org.onboardingStartedAt && completedCount > 0) {
+    await updateOrganization(orgId, { onboardingStartedAt: new Date() });
   }
+
+  return {
+    version: COMPANY_SETUP_VERSION,
+    status: deriveStatus(completed, completedCount),
+    step,
+    completed,
+    dismissed: Boolean(org.onboardingDismissedAt) && !completed,
+    checklist,
+    completedCount,
+    totalCount,
+    progressPercent,
+  };
 }
 
-export async function updateOnboardingStep(orgId: string, step: string): Promise<OnboardingState> {
-  await updateOrganization(orgId, { onboardingStep: step });
+function emptyOnboardingState(): OnboardingState {
+  const checklist: OnboardingChecklistItem[] = COMPANY_SETUP_STEP_IDS.map((id) => ({
+    id,
+    label: labelForStep(id),
+    description: descriptionForStep(id),
+    done: false,
+    skipped: false,
+    skippable: SKIPPABLE_COMPANY_SETUP_STEPS.includes(id),
+    href: STEP_HREFS[id],
+    category: categoryForStep(id),
+  }));
+  const totalCount = checklist.length - 1;
+  return {
+    version: COMPANY_SETUP_VERSION,
+    status: 'not-started',
+    step: 'company_profile',
+    completed: false,
+    dismissed: false,
+    checklist,
+    completedCount: 0,
+    totalCount,
+    progressPercent: 0,
+  };
+}
+
+function completedOnboardingState(): OnboardingState {
+  const checklist: OnboardingChecklistItem[] = COMPANY_SETUP_STEP_IDS.map((id) => ({
+    id,
+    label: labelForStep(id),
+    description: descriptionForStep(id),
+    done: true,
+    skipped: false,
+    skippable: SKIPPABLE_COMPANY_SETUP_STEPS.includes(id),
+    href: STEP_HREFS[id],
+    category: categoryForStep(id),
+  }));
+  const totalCount = checklist.length - 1;
+  return {
+    version: COMPANY_SETUP_VERSION,
+    status: 'complete',
+    step: 'launch_readiness',
+    completed: true,
+    dismissed: false,
+    checklist,
+    completedCount: totalCount,
+    totalCount,
+    progressPercent: 100,
+  };
+}
+
+export async function updateOnboardingStep(orgId: string, step: CompanySetupStepId): Promise<OnboardingState> {
+  const patch: Partial<OrganizationRecord> = { onboardingStep: step };
+  const org = await getOrganization(orgId);
+  if (!org?.onboardingStartedAt) {
+    patch.onboardingStartedAt = new Date();
+  }
+  await updateOrganization(orgId, patch);
+  return getOnboardingState(orgId);
+}
+
+export async function skipOnboardingStep(orgId: string, step: CompanySetupStepId): Promise<OnboardingState> {
+  if (!SKIPPABLE_COMPANY_SETUP_STEPS.includes(step)) {
+    throw new Error(`Step "${step}" cannot be skipped`);
+  }
+  const org = await getOrganization(orgId);
+  const skipped = new Set(org?.onboardingSkippedSteps ?? []);
+  skipped.add(step);
+  await updateOrganization(orgId, {
+    onboardingSkippedSteps: Array.from(skipped),
+    onboardingStartedAt: org?.onboardingStartedAt ?? new Date(),
+  });
+  return getOnboardingState(orgId);
+}
+
+export async function dismissOnboarding(orgId: string): Promise<OnboardingState> {
+  await updateOrganization(orgId, {
+    onboardingDismissedAt: new Date(),
+    onboardingStartedAt: (await getOrganization(orgId))?.onboardingStartedAt ?? new Date(),
+  });
+  return getOnboardingState(orgId);
+}
+
+export async function reopenOnboarding(orgId: string): Promise<OnboardingState> {
+  await updateOrganization(orgId, { onboardingDismissedAt: null });
   return getOnboardingState(orgId);
 }
 
 export async function completeOnboarding(orgId: string): Promise<OnboardingState> {
   await updateOrganization(orgId, {
     onboardingCompletedAt: new Date(),
-    onboardingStep: 'complete',
+    onboardingStep: 'launch_readiness',
+    onboardingDismissedAt: null,
   });
   return getOnboardingState(orgId);
 }

@@ -13,6 +13,8 @@ const publicPaths = [
   '/sign-up',
   '/access-denied',
   '/onboarding',
+  '/demo',
+  '/api/demo/enter',
   '/a/',
   '/p/',
   '/pay/',

@@ -116,8 +116,13 @@ export function CrewScheduler() {
 export function RoutePlanner() {
   const { toast } = useToast();
   const utils = trpc.useUtils();
-  const today = new Date();
-  const { data: events } = trpc.schedule360.events.list.useQuery({ start: today, end: new Date(today.getTime() + 86400000) });
+  // Query keys hash the Date inputs, so these must be stable across renders.
+  const [{ today, tomorrow }] = useState(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return { today: start, tomorrow: new Date(start.getTime() + 86400000) };
+  });
+  const { data: events } = trpc.schedule360.events.list.useQuery({ start: today, end: tomorrow });
   const { data: routes, isLoading } = trpc.schedule360.routes.list.useQuery({ date: today });
   const optimize = trpc.schedule360.routes.optimize.useMutation({
     onSuccess: () => { toast('Route optimized', 'success'); utils.schedule360.routes.list.invalidate(); },

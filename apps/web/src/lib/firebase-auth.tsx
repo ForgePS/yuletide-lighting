@@ -11,7 +11,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { getCachedAuthToken, setCachedAuthToken, writeAuthCookie, clearServerSession, establishServerSession } from '@/lib/auth-token';
+import { getCachedAuthToken, setCachedAuthToken, writeAuthCookie, writeClientSession, clearServerSession, establishServerSession, isAuthTokenExpired } from '@/lib/auth-token';
 
 type AuthState = {
   user: User | null;
@@ -27,9 +27,7 @@ const AuthContext = createContext<AuthState | null>(null);
 
 async function syncSession(user: User, forceRefresh = false) {
   const token = await user.getIdToken(forceRefresh);
-  setCachedAuthToken(token);
-  writeAuthCookie(token);
-  // Don't block sign-in on the session API — sign-in page establishes it with a timeout.
+  writeClientSession(token);
   void establishServerSession(token).catch(() => {});
   return token;
 }
@@ -48,9 +46,9 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
     const unsub = onIdTokenChanged(auth, async (nextUser) => {
       try {
         if (nextUser) {
-          const token = await nextUser.getIdToken(!getCachedAuthToken());
-          setCachedAuthToken(token);
-          writeAuthCookie(token);
+          const cached = getCachedAuthToken();
+          const token = await nextUser.getIdToken(!cached || isAuthTokenExpired(cached));
+          writeClientSession(token);
           setIdToken(token);
           setUser(nextUser);
         } else {

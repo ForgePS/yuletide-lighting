@@ -182,13 +182,25 @@ export function ProposalDetail({ proposalId }: { proposalId: string }) {
     }, { onSuccess: () => toast('Mockup removed', 'success') });
   }
 
-  if (isLoading || !form) return <LoadingState message="Loading proposal..." />;
-  if (isError || !data) return <ErrorState message="Proposal not found." onRetry={() => refetch()} />;
+  if (isLoading || !form) {
+    return (
+      <div data-tour="proposal-detail">
+        <LoadingState message="Loading proposal..." />
+      </div>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <div data-tour="proposal-detail">
+        <ErrorState message="Proposal not found." onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   const fileCount = (form.propertyPhotoUrl ? 1 : 0) + (data.contractUrl ? 1 : 0);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="proposal-detail">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <Link href="/app/proposals" className="btn-ghost mt-1 shrink-0 px-2" aria-label="Back to proposals">

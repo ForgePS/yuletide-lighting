@@ -49,7 +49,7 @@ export default function JobsPage() {
 
   return (
 
-    <div>
+    <div data-tour="jobs-pipeline">
 
       <h1 className="text-2xl font-bold">Job pipeline</h1>
 

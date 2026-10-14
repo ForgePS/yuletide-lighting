@@ -17,13 +17,22 @@ import {
   DEFAULT_AUTOMATIONS,
   DEFAULT_INTERNAL_CHANNELS,
   DEFAULT_MESSAGE_TEMPLATES,
-  renderMessageTemplate,
+  fillMessagePlaceholders,
+  hasMessagePlaceholders,
+  htmlMessageToPlainText,
+  looksLikeHtmlMessage,
   resolveOutboundMessageStatus,
 } from '@clcrm/types';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { getAdminFirestore, Timestamp } from './admin';
 import { mapTimestampsFromData } from './firestore-utils';
-import { colCreate, colGet, colList, colUpdate } from './firestore';
+import { colCreate, colGet, colList, colUpdate, getOrganization } from './firestore';
+import {
+  deliverCustomerEmail,
+  EmailDeliveryError,
+  type CustomerEmailDeliveryResult,
+} from './email-delivery';
+import { DEMO_EMAIL_SIMULATED, isDemoOrganization } from './demo-tenant';
 
 function ts() {
   return Timestamp.now();
@@ -152,6 +161,69 @@ export async function updateConversation(
   return getConversation(orgId, conversationId);
 }
 
+async function deliverEmailForOrg(
+  orgId: string,
+  input: { to: string; subject: string; text: string },
+): Promise<CustomerEmailDeliveryResult> {
+  const org = await getOrganization(orgId);
+  if (isDemoOrganization(org)) {
+    return { status: 'disabled', reason: DEMO_EMAIL_SIMULATED };
+  }
+  const { getCompanySettings } = await import('./settings360');
+  const company = await getCompanySettings(orgId).catch(() => null);
+  return deliverCustomerEmail({
+    ...input,
+    companyName: company?.dbaName || company?.companyName || org?.companyName || null,
+    replyTo: company?.email?.trim() || null,
+  });
+}
+
+function joinAddress(line1?: string | null, city?: string | null): string {
+  return [line1?.trim(), city?.trim()].filter(Boolean).join(', ');
+}
+
+/** Values for CUSTOMER_MESSAGE_PLACEHOLDERS, from the customer, their first property, and company settings. */
+export async function buildCustomerMessageVars(
+  orgId: string,
+  customerId: string,
+): Promise<Record<string, string>> {
+  const customer = await colGet<{
+    firstName?: string | null;
+    lastName?: string | null;
+    businessName?: string | null;
+    billingAddressLine1?: string | null;
+    billingCity?: string | null;
+    mailingAddressLine1?: string | null;
+    mailingCity?: string | null;
+  }>(orgId, 'customers', customerId);
+
+  const { listCustomerProperties360 } = await import('./customer360');
+  const { getCompanySettings } = await import('./settings360');
+  const [properties, company, org] = await Promise.all([
+    listCustomerProperties360(orgId, customerId).catch(() => []),
+    getCompanySettings(orgId).catch(() => null),
+    getOrganization(orgId).catch(() => null),
+  ]);
+  const property = properties.find((p) => p.addressLine1?.trim()) ?? null;
+
+  const firstName = customer?.firstName?.trim() ?? '';
+  const lastName = customer?.lastName?.trim() ?? '';
+  const address =
+    joinAddress(property?.addressLine1, property?.city) ||
+    joinAddress(customer?.billingAddressLine1, customer?.billingCity) ||
+    joinAddress(customer?.mailingAddressLine1, customer?.mailingCity);
+
+  return {
+    customerName: customer?.businessName?.trim() || `${firstName} ${lastName}`.trim() || 'there',
+    firstName: firstName || customer?.businessName?.trim() || 'there',
+    lastName,
+    address,
+    city: property?.city?.trim() || customer?.billingCity?.trim() || customer?.mailingCity?.trim() || '',
+    companyName: company?.dbaName || company?.companyName || org?.companyName || '',
+    companyPhone: company?.phone?.trim() || '',
+  };
+}
+
 export async function sendMessage360(
   orgId: string,
   input: {
@@ -166,16 +238,46 @@ export async function sendMessage360(
     notificationTrigger?: string;
     /** When true, skip the staff notifications row (automation writes its own). */
     skipStaffNotification?: boolean;
+    /** Extra placeholder values; customer placeholders are filled automatically. */
+    vars?: Record<string, string>;
   },
   userId?: string | null,
   userName?: string | null,
 ) {
+  if (input.channel !== 'internal' && (hasMessagePlaceholders(input.body) || hasMessagePlaceholders(input.subject))) {
+    const vars = { ...(await buildCustomerMessageVars(orgId, input.customerId)), ...(input.vars ?? {}) };
+    input = {
+      ...input,
+      body: fillMessagePlaceholders(input.body, vars),
+      subject: input.subject === undefined ? undefined : fillMessagePlaceholders(input.subject, vars),
+    };
+  }
+
+  if (input.channel === 'sms' && looksLikeHtmlMessage(input.body)) {
+    input = { ...input, body: htmlMessageToPlainText(input.body) };
+  }
+
   if (input.channel === 'sms') {
     const customer = await findCustomerForSms(orgId, { customerId: input.customerId });
     if (!customer) throw new Error('Customer not found');
     if (customer.smsOptIn === false) {
       throw new Error('Customer is opted out of SMS');
     }
+  }
+
+  let emailRecipient: string | null = null;
+  if (input.channel === 'email') {
+    const customer = await colGet<{ email?: string | null; emailOptIn?: boolean }>(
+      orgId,
+      'customers',
+      input.customerId,
+    );
+    if (!customer) throw new Error('Customer not found');
+    if (customer.emailOptIn === false) {
+      throw new Error('Customer is opted out of email');
+    }
+    emailRecipient = customer.email?.trim() || null;
+    if (!emailRecipient) throw new Error('Customer has no email address on file');
   }
 
   const conversation = input.conversationId
@@ -188,13 +290,38 @@ export async function sendMessage360(
 
   const classification = classifyMessage(input.body);
   const now = new Date();
-  // YL-S14: no Twilio/Resend adapter in messages360 yet — never claim provider delivery.
-  const status = resolveOutboundMessageStatus({
+  // SMS has no Twilio adapter here yet — never claim provider delivery for it.
+  let status = resolveOutboundMessageStatus({
     channel: input.channel,
     scheduledAt: input.scheduledAt ?? null,
     now,
     providerAdapterActive: false,
   });
+  const deliveryMetadata: Record<string, unknown> = {};
+  let deliveryError: string | null = null;
+
+  if (emailRecipient && status !== 'queued') {
+    const delivery = await deliverEmailForOrg(orgId, {
+      to: emailRecipient,
+      subject: input.subject?.trim() || 'Message from your lighting company',
+      text: input.body,
+    });
+    deliveryMetadata.to = emailRecipient;
+    if (delivery.status === 'sent') {
+      status = 'sent';
+      deliveryMetadata.provider = 'resend';
+      deliveryMetadata.providerMessageId = delivery.providerMessageId;
+    } else if (delivery.status === 'failed') {
+      status = 'failed';
+      deliveryError = delivery.reason;
+      deliveryMetadata.deliveryError = delivery.reason;
+    } else {
+      deliveryMetadata.deliveryNote = delivery.reason;
+    }
+  }
+
+  if (input.scheduledAt) deliveryMetadata.scheduledAt = input.scheduledAt;
+
   const message = await msgCreate(orgId, conversation.id, {
     channel: input.channel,
     direction: 'outbound',
@@ -207,10 +334,14 @@ export async function sendMessage360(
     readAt: null,
     openedAt: null,
     attachmentUrls: input.attachmentUrls ?? [],
-    metadata: input.scheduledAt ? { scheduledAt: input.scheduledAt } : null,
+    metadata: Object.keys(deliveryMetadata).length ? deliveryMetadata : null,
     createdBy: userId,
     updatedBy: userId,
   });
+
+  if (deliveryError) {
+    throw new EmailDeliveryError(`Email could not be sent: ${deliveryError}`);
+  }
 
   await colUpdate(orgId, 'conversations', conversation.id, {
     lastActivityAt: now,
@@ -798,8 +929,8 @@ export async function triggerAutomation(
   const results = [];
 
   for (const auto of automations) {
-    const body = renderMessageTemplate(auto.body, vars);
-    const subject = auto.subject ? renderMessageTemplate(auto.subject, vars) : undefined;
+    const body = fillMessagePlaceholders(auto.body, vars);
+    const subject = auto.subject ? fillMessagePlaceholders(auto.subject, vars) : undefined;
 
     if (auto.channel === 'internal') {
       const channels = await ensureInternalChannels(orgId);

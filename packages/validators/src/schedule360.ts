@@ -32,6 +32,16 @@ export const updateCalendarEventSchema = createCalendarEventSchema.partial().ext
   dispatchStatus: dispatchStatusSchema.optional(),
 });
 
+const dateKeySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+
+export const createScheduleBlackoutSchema = z
+  .object({
+    startDate: dateKeySchema,
+    endDate: dateKeySchema,
+    reason: z.string().trim().max(200).optional(),
+  })
+  .refine((v) => v.endDate >= v.startDate, { message: 'End date must be on or after the start date', path: ['endDate'] });
+
 export const moveEventSchema = z.object({
   eventId: z.string().min(1),
   startAt: z.coerce.date(),

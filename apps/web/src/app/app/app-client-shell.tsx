@@ -5,6 +5,7 @@ import { TRPCProvider } from '@/lib/trpc';
 import { ToastProvider } from '@/lib/toast';
 import { AppShell } from '@/components/app-shell';
 import { AnalyticsYearProvider } from '@/lib/analytics-year-context';
+import { TourProvider } from '@/features/tours';
 
 function clearAuthLoopGuard() {
   try {
@@ -25,7 +26,9 @@ export function AppClientShell({ children }: { children: React.ReactNode }) {
     <TRPCProvider>
       <ToastProvider>
         <AnalyticsYearProvider>
-          <AppShell>{children}</AppShell>
+          <TourProvider>
+            <AppShell>{children}</AppShell>
+          </TourProvider>
         </AnalyticsYearProvider>
       </ToastProvider>
     </TRPCProvider>

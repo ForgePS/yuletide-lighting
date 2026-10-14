@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { channelIcon, statusBadge, priorityBadge, deliveryStatusBadge, deliveryStatusLabel } from '@/lib/message-utils';
 import { formatDate } from '@clcrm/ui';
-import { formatMessageLabel } from '@clcrm/types';
+import { formatMessageLabel, htmlMessageToPlainText } from '@clcrm/types';
 import { useToast } from '@/lib/toast';
 import { LoadingState, EmptyState } from '@/components/ui/states';
 import { MessageComposer } from './message-composer';
@@ -62,7 +62,7 @@ export function UnifiedInbox() {
                     </span>
                   </p>
                   {msg.subject && <p className="mt-1 font-medium">{msg.subject}</p>}
-                  <p className="mt-1 whitespace-pre-wrap">{msg.body}</p>
+                  <p className="mt-1 whitespace-pre-wrap">{htmlMessageToPlainText(msg.body)}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{formatDate(msg.createdAt)}</p>
                 </div>
               ))}
@@ -110,7 +110,7 @@ export function ConversationView() {
               {thread.messages.map((msg) => (
                 <div key={msg.id} className="rounded-lg border p-3 text-sm">
                   <p className="text-xs capitalize text-muted-foreground">{msg.channel} · {msg.direction}</p>
-                  <p className="mt-1">{msg.body}</p>
+                  <p className="mt-1">{htmlMessageToPlainText(msg.body)}</p>
                 </div>
               ))}
             </div>

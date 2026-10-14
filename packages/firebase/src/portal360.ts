@@ -36,6 +36,7 @@ import {
   type CustomerRecord,
 } from './firestore';
 import { getBrandingForCustomerFacing, getPortalSettings } from './settings360';
+import { DEMO_EMAIL_SIMULATED, isDemoOrganization } from './demo-tenant';
 import { createServiceIssue360 } from './service-issues';
 import { logCustomerActivity, createCommunication } from './customer360';
 import { processPortalRebook, getPortalRebookContext } from './rebooking360';
@@ -1880,6 +1881,16 @@ export async function sendPortalInviteEmail(
 
   if (!email) {
     return { sent: false, accessUrl, email: null, reason: 'No customer email on file' };
+  }
+
+  const org = await getOrganization(orgId);
+  if (isDemoOrganization(org)) {
+    return {
+      sent: true,
+      accessUrl,
+      email,
+      reason: DEMO_EMAIL_SIMULATED,
+    };
   }
 
   const apiKey = process.env.RESEND_API_KEY;

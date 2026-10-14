@@ -10,7 +10,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "vitest run packages/firebase/src packages/types/src/module-presets.test.ts packages/types/src/configuration.test.ts packages/types/src/portal.test.ts packages/types/src/portal-phase2-s7b-routes.test.ts packages/types/src/permissions.test.ts packages/types/src/proposals.packages.test.ts packages/types/src/jobs.test.ts packages/types/src/crew360.test.ts packages/types/src/crm-ui-config.test.ts packages/types/src/runtime-policy.test.ts packages/types/src/rebooking.test.ts",
+    "test": "vitest run packages/firebase/src packages/types/src/module-presets.test.ts packages/types/src/configuration.test.ts packages/types/src/portal.test.ts packages/types/src/portal-phase2-s7b-routes.test.ts packages/types/src/permissions.test.ts packages/types/src/proposals.packages.test.ts packages/types/src/jobs.test.ts packages/types/src/crew360.test.ts packages/types/src/crm-ui-config.test.ts packages/types/src/runtime-policy.test.ts packages/types/src/rebooking.test.ts packages/types/src/schedule-blackout.test.ts",
     "test:integration": "node scripts/run-integration-tests.mjs",
     "format:changed": "node scripts/format-changed.mjs",
     "format:changed:check": "node scripts/format-changed.mjs --check",
@@ -52,6 +52,9 @@
     "generate:staging-storage-states": "npx tsx scripts/generate-staging-storage-states.ts",
     "seed:staging-verification": "npx tsx scripts/seed-staging-verification.ts",
     "cleanup:staging-verification": "npx tsx scripts/cleanup-staging-verification.ts",
+    "provision:yuletide-demo": "npx tsx scripts/demo/provision-yuletide-demo.ts",
+    "seed:yuletide-demo": "npx tsx scripts/demo/seed-yuletide-demo.ts",
+    "reset:yuletide-demo": "npx tsx scripts/demo/reset-yuletide-demo.ts",
     "shift-payments-2025": "node scripts/shift-2026-payments-to-2025.mjs",
     "shift-payments-2025:apply": "node scripts/shift-2026-payments-to-2025.mjs --apply"
   },

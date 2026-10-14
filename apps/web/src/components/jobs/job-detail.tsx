@@ -18,7 +18,13 @@ export function JobDetail({ jobId }: { jobId: string }) {
   const markRemoval = trpc.jobs.markRemovalComplete.useMutation({ onSuccess: () => refetch() });
   const [scheduling, setScheduling] = useState(false);
 
-  if (isLoading) return <LoadingState message="Loading job..." />;
+  if (isLoading) {
+    return (
+      <div data-tour="job-detail">
+        <LoadingState message="Loading job..." />
+      </div>
+    );
+  }
   if (!data) return <p className="text-muted-foreground">Job not found.</p>;
 
   const { job, customer, property, proposal, mockups, materials, calendarEvent } = data;
@@ -27,7 +33,7 @@ export function JobDetail({ jobId }: { jobId: string }) {
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-tour="job-detail">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{job.title}</h1>

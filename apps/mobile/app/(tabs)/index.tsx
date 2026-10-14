@@ -13,8 +13,8 @@ import * as Location from 'expo-location';
 
 import { ScreenContainer } from '@/components/screen-container';
 import { useResponsiveLayout } from '@/hooks/use-responsive-layout';
-import { clearAuthToken, getAuthToken, signOutCrew, trpcQuery, trpcMutation } from '../lib/api';
-import { flushOfflineQueue, getLastSyncAt, getOfflineQueue } from '../lib/offline-queue';
+import { clearAuthToken, getAuthToken, signOutCrew, trpcQuery, trpcMutation } from '@/lib/api';
+import { flushOfflineQueue, getLastSyncAt, getOfflineQueue } from '@/lib/offline-queue';
 
 type ScheduleItem = {
   job: {

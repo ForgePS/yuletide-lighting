@@ -38,3 +38,7 @@ export * from './permissions';
 export * from './public-token';
 export * from './lifecycle';
 export * from './runtime-policy';
+export * from './demo-tenant';
+export * from './onboarding';
+export * from './tour-progress';
+export * from './tour-narration';

@@ -19,6 +19,8 @@ export type AuthContext = {
   email: string;
   subscriptionLocked: boolean;
   isPlatformCreator: boolean;
+  /** Server-derived from organization record — do not trust client flags alone. */
+  isDemoTenant: boolean;
 };
 
 export type Context = {

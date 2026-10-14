@@ -27,7 +27,10 @@ function ProposalsBody() {
   if (isError) return <p className="text-base text-red-600">Could not load proposals.</p>;
   if (!data?.length) {
     return (
-      <p className="rounded-2xl border border-stone-200 bg-white p-6 text-base text-stone-600">
+      <p
+        className="rounded-2xl border border-stone-200 bg-white p-6 text-base text-stone-600"
+        data-tour="portal-proposals"
+      >
         No proposals yet.
       </p>
     );
@@ -45,7 +48,7 @@ function ProposalsBody() {
 
   return (
     <>
-      <ul className="space-y-3">
+      <ul className="space-y-3" data-tour="portal-proposals">
         {data.map((p) => {
           const open = openId === p.id;
           return (

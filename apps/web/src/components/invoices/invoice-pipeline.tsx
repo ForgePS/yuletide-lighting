@@ -15,7 +15,7 @@ import { formatCurrency, statusColor } from '@/lib/invoice-utils';
 import { formatDate } from '@clcrm/ui';
 import { formatInvoiceStatusLabel } from '@clcrm/types';
 
-import { LoadingState, EmptyState } from '@/components/ui/states';
+import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
@@ -122,7 +122,13 @@ export function InvoicePipeline() {
 
   const { data: pipeline, isLoading } = trpc.invoices360.pipeline.useQuery();
 
-  const { data: list, refetch: refetchList } = trpc.invoices360.list.useQuery();
+  const {
+    data: list,
+    isLoading: listLoading,
+    isError: listError,
+    error: listErrorDetail,
+    refetch: refetchList,
+  } = trpc.invoices360.list.useQuery();
 
   const utils = trpc.useUtils();
 
@@ -176,7 +182,15 @@ export function InvoicePipeline() {
 
 
 
-  if (isLoading) return <LoadingState message="Loading invoices..." />;
+  if (isLoading || listLoading) return <LoadingState message="Loading invoices..." />;
+  if (listError) {
+    return (
+      <ErrorState
+        message={listErrorDetail?.message || 'Could not load invoices.'}
+        onRetry={() => refetchList()}
+      />
+    );
+  }
 
 
 

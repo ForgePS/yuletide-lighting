@@ -75,9 +75,11 @@ import { signTracker360Router } from './signTracker360';
 import { automation360Router } from './automation360';
 import { creator360Router } from './creator360';
 import { websiteCmsRouter } from './website-cms';
+import { demo360Router } from './demo360';
 import { crmUiConfigRouter } from './crm-ui-config';
 import { siteCmsExtendedRouter } from './site-cms-extended';
 import { onboarding360Router } from './onboarding360';
+import { tours360Router } from './tours360';
 import { router, permissionProcedure, publicProcedure } from '../trpc';
 
 type InvoiceRow = {
@@ -850,6 +852,7 @@ export const appRouter = router({
   reports360: reports360Router,
   settings360: settings360Router,
   onboarding360: onboarding360Router,
+  tours360: tours360Router,
   billing: billingRouter,
   import360: import360Router,
   properties: propertiesRouter,
@@ -869,6 +872,7 @@ export const appRouter = router({
   websiteCms: websiteCmsRouter,
   siteCms: siteCmsExtendedRouter,
   crmUiConfig: crmUiConfigRouter,
+  demo360: demo360Router,
   reports: reportsRouter,
   settings: settingsRouter,
   reviews: reviewsRouter,

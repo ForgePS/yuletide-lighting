@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { htmlMessageToPlainText } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
 import { portalAppPath, portalSessionInput } from '@/lib/portal-paths';
 import { formatDateTime } from '@/lib/proposal-utils';
@@ -58,7 +59,7 @@ function MessagesBody() {
                   : 'bg-stone-100 text-stone-900'
               }`}
             >
-              <p className="whitespace-pre-wrap">{m.body}</p>
+              <p className="whitespace-pre-wrap">{htmlMessageToPlainText(m.body)}</p>
               <p
                 className={`mt-1 text-xs ${m.direction === 'inbound' ? 'text-red-100' : 'text-stone-400'}`}
               >

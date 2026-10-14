@@ -7,9 +7,10 @@ import { useEffect, useState } from 'react';
 type Props = {
   value: string;
   onChange: (html: string) => void;
+  minHeightClass?: string;
 };
 
-export function CmsRichTextEditor({ value, onChange }: Props) {
+export function CmsRichTextEditor({ value, onChange, minHeightClass = 'min-h-[120px]' }: Props) {
   const [sourceMode, setSourceMode] = useState(false);
   const [source, setSource] = useState(value);
 
@@ -18,8 +19,7 @@ export function CmsRichTextEditor({ value, onChange }: Props) {
     content: value || '<p></p>',
     editorProps: {
       attributes: {
-        class:
-          'min-h-[120px] rounded-lg border border-border bg-background px-3 py-2 text-sm prose prose-sm max-w-none focus:outline-none',
+        class: `${minHeightClass} rounded-lg border border-border bg-background px-3 py-2 text-sm prose prose-sm max-w-none focus:outline-none`,
       },
     },
     onUpdate: ({ editor: ed }) => {
@@ -84,7 +84,7 @@ export function CmsRichTextEditor({ value, onChange }: Props) {
       </div>
       {sourceMode ? (
         <textarea
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+          className={`${minHeightClass} w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs`}
           rows={8}
           value={source}
           onChange={(e) => {

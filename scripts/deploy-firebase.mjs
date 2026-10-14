@@ -9,6 +9,9 @@ const rootEnvPath = path.join(repoRoot, '.env');
 const stagingEnvPath = path.join(repoRoot, '.env.staging');
 const webEnvPath = path.join(webRoot, '.env');
 const webEnvBackupPath = path.join(webRoot, '.env.deploy-backup');
+// Next.js gives .env.local precedence over .env, so local overrides (localhost URLs, blank keys) would ship.
+const webEnvLocalPath = path.join(webRoot, '.env.local');
+const webEnvLocalBackupPath = path.join(webRoot, '.env.local.deploy-backup');
 const firebaseJsonPath = path.join(repoRoot, 'firebase.json');
 const firebaseJsonBackupPath = path.join(repoRoot, 'firebase.json.deploy-backup');
 const only = process.argv.includes('--hosting-only') ? '--only hosting' : '';
@@ -153,12 +156,23 @@ function prepareEnv() {
   );
 }
 
+function stashEnvLocal() {
+  if (fs.existsSync(webEnvLocalPath) && !fs.existsSync(webEnvLocalBackupPath)) {
+    fs.renameSync(webEnvLocalPath, webEnvLocalBackupPath);
+    console.log('Moved apps/web/.env.local aside for the deploy build (restored afterwards).');
+  }
+}
+
 function restoreEnv() {
   if (fs.existsSync(webEnvBackupPath)) {
     fs.copyFileSync(webEnvBackupPath, webEnvPath);
     fs.rmSync(webEnvBackupPath);
   } else if (fs.existsSync(webEnvPath)) {
     fs.rmSync(webEnvPath);
+  }
+  if (fs.existsSync(webEnvLocalBackupPath)) {
+    if (fs.existsSync(webEnvLocalPath)) fs.rmSync(webEnvLocalPath);
+    fs.renameSync(webEnvLocalBackupPath, webEnvLocalPath);
   }
 }
 
@@ -215,6 +229,7 @@ try {
     process.env.FUNCTIONS_DISCOVERY_TIMEOUT = '120';
   }
   applyHostingServiceAccount();
+  stashEnvLocal();
   prepareEnv();
   execSync('node scripts/prepare-firebase-deps.mjs', { cwd: webRoot, stdio: 'inherit' });
   execSync(

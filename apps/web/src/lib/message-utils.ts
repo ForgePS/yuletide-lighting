@@ -60,6 +60,9 @@ export function outboundSendToast(status: string | null | undefined, channel = '
   if (String(status ?? '').toLowerCase() === 'recorded') {
     return `${channel} saved in CRM (record-only — provider delivery is off)`;
   }
+  if (String(status ?? '').toLowerCase() === 'queued') {
+    return `${channel} scheduled`;
+  }
   if (String(status ?? '').toLowerCase() === 'sent') {
     return `${channel} sent`;
   }

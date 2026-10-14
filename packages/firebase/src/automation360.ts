@@ -9,6 +9,7 @@ import type {
 import {
   DEFAULT_AUTOMATION360_RULES,
   evaluateAutomationConditions,
+  fillMessagePlaceholders,
   renderMessageTemplate,
   shouldFallbackToMessagingAutomations,
 } from '@clcrm/types';
@@ -65,13 +66,13 @@ async function executeAction(
 
   switch (action.type) {
     case 'send_email': {
-      const subject = renderMessageTemplate(String(action.config.subject ?? 'Message from your lighting company'), vars);
-      const body = renderMessageTemplate(String(action.config.body ?? ''), vars);
+      const subject = fillMessagePlaceholders(String(action.config.subject ?? 'Message from your lighting company'), vars);
+      const body = fillMessagePlaceholders(String(action.config.body ?? ''), vars);
       await sendMessage360(orgId, { customerId: ctx.customerId, channel: 'email', subject, body }, userId, 'Automation');
       return 'send_email';
     }
     case 'send_sms': {
-      const body = renderMessageTemplate(String(action.config.body ?? ''), vars);
+      const body = fillMessagePlaceholders(String(action.config.body ?? ''), vars);
       await sendMessage360(orgId, { customerId: ctx.customerId, channel: 'sms', body }, userId, 'Automation');
       return 'send_sms';
     }

@@ -6,6 +6,7 @@ import type {
   ResourceReservation,
   RoutePlan,
   ScheduleAnalytics,
+  ScheduleBlackout,
   ScheduleConflict,
   ScheduleDashboardKpis,
   ScheduleTemplate,
@@ -17,20 +18,23 @@ import {
   aiSchedulingQuery,
   APPOINTMENT_TO_CATEGORY,
   appointmentDurationHours,
+  dateKeyInTimeZone,
   DEFAULT_CREWS,
   DEFAULT_SCHEDULE_TEMPLATES,
   DEFAULT_VEHICLES,
   detectConflicts,
   EVENT_CATEGORY_COLORS,
+  findBlackoutForDateKey,
   jobStageFromAppointmentComplete,
   normalizeOptionalId,
   resolveJobCrewAssignment,
   SEASON_PLAN,
 } from '@clcrm/types';
 import { getAdminFirestore, Timestamp } from './admin';
-import { mapTimestampsFromData } from './firestore-utils';
+import { coerceTimestampField, mapTimestampsFromData } from './firestore-utils';
 import { colCreate, colDelete, colGet, colList, colUpdate } from './firestore';
 import { triggerAutomation } from './messages360';
+import { getCompanySettings } from './settings360';
 import { syncCustomerPipelineFromAppointment, syncCustomerPipelineFromJob } from './jobs360';
 import { haversineMiles, nearestNeighborOrder, pathDistanceMiles, travelMinutesFromMiles } from './geo';
 
@@ -95,8 +99,16 @@ function endOfDay(d = new Date()) {
   return x;
 }
 
+function toEventDate(value: unknown, fallback: Date): Date {
+  const coerced = coerceTimestampField(value);
+  const date = coerced instanceof Date ? coerced : new Date(String(coerced ?? ''));
+  return Number.isNaN(date.getTime()) ? fallback : date;
+}
+
 function normalizeEvent(raw: Record<string, unknown>): CalendarEvent {
   const appointmentType = raw.appointmentType as CalendarEvent['appointmentType'];
+  const startAt = toEventDate(raw.startAt, new Date(0));
+  const endAt = toEventDate(raw.endAt, new Date(startAt.getTime() + 3600000));
   const category = (raw.category as CalendarEvent['category']) ?? APPOINTMENT_TO_CATEGORY[appointmentType] ?? 'installation';
   return {
     id: String(raw.id),
@@ -113,8 +125,8 @@ function normalizeEvent(raw: Record<string, unknown>): CalendarEvent {
     crewId: (raw.crewId as string) ?? null,
     crewName: (raw.crewName as string) ?? null,
     vehicleId: (raw.vehicleId as string) ?? null,
-    startAt: raw.startAt instanceof Date ? raw.startAt : new Date(String(raw.startAt)),
-    endAt: raw.endAt instanceof Date ? raw.endAt : new Date(String(raw.endAt)),
+    startAt,
+    endAt,
     allDay: Boolean(raw.allDay),
     color: String(raw.color ?? EVENT_CATEGORY_COLORS[category]),
     notes: (raw.notes as string) ?? null,
@@ -228,6 +240,8 @@ export async function createCalendarEvent(
 ) {
   const category = APPOINTMENT_TO_CATEGORY[input.appointmentType];
   const endAt = input.endAt ?? new Date(input.startAt.getTime() + appointmentDurationHours(input.appointmentType) * 3600000);
+  if (endAt.getTime() <= input.startAt.getTime()) throw new Error('End time must be after the start time');
+  await assertNotBlackedOut(orgId, input.startAt, endAt);
 
   let customerName: string | null = null;
   let propertyAddress: string | null = null;
@@ -351,6 +365,9 @@ export async function createEventFromJob(orgId: string, input: { jobId: string; 
 
 export async function updateCalendarEvent(orgId: string, eventId: string, data: Partial<CalendarEvent>, userId?: string | null) {
   const existing = await getCalendarEvent(orgId, eventId);
+  if (existing && (data.startAt !== undefined || data.endAt !== undefined)) {
+    await assertNotBlackedOut(orgId, data.startAt ?? existing.startAt, data.endAt ?? existing.endAt);
+  }
   await colUpdate(orgId, 'calendarEvents', eventId, { ...data, updatedBy: userId });
   const updated = await getCalendarEvent(orgId, eventId);
   if (existing?.jobId && updated) {
@@ -369,6 +386,7 @@ export async function updateCalendarEvent(orgId: string, eventId: string, data: 
 export async function moveCalendarEvent(orgId: string, input: { eventId: string; startAt: Date; endAt: Date; crewId?: string }, userId?: string | null) {
   const event = await getCalendarEvent(orgId, input.eventId);
   if (!event) throw new Error('Event not found');
+  await assertNotBlackedOut(orgId, input.startAt, input.endAt);
   const crews = await ensureCrews(orgId);
   const nextCrewId = input.crewId ?? event.crewId ?? undefined;
   const crew = nextCrewId ? crews.find((c) => c.id === nextCrewId) : null;
@@ -411,6 +429,28 @@ async function syncJobFromCalendarEvent(orgId: string, jobId: string, event: Cal
     jobPatch.assignedCrewUserId = null;
   }
   await colUpdate(orgId, 'jobs', jobId, jobPatch);
+}
+
+export async function deleteCalendarEvent(orgId: string, eventId: string, userId?: string | null) {
+  const event = await getCalendarEvent(orgId, eventId);
+  if (!event) throw new Error('Appointment not found');
+  await colDelete(orgId, 'calendarEvents', eventId);
+
+  if (event.jobId) {
+    const remaining = (await listCalendarEvents(orgId)).filter((e) => e.jobId === event.jobId);
+    if (remaining.length) {
+      await syncJobFromCalendarEvent(orgId, event.jobId, remaining[0]!);
+    } else {
+      await colUpdate(orgId, 'jobs', event.jobId, { scheduledStart: null, scheduledEnd: null, updatedBy: userId });
+      // Legacy scheduleBlocks are re-migrated into calendarEvents when the calendar is empty.
+      const db = getAdminFirestore();
+      const blocks = await db.collection(orgPath(orgId, 'scheduleBlocks')).where('jobId', '==', event.jobId).get();
+      await Promise.all(blocks.docs.map((d) => d.ref.delete()));
+    }
+  }
+
+  await syncDispatchBoard(orgId);
+  return { ok: true as const, eventId };
 }
 
 export async function duplicateCalendarEvent(orgId: string, eventId: string, startAt: Date, userId?: string | null) {
@@ -967,6 +1007,55 @@ export async function createResourceReservation(orgId: string, input: Omit<Resou
   if (existing.length) throw new Error(`Resource "${input.resourceName}" already reserved`);
 
   return colCreate(orgId, 'resourceReservations', { organizationId: orgId, ...input, createdBy: userId, updatedBy: userId }) as Promise<ResourceReservation>;
+}
+
+export async function listScheduleBlackouts(orgId: string): Promise<ScheduleBlackout[]> {
+  const rows = await colList<ScheduleBlackout>(orgId, 'scheduleBlackouts');
+  return rows.sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+export async function createScheduleBlackout(
+  orgId: string,
+  input: { startDate: string; endDate: string; reason?: string },
+  userId?: string | null,
+): Promise<ScheduleBlackout> {
+  return colCreate(orgId, 'scheduleBlackouts', {
+    organizationId: orgId,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    reason: input.reason?.trim() || null,
+    createdBy: userId,
+    updatedBy: userId,
+  }) as Promise<ScheduleBlackout>;
+}
+
+export async function deleteScheduleBlackout(orgId: string, blackoutId: string) {
+  await colDelete(orgId, 'scheduleBlackouts', blackoutId);
+  return { ok: true as const };
+}
+
+function formatDateKey(dateKey: string) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(y!, m! - 1, d!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/** Rejects appointments that touch any blocked-out day (company time zone). */
+export async function assertNotBlackedOut(orgId: string, startAt: Date, endAt: Date) {
+  const blackouts = await listScheduleBlackouts(orgId);
+  if (!blackouts.length) return;
+  const { timeZone } = await getCompanySettings(orgId);
+  const last = Math.max(startAt.getTime(), endAt.getTime() - 1);
+  const keys = new Set<string>();
+  for (let t = startAt.getTime(); t < last; t += 6 * 3600000) keys.add(dateKeyInTimeZone(new Date(t), timeZone));
+  keys.add(dateKeyInTimeZone(new Date(last), timeZone));
+  for (const key of keys) {
+    const blackout = findBlackoutForDateKey(blackouts, key);
+    if (blackout) {
+      throw new Error(
+        `${formatDateKey(key)} is blocked out${blackout.reason ? ` (${blackout.reason})` : ''}. Remove the block-out to book this day.`,
+      );
+    }
+  }
 }
 
 export async function getScheduleDashboard(orgId: string): Promise<ScheduleDashboardKpis> {

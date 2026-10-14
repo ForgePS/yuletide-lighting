@@ -42,6 +42,11 @@ import {
   PORTAL_PUBLIC_MESSAGES,
 } from './portal-security-config';
 import { getPortalDeliveryProvider } from './portal-delivery';
+import {
+  DEMO_EMAIL_SIMULATED,
+  DEMO_SMS_SIMULATED,
+  isDemoOrganizationId,
+} from './demo-tenant';
 import { consumePortalRateLimit, portalRateLimitKey } from './portal-rate-limit';
 import { generatePortalAccessToken } from './portal-magic-access';
 
@@ -1002,6 +1007,19 @@ export async function sendPortalQrVerificationCode(
     action: 'verification_attempted',
     reason: input.channel,
   });
+
+  if (await isDemoOrganizationId(orgId)) {
+    const masked =
+      input.channel === 'email'
+        ? maskEmail(customer.email) ?? '***@demo.test'
+        : maskPhone(customer.phone) ?? '***-***-****';
+    return {
+      sent: true,
+      maskedDestination: masked,
+      diagnosticReference,
+      reason: input.channel === 'sms' ? DEMO_SMS_SIMULATED : DEMO_EMAIL_SIMULATED,
+    };
+  }
 
   const branding = await getBrandingForCustomerFacing(orgId);
   let sent = false;

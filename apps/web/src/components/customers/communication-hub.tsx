@@ -1,8 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { htmlMessageToPlainText, looksLikeHtmlMessage } from '@clcrm/types';
 import { trpc } from '@/lib/trpc';
+import { CmsRichTextEditor } from '@/components/cms/cms-rich-text-editor';
 import { useToast } from '@/lib/toast';
+import { outboundSendToast } from '@/lib/message-utils';
 import { EmptyState, LoadingState } from '@/components/ui/states';
 import { COMMUNICATION_TYPE_OPTIONS, formatDate } from '@/lib/customer360-utils';
 import type { CommunicationRecord, CommunicationType, CommunicationDirection } from '@clcrm/types';
@@ -16,22 +20,63 @@ export function CommunicationHub({ customerId }: { customerId: string }) {
   });
   const { data: smsThread, refetch: refetchSmsThread } = trpc.messages360.conversations.getByCustomer.useQuery({ customerId });
   const [showForm, setShowForm] = useState(false);
-  const [smsBody, setSmsBody] = useState('');
+  const [channel, setChannel] = useState<'sms' | 'email'>('email');
+  const [messageBody, setMessageBody] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [templateId, setTemplateId] = useState('');
+  const { data: templates } = trpc.messages360.templates.list.useQuery(undefined, { staleTime: 60_000 });
+  const activeTemplates = (templates ?? []).filter((t) => t.isActive !== false && t.channel !== 'portal');
+  const emailTemplates = activeTemplates.filter((t) => t.channel === 'email' || t.channel === 'internal');
+  const smsTemplates = activeTemplates.filter((t) => t.channel === 'sms');
+
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const template = activeTemplates.find((t) => t.id === id);
+    if (!template) return;
+    if (
+      htmlMessageToPlainText(messageBody).trim()
+      && messageBody !== template.body
+      && !window.confirm('Replace the message you have written with this template?')
+    ) {
+      setTemplateId('');
+      return;
+    }
+    const nextChannel = template.channel === 'sms' ? 'sms' : 'email';
+    setChannel(nextChannel);
+    setMessageBody(nextChannel === 'sms' ? htmlMessageToPlainText(template.body) : template.body);
+    if (nextChannel === 'email') setEmailSubject(template.subject ?? '');
+  };
+
+  const switchChannel = (next: 'sms' | 'email') => {
+    if (next === channel) return;
+    if (next === 'sms' && looksLikeHtmlMessage(messageBody)) {
+      setMessageBody(htmlMessageToPlainText(messageBody));
+    }
+    setChannel(next);
+  };
   const create = trpc.customer360.communications.create.useMutation({
     onSuccess: () => { toast('Communication logged', 'success'); refetch(); setShowForm(false); },
     onError: () => toast('Could not log communication', 'error'),
   });
-  const sendSms = trpc.messages360.send.useMutation({
-    onSuccess: () => {
-      toast('SMS sent', 'success');
-      setSmsBody('');
+  const channelLabel = channel === 'sms' ? 'SMS' : 'Email';
+  const sendMessage = trpc.messages360.send.useMutation({
+    onSuccess: (result) => {
+      toast(outboundSendToast(result?.message?.status, channelLabel), 'success');
+      setMessageBody('');
+      setEmailSubject('');
+      setTemplateId('');
       refetchSmsThread();
     },
-    onError: (error) => toast(error.message || 'Could not send SMS', 'error'),
+    onError: (error) => {
+      toast(error.message || `Could not send ${channelLabel}`, 'error');
+      refetchSmsThread();
+    },
   });
 
   const pendingFollowUps = data?.filter((c) => c.followUpRequired && c.followUpDate) ?? [];
-  const smsMessages = smsThread?.messages.filter((message) => message.channel === 'sms') ?? [];
+  const threadMessages =
+    smsThread?.messages.filter((message) => message.channel === 'sms' || message.channel === 'email') ?? [];
+  const canSend = Boolean(htmlMessageToPlainText(messageBody).trim()) && (channel === 'sms' || Boolean(emailSubject.trim()));
 
   if (isLoading) return <LoadingState />;
 
@@ -64,47 +109,108 @@ export function CommunicationHub({ customerId }: { customerId: string }) {
       <div className="card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="font-semibold">SMS Correspondence</h3>
-            <p className="text-sm text-muted-foreground">Texts sent from the SMS center, bulk campaigns, and replies stay here.</p>
+            <h3 className="font-semibold">Email &amp; SMS</h3>
+            <p className="text-sm text-muted-foreground">Emails and texts to this customer, including campaigns and replies.</p>
+          </div>
+          <div className="flex gap-2">
+            {(['email', 'sms'] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => switchChannel(c)}
+                className={channel === c ? 'pill-tab-active px-3 py-1 text-xs' : 'pill-tab-idle px-3 py-1 text-xs'}
+              >
+                {c === 'sms' ? 'SMS' : 'Email'}
+              </button>
+            ))}
           </div>
         </div>
         <form
           className="mt-4 space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!smsBody.trim()) return;
-            sendSms.mutate({
+            if (!canSend) return;
+            sendMessage.mutate({
               customerId,
               conversationId: smsThread?.conversation.id,
-              channel: 'sms',
-              body: smsBody,
+              channel,
+              body: messageBody,
+              subject: channel === 'email' ? emailSubject : undefined,
             });
           }}
         >
-          <textarea
-            className="input min-h-20"
-            value={smsBody}
-            onChange={(event) => setSmsBody(event.target.value)}
-            placeholder="Send this customer an SMS..."
-          />
-          <button type="submit" className="btn-primary" disabled={sendSms.isPending || !smsBody.trim()}>
-            Send SMS
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="input min-w-0 flex-1"
+              value={templateId}
+              onChange={(event) => applyTemplate(event.target.value)}
+              aria-label="Use a template"
+            >
+              <option value="">
+                {activeTemplates.length ? 'Use a template…' : 'No templates yet'}
+              </option>
+              {emailTemplates.length > 0 && (
+                <optgroup label="Email templates">
+                  {emailTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {smsTemplates.length > 0 && (
+                <optgroup label="SMS templates">
+                  {smsTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <Link href="/app/messages/templates" className="text-xs font-medium text-primary hover:underline">
+              Manage templates
+            </Link>
+          </div>
+          {channel === 'email' && (
+            <input
+              className="input"
+              value={emailSubject}
+              onChange={(event) => setEmailSubject(event.target.value)}
+              placeholder="Subject"
+            />
+          )}
+          {channel === 'email' ? (
+            <CmsRichTextEditor value={messageBody} onChange={setMessageBody} minHeightClass="min-h-72" />
+          ) : (
+            <textarea
+              className="input min-h-28 resize-y"
+              value={messageBody}
+              onChange={(event) => setMessageBody(event.target.value)}
+              placeholder="Send this customer an SMS..."
+            />
+          )}
+          <p className="text-xs text-muted-foreground">
+            {'{{customerName}}, {{firstName}}, {{address}}, {{city}}, {{companyName}}, {{companyPhone}}'} are filled in automatically.
+          </p>
+          <button type="submit" className="btn-primary" disabled={sendMessage.isPending || !canSend}>
+            {sendMessage.isPending ? 'Sending…' : `Send ${channelLabel}`}
           </button>
         </form>
         <div className="mt-4 max-h-96 space-y-3 overflow-y-auto">
-          {smsMessages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No SMS messages yet.</p>
+          {threadMessages.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No emails or texts yet.</p>
           ) : (
-            smsMessages.map((message) => (
+            threadMessages.map((message) => (
               <div
                 key={message.id}
-                className={`rounded-lg p-3 text-sm ${message.direction === 'outbound' ? 'bg-red-50 text-red-900' : 'bg-muted'}`}
+                className={`rounded-lg p-3 text-sm ${message.direction === 'outbound' ? 'bg-primary/10 text-foreground' : 'bg-muted'}`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium capitalize">{message.direction} · {message.status}</p>
+                  <p className="text-xs font-medium capitalize">
+                    {message.channel === 'sms' ? 'SMS' : 'Email'} · {message.direction} ·{' '}
+                    <span className={message.status === 'failed' ? 'text-red-600' : undefined}>{message.status}</span>
+                  </p>
                   <p className="text-xs text-muted-foreground">{formatDate(message.createdAt)}</p>
                 </div>
-                <p className="mt-1 whitespace-pre-wrap">{message.body}</p>
+                {message.subject && <p className="mt-1 font-medium">{message.subject}</p>}
+                <p className="mt-1 whitespace-pre-wrap">{htmlMessageToPlainText(message.body)}</p>
                 {message.sentByUserName && <p className="mt-1 text-xs text-muted-foreground">{message.sentByUserName}</p>}
               </div>
             ))

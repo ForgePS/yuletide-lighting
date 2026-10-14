@@ -13,6 +13,7 @@ import {
   isPlatformCreator,
   isSubscriptionLocked,
   evaluateOrganizationAccess,
+  isDemoOrganization,
 } from '@yuletide/firebase';
 
 const LEGACY_ROLES: UserRole[] = ['owner', 'admin', 'office', 'crew'];
@@ -94,6 +95,7 @@ export type SeedAuthOptions = {
   permissions?: PermissionMatrix;
   subscriptionLocked?: boolean;
   isPlatformCreator?: boolean;
+  isDemoTenant?: boolean;
 };
 
 /** Build AuthContext from SYSTEM_ROLES / DEFAULT_PERMISSION_MATRIX (no Firestore). */
@@ -110,6 +112,7 @@ export function buildAuthContext(opts: SeedAuthOptions): AuthContext {
     email: opts.email ?? `${opts.firebaseUid}@test.local`,
     subscriptionLocked: opts.subscriptionLocked ?? false,
     isPlatformCreator: opts.isPlatformCreator ?? false,
+    isDemoTenant: opts.isDemoTenant ?? false,
   };
 }
 
@@ -150,6 +153,7 @@ export async function resolveTestSession(
     email: user.email,
     subscriptionLocked: isSubscriptionLocked(org),
     isPlatformCreator: isPlatformCreator(user.email, user.firebaseUid || firebaseUid),
+    isDemoTenant: isDemoOrganization(org),
   };
   return { status: 'ok', ctx };
 }

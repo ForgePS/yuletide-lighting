@@ -39,11 +39,23 @@ export function InvoiceDashboardPage() {
   const { data, isLoading, isError, refetch } = trpc.invoices360.dashboard.useQuery(filterInput);
   const { data: forecasts } = trpc.invoices360.forecasts.useQuery();
 
-  if (isLoading) return <LoadingState message="Loading AR dashboard..." />;
-  if (isError || !data) return <ErrorState message="Could not load dashboard." onRetry={() => refetch()} />;
+  if (isLoading) {
+    return (
+      <div data-tour="invoices-hub">
+        <LoadingState message="Loading AR dashboard..." />
+      </div>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <div data-tour="invoices-hub">
+        <ErrorState message="Could not load dashboard." onRetry={() => refetch()} />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-tour="invoices-hub">
       <p className="text-sm text-muted-foreground">Showing collections for <span className="font-medium text-foreground">{yearLabel}</span>. Receivables balances reflect current open invoices.</p>
       <InvoiceDashboard kpis={data} yearLabel={yearLabel} />
       {forecasts && forecasts.length > 0 && (

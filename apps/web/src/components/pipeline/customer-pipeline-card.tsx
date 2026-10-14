@@ -28,6 +28,11 @@ export function CustomerPipelineCard({
       draggable
       onDragStart={onDragStart}
       className="cursor-grab rounded-lg border border-border bg-surface p-3 shadow-sm active:cursor-grabbing"
+      data-tour={
+        customer.firstName === 'John' && customer.lastName === 'Smith'
+          ? 'pipeline-hero-customer'
+          : undefined
+      }
     >
       <Link
         href={`/app/customers/${customer.customerId}`}

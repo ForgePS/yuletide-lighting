@@ -41,8 +41,20 @@ export function PropertyProfileDetail({
     onError: () => toast('Could not save property', 'error'),
   });
 
-  if (isLoading) return <LoadingState />;
-  if (error || !property) return <ErrorState message="Property not found" />;
+  if (isLoading) {
+    return (
+      <div data-tour="property-detail">
+        <LoadingState />
+      </div>
+    );
+  }
+  if (error || !property) {
+    return (
+      <div data-tour="property-detail">
+        <ErrorState message="Property not found" />
+      </div>
+    );
+  }
 
   if (editing) {
     return (
@@ -61,7 +73,7 @@ export function PropertyProfileDetail({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-tour="property-detail">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <Link href={`/app/customers/${customerId}/properties`} className="text-sm text-primary hover:underline">

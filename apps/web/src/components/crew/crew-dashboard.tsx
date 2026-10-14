@@ -88,7 +88,7 @@ export function CrewJobsTable() {
 
 export function CrewDashboard() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-tour="crew-hub">
       <CrewStatsCards />
       <CrewJobsTable />
     </div>

@@ -6,7 +6,7 @@ import { createTRPCReact } from '@trpc/react-query';
 import superjson from 'superjson';
 import { useState, type ReactNode } from 'react';
 import type { AppRouter } from '@clcrm/api';
-import { getCachedAuthToken } from '@/lib/auth-token';
+import { getCachedAuthToken, isAuthTokenExpired, setCachedAuthToken, writeAuthCookie, writeClientSession } from '@/lib/auth-token';
 import { auth } from '@/lib/firebase';
 
 export const trpc = createTRPCReact<AppRouter>();
@@ -23,19 +23,34 @@ const HEAVY_TRPC_PATHS = new Set([
   'reports360.executive',
 ]);
 
+/** Isolated from httpBatchLink so slow neighbors cannot block demo/tour startup. */
+const ISOLATED_TRPC_PATHS = new Set([
+  'demo360.context',
+  'demo360.fixtures',
+  'tours360.list',
+]);
+
 async function authHeaders() {
-  const cached = getCachedAuthToken();
-  if (cached) {
-    return { authorization: `Bearer ${cached}` };
-  }
   const user = auth?.currentUser;
-  if (!user) return {};
-  try {
-    const token = await user.getIdToken(false);
+  let token = getCachedAuthToken();
+
+  if (user) {
+    if (!token || isAuthTokenExpired(token)) {
+      try {
+        token = await user.getIdToken(true);
+        writeClientSession(token);
+      } catch {
+        return {};
+      }
+    }
     return { authorization: `Bearer ${token}` };
-  } catch {
-    return {};
   }
+
+  if (token && !isAuthTokenExpired(token)) {
+    return { authorization: `Bearer ${token}` };
+  }
+
+  return {};
 }
 
 function createTrpcLinks() {
@@ -50,7 +65,7 @@ function createTrpcLinks() {
 
   return splitLink({
     condition(op) {
-      return HEAVY_TRPC_PATHS.has(op.path);
+      return HEAVY_TRPC_PATHS.has(op.path) || ISOLATED_TRPC_PATHS.has(op.path);
     },
     true: httpLink({ url, ...shared }),
     false: httpBatchLink({ url, ...shared }),

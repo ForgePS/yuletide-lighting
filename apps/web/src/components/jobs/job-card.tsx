@@ -31,7 +31,10 @@ export function JobCard({
   onSchedule,
 }: JobCardProps) {
   return (
-    <div className="rounded-lg border bg-white p-4 shadow-sm">
+    <div
+      className="rounded-lg border bg-white p-4 shadow-sm"
+      data-tour={job.title.includes('John Smith') ? 'jobs-hero-card' : undefined}
+    >
       <div className="flex items-start justify-between gap-2">
         <Link href={`/app/jobs/${job.id}`} className="font-medium hover:text-primary hover:underline">
           {job.title}

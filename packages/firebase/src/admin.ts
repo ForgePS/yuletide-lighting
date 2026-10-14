@@ -20,6 +20,8 @@ function isGoogleCloudRuntime() {
 }
 
 function readServiceAccountJson() {
+  if (process.env.FIREBASE_USE_ADC === '1') return null;
+
   const inline = process.env.CLCRM_FIREBASE_ADMIN_KEY ?? process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (inline?.trim()) return inline.trim();
 
@@ -30,7 +32,9 @@ function readServiceAccountJson() {
 
   const absolute = resolve(filePath.trim());
   if (!existsSync(absolute)) {
-    console.error(`[firebase-admin] Service account file not found: ${absolute}`);
+    console.warn(
+      `[firebase-admin] Service account file not found: ${absolute} — falling back to Application Default Credentials.`,
+    );
     return null;
   }
   return readFileSync(absolute, 'utf8');

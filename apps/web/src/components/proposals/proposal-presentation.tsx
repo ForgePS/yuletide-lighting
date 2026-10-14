@@ -8,20 +8,28 @@ import { LoadingState, ErrorState } from '@/components/ui/states';
 export function ProposalPresentationMode() {
   const proposalId = useParams().proposalId as string;
   const { data, isLoading, isError, error, refetch } = trpc.proposals360.getById.useQuery({ proposalId });
-  if (isLoading) return <LoadingState message="Loading presentation..." />;
+  if (isLoading) {
+    return (
+      <div data-tour="proposal-present">
+        <LoadingState message="Loading presentation..." />
+      </div>
+    );
+  }
   if (isError || !data) {
     return (
-      <ErrorState
-        message={error?.message ?? 'Could not load this proposal.'}
-        onRetry={() => void refetch()}
-      />
+      <div data-tour="proposal-present">
+        <ErrorState
+          message={error?.message ?? 'Could not load this proposal.'}
+          onRetry={() => void refetch()}
+        />
+      </div>
     );
   }
 
   const recommended = data.packages?.find((p) => p.isRecommended) ?? data.packages?.[0];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-background">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-background" data-tour="proposal-present">
       <div className="mx-auto max-w-5xl px-6 py-10">
         <p className="text-center text-sm uppercase tracking-wide text-muted-foreground">Proposal presentation</p>
         <h1 className="mt-2 text-center text-4xl font-bold">{data.title}</h1>

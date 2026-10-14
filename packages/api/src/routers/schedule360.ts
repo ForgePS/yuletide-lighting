@@ -7,6 +7,7 @@ import {
   createEventFromJob,
   updateCalendarEvent,
   moveCalendarEvent,
+  deleteCalendarEvent,
   duplicateCalendarEvent,
   detectScheduleConflicts,
   ensureCrews,
@@ -32,6 +33,9 @@ import {
   deleteCrewProfile,
   addCrewMember,
   removeCrewMember,
+  listScheduleBlackouts,
+  createScheduleBlackout,
+  deleteScheduleBlackout,
 } from '@yuletide/firebase';
 import {
   createCalendarEventSchema,
@@ -48,6 +52,7 @@ import {
   createCrewSchema,
   updateCrewSchema,
   crewMemberSchema,
+  createScheduleBlackoutSchema,
 } from '@clcrm/validators';
 import { router, permissionProcedure, requireModule, officeProcedure } from '../trpc';
 
@@ -96,6 +101,9 @@ export const schedule360Router = router({
     move: permissionProcedure('jobs', 'edit')
       .input(moveEventSchema)
       .mutation(({ ctx, input }) => moveCalendarEvent(ctx.auth.organizationId, input, ctx.auth.userId)),
+    delete: permissionProcedure('jobs', 'delete')
+      .input(z.object({ eventId: z.string().min(1) }))
+      .mutation(({ ctx, input }) => deleteCalendarEvent(ctx.auth.organizationId, input.eventId, ctx.auth.userId)),
     duplicate: permissionProcedure('jobs', 'create')
       .input(duplicateEventSchema)
       .mutation(({ ctx, input }) =>
@@ -199,6 +207,16 @@ export const schedule360Router = router({
       .use(requireModule('routes'))
       .input(optimizeRouteSchema)
       .mutation(({ ctx, input }) => optimizeRoute(ctx.auth.organizationId, input, ctx.auth.userId)),
+  }),
+
+  blackouts: router({
+    list: permissionProcedure('jobs', 'view').query(({ ctx }) => listScheduleBlackouts(ctx.auth.organizationId)),
+    create: permissionProcedure('jobs', 'edit')
+      .input(createScheduleBlackoutSchema)
+      .mutation(({ ctx, input }) => createScheduleBlackout(ctx.auth.organizationId, input, ctx.auth.userId)),
+    delete: permissionProcedure('jobs', 'edit')
+      .input(z.object({ blackoutId: z.string().min(1) }))
+      .mutation(({ ctx, input }) => deleteScheduleBlackout(ctx.auth.organizationId, input.blackoutId)),
   }),
 
   resources: router({

@@ -2,7 +2,7 @@ import { RebookingDashboard } from '@/components/rebooking';
 
 export default function RebookingPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-tour="rebooking-hub">
       <div>
         <h1 className="text-2xl font-bold">Seasonal rebooking</h1>
         <p className="text-muted-foreground">

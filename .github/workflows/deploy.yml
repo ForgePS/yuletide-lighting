@@ -1,19 +1,33 @@
 name: Deploy
 
+# Manual only: production config (email, CMS org, payments) must be present in
+# GitHub secrets before a CI deploy can replace what is live.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy-production" to deploy main to https://yuletide-lighting.web.app'
+        required: true
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Require confirmation
+        if: ${{ github.event.inputs.confirm != 'deploy-production' }}
+        run: |
+          echo "::error::Deploy not confirmed. Re-run and type deploy-production."
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -31,7 +45,27 @@ jobs:
           PLATFORM_CREATOR_EMAILS: ${{ secrets.PLATFORM_CREATOR_EMAILS }}
           MAPBOX_PUBLIC_TOKEN: ${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN }}
           MAPBOX_SERVER_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
+          OPERATING_ORGANIZATION_ID: ${{ secrets.OPERATING_ORGANIZATION_ID }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_PRICE_ID_MONTHLY: ${{ secrets.STRIPE_PRICE_ID_MONTHLY }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
         run: |
+          missing=""
+          for name in OPERATING_ORGANIZATION_ID RESEND_API_KEY RESEND_FROM_EMAIL PLATFORM_CREATOR_EMAILS; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required GitHub secrets:$missing"
+            echo "Deploying without them would disable customer email or the public site's company data."
+            exit 1
+          fi
+
           # Empty GitHub secrets must not override known Firebase web defaults.
           FIREBASE_API_KEY="${FIREBASE_API_KEY:-AIzaSyD9jk7wARDfxpaYxigLKTJ13gK7eCBhCEY}"
           FIREBASE_AUTH_DOMAIN="${FIREBASE_AUTH_DOMAIN:-yuletide-lighting.firebaseapp.com}"
@@ -54,15 +88,30 @@ jobs:
           PLATFORM_CREATOR_EMAILS=${PLATFORM_CREATOR_EMAILS}
           NEXT_PUBLIC_TINA_BRANCH=main
           NEXT_PUBLIC_APP_URL=https://yuletide-lighting.web.app
+          OPERATING_ORGANIZATION_ID=${OPERATING_ORGANIZATION_ID}
+          NEXT_PUBLIC_OPERATING_ORGANIZATION_ID=${OPERATING_ORGANIZATION_ID}
+          REAL_EMAIL=1
+          RESEND_API_KEY=${RESEND_API_KEY}
+          RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL}
           EOF
-          if [ -n "$MAPBOX_PUBLIC" ]; then
-            echo "NEXT_PUBLIC_MAPBOX_TOKEN=${MAPBOX_PUBLIC}" >> .env
-          fi
-          if [ -n "$MAPBOX_SERVER" ]; then
-            echo "MAPBOX_TOKEN=${MAPBOX_SERVER}" >> .env
-          fi
+          append_if_set() { if [ -n "$2" ]; then echo "$1=$2" >> .env; fi; }
+          append_if_set NEXT_PUBLIC_MAPBOX_TOKEN "$MAPBOX_PUBLIC"
+          append_if_set MAPBOX_TOKEN "$MAPBOX_SERVER"
+          append_if_set STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
+          append_if_set STRIPE_WEBHOOK_SECRET "$STRIPE_WEBHOOK_SECRET"
+          append_if_set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY "$STRIPE_PUBLISHABLE_KEY"
+          append_if_set STRIPE_PRICE_ID_MONTHLY "$STRIPE_PRICE_ID_MONTHLY"
+          append_if_set TWILIO_ACCOUNT_SID "$TWILIO_ACCOUNT_SID"
+          append_if_set TWILIO_AUTH_TOKEN "$TWILIO_AUTH_TOKEN"
+          append_if_set TWILIO_PHONE_NUMBER "$TWILIO_PHONE_NUMBER"
           if [ -z "$MAPBOX_PUBLIC" ]; then
             echo "::warning::NEXT_PUBLIC_MAPBOX_TOKEN is not set — sign tracker maps and geocoding will be disabled."
+          fi
+          if [ -z "$STRIPE_SECRET_KEY" ]; then
+            echo "::warning::STRIPE_SECRET_KEY is not set — online payments will be disabled."
+          fi
+          if [ -z "$TWILIO_ACCOUNT_SID" ]; then
+            echo "::warning::TWILIO_ACCOUNT_SID is not set — SMS will be disabled."
           fi
 
       - name: Verify deploy credentials

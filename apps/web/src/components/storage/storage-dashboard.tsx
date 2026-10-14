@@ -164,7 +164,7 @@ function StoragePullSheetModal({
 
 export function StorageDashboard() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-tour="storage-hub">
       <StorageStatsCards />
       <StorageRecordsTable />
     </div>

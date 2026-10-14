@@ -13,10 +13,16 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
   const { year } = useAnalyticsYear();
   const { data, isLoading, isError, refetch } = trpc.customer360.getById.useQuery({ customerId, year });
 
-  if (isLoading) return <LoadingState message="Loading customer..." />;
+  if (isLoading) {
+    return (
+      <div className="space-y-6" data-tour="customer-profile">
+        <LoadingState message="Loading customer..." />
+      </div>
+    );
+  }
   if (isError || !data) {
     return (
-      <div>
+      <div className="space-y-6" data-tour="customer-profile">
         <Link href="/app/customers" className="text-sm text-primary hover:underline">← Customers</Link>
         <div className="mt-6">
           <ErrorState title="Customer not found" message="This customer may have been deleted or you may not have access." onRetry={() => refetch()} />

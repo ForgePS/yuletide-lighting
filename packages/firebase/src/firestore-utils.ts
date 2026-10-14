@@ -50,12 +50,18 @@ const DATE_FIELDS = [
   'installDate',
   'removalDate',
   'onboardingCompletedAt',
+  'onboardingDismissedAt',
+  'onboardingStartedAt',
   'trialEndsAt',
   'lockedAt',
   'currentPeriodEnd',
+  'startAt',
+  'endAt',
+  'routeDate',
+  'eta',
 ] as const;
 
-function coerceTimestampField(val: unknown): Date | unknown {
+export function coerceTimestampField(val: unknown): Date | unknown {
   if (val == null || val === '') return val;
   if (val instanceof Date) return val;
   if (typeof val === 'object') {

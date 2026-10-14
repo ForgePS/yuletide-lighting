@@ -18,6 +18,8 @@ export type ProvisionSubscriptionInput = {
   slug?: string | null;
   /** Environment marker such as staging_test — never set on production customers. */
   environmentMarker?: string | null;
+  /** Sales/demo tenant marker (YT-TOUR-S2). */
+  isDemoTenant?: boolean;
   provisioningStatus?: 'pending' | 'active' | 'failed';
   portalFeatures?: PortalFeatureKey[];
 };
@@ -72,5 +74,6 @@ export function buildOrganizationProvisioningFields(input: ProvisionSubscription
     },
     ...(input.slug ? { slug: input.slug } : {}),
     ...(input.environmentMarker ? { environmentMarker: input.environmentMarker } : {}),
+    ...(input.isDemoTenant ? { isDemoTenant: true } : {}),
   };
 }

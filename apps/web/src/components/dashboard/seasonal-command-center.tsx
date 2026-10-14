@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useAnalyticsYear } from '@/lib/analytics-year-context';
 import { formatCurrency } from '@clcrm/ui';
@@ -58,36 +58,13 @@ function formatTime(date: Date) {
 
 export function SeasonalCommandCenter() {
   const { filterInput, yearLabel } = useAnalyticsYear();
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    const kick = () => {
-      if (!cancelled) setReady(true);
-    };
-    let idleId: number | undefined;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      idleId = window.requestIdleCallback(kick, { timeout: 400 });
-    } else {
-      timeoutId = setTimeout(kick, 100);
-    }
-    return () => {
-      cancelled = true;
-      if (idleId !== undefined && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
-        window.cancelIdleCallback(idleId);
-      }
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
-    };
-  }, []);
-
   const { data, isLoading, isError, error, refetch } = trpc.reports360.commandCenter.useQuery(filterInput, {
     staleTime: 60_000,
-    enabled: ready,
   });
 
-  if (!ready || isLoading || (!data && !isError)) {
+  if (isLoading || (!data && !isError)) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" data-tour="dashboard-command-center">
         <div className="h-10 w-64 animate-pulse rounded-lg bg-muted/50" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 12 }).map((_, i) => (
@@ -114,7 +91,7 @@ export function SeasonalCommandCenter() {
           ? 'Your account does not have access to the dashboard.'
           : 'The command center took too long or hit an error. Try again in a moment.';
     return (
-      <div className="card mx-auto max-w-lg p-8 text-center">
+      <div className="card mx-auto max-w-lg p-8 text-center" data-tour="dashboard-command-center">
         <h2 className="text-lg font-semibold">Could not load dashboard</h2>
         <p className="mt-2 text-sm text-muted-foreground">{message}</p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -146,7 +123,7 @@ export function SeasonalCommandCenter() {
   const maxForecast = Math.max(...data.revenueForecast.map((f) => f.projectedCents), 1);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-tour="dashboard-command-center">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="page-title">Command Center</h1>

@@ -45,6 +45,7 @@ import { getAdminFirestore, getAdminAuth, Timestamp } from './admin';
 import { getOrgSubscriptionState } from './billing';
 import { mapTimestampsFromData, stripUndefined } from './firestore-utils';
 import { getOrganization, updateOrganization } from './firestore';
+import { demoSimulatedCodeForOperation, isDemoOrganization } from './demo-tenant';
 import { assertTwilioPhoneUnique } from './messages360';
 import {
   createPortalOpaqueToken,
@@ -1522,6 +1523,20 @@ export async function testIntegrationConnection(
   integrationId: string,
 ): Promise<IntegrationConnectionTestResult> {
   const started = Date.now();
+  const org = await getOrganization(orgId);
+  if (isDemoOrganization(org)) {
+    return baseProbe(
+      integrationId,
+      {
+        state: 'unavailable',
+        capabilityTested: 'demo_tenant_guard',
+        result: 'skipped',
+        errorCategory: 'demo_tenant_simulated',
+        sanitizedFailureReason: demoSimulatedCodeForOperation('integration_probe'),
+      },
+      started,
+    );
+  }
   const settings = await getIntegrationsSettings(orgId);
   const target = settings.integrations.find((i) => i.id === integrationId);
   if (!target) {

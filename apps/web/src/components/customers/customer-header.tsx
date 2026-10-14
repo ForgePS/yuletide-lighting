@@ -61,7 +61,7 @@ export function CustomerHeader({ customerId, customer }: CustomerHeaderProps) {
   const phone = customer.mobilePhone || customer.phone;
 
   return (
-    <div className="card p-6">
+    <div className="card p-6" data-tour="customer-profile">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">

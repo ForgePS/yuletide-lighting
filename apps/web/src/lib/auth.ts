@@ -13,6 +13,7 @@ import {
   isPlatformCreator,
   getUserPermissions,
   evaluateOrganizationAccess,
+  isDemoOrganization,
 } from '@yuletide/firebase';
 import { cookies, headers } from 'next/headers';
 import { createHash } from 'crypto';
@@ -193,6 +194,7 @@ export async function resolveAppAccess(): Promise<AppAccessResult> {
         email: user.email,
         subscriptionLocked: isSubscriptionLocked(org),
         isPlatformCreator: isPlatformCreator(user.email, decoded.uid),
+        isDemoTenant: isDemoOrganization(org),
       },
     };
   } catch (err) {

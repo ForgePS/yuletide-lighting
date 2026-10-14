@@ -246,7 +246,7 @@ export function ServiceIssuesPage() {
   );
 
   return (
-    <div>
+    <div data-tour="service-issues-hub">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="page-header mb-0">
           <h1 className="page-title">Service Issues</h1>

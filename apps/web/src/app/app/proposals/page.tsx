@@ -11,7 +11,7 @@ export default function ProposalsPage() {
   const [view, setView] = useState<View>('list');
 
   return (
-    <div>
+    <div data-tour="proposals-hub">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="page-header mb-0">
           <h1 className="page-title">Proposals</h1>

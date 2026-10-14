@@ -28,7 +28,10 @@ export function CrmHeroSection() {
               Start {CRM_PRODUCT.trialDays}-day free trial
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link href="/for-installers/features" className="btn-secondary border-white/20 bg-white/5 px-8 py-4 text-base text-white hover:bg-white/10">
+            <Link href="/demo" className="btn-secondary border-white/20 bg-white/5 px-8 py-4 text-base text-white hover:bg-white/10">
+              See Yuletide in Action
+            </Link>
+            <Link href="/for-installers/features" className="btn-ghost border border-white/10 px-8 py-4 text-base text-white/80 hover:bg-white/5">
               Explore features
             </Link>
           </div>

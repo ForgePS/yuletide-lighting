@@ -54,7 +54,8 @@ export async function processProposalFollowUps(
 
     const customerName = proposal.customerName ?? 'there';
     const propertyName = proposal.propertyAddress ?? 'your property';
-    const proposalLink = proposal.publicToken ? `/p/${proposal.publicToken}` : '';
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://yuletide-lighting.web.app').replace(/\/$/, '');
+    const proposalLink = proposal.publicToken ? `${appUrl}/p/${proposal.publicToken}` : '';
     const subject = `Following up on your proposal${proposal.title ? `: ${proposal.title}` : ''}`;
     const body = [
       `Hi ${customerName},`,

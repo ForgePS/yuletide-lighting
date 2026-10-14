@@ -207,7 +207,11 @@ export function ProposalListHub() {
                   {pageItems.map((p) => (
                     <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/20">
                       <td className="px-4 py-3">
-                        <Link href={`/app/proposals/${p.id}`} className="font-medium text-primary hover:underline">
+                        <Link
+                          href={`/app/proposals/${p.id}`}
+                          className="font-medium text-primary hover:underline"
+                          data-demo-hero-proposal={/john\s*smith/i.test(p.customerName ?? '') ? 'true' : undefined}
+                        >
                           {p.title}
                         </Link>
                         {p.propertyAddress && (

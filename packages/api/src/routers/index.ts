@@ -743,6 +743,7 @@ export const messagesRouter = router({
 
     // YL-S14: dead SQL messagesRouter — provider calls gated; never send without REAL_* cutover.
     if (
+      !ctx.auth.isDemoTenant &&
       input.channel === 'sms' &&
       isMessageProviderSendEnabled('sms') &&
       process.env.TWILIO_ACCOUNT_SID
@@ -778,7 +779,7 @@ export const messagesRouter = router({
       }
     }
 
-    if (input.channel === 'email' && isMessageProviderSendEnabled('email')) {
+    if (input.channel === 'email' && !ctx.auth.isDemoTenant && isMessageProviderSendEnabled('email')) {
       const [customer] = await db
         .select()
         .from(customers)

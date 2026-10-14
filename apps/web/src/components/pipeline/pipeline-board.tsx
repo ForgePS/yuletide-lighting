@@ -24,7 +24,7 @@ export function PipelineBoard() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<import('@clcrm/types').CustomerPipelineItem | null>(null);
 
-  const { data, isLoading, refetch } = trpc.customer360.pipeline.useQuery({
+  const { data, isLoading, isError, error, refetch } = trpc.customer360.pipeline.useQuery({
     search: search.trim() || undefined,
     stages: stageFilter.length ? stageFilter : undefined,
     overdueOnly: overdueOnly || undefined,
@@ -45,9 +45,34 @@ export function PipelineBoard() {
     return data.columns;
   }, [data, stageFilter]);
 
-  if (isLoading) return <LoadingState />;
+  if (isLoading) {
+    return (
+      <div className="space-y-6" data-tour="pipeline-board">
+        <LoadingState message="Loading pipeline..." />
+      </div>
+    );
+  }
 
-  if (!data) return <EmptyState title="No pipeline data" description="Could not load the customer pipeline." />;
+  if (!data) {
+    const message = isError
+      ? (error?.message ?? 'Could not load the customer pipeline.')
+      : 'Could not load the customer pipeline.';
+    return (
+      <div className="space-y-6" data-tour="pipeline-board">
+        <EmptyState
+          title="No pipeline data"
+          description={message}
+          action={
+            isError ? (
+              <button type="button" className="btn-primary text-sm" onClick={() => refetch()}>
+                Retry
+              </button>
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  }
 
   function onDrop(stage: CustomerStage) {
     if (!dragId) return;
@@ -62,7 +87,7 @@ export function PipelineBoard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-tour="pipeline-board">
       <StageRevenueSummary
         count={data.totals.count}
         revenueCents={data.totals.revenueCents}

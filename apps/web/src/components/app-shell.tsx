@@ -46,6 +46,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { SidebarLogo } from '@/components/sidebar-logo';
 import { AnalyticsYearBadge, AnalyticsYearFilter } from '@/lib/analytics-year-context';
 import { ErrorState } from '@/components/ui/states';
+import { HelpToursTrigger } from '@/features/tours/components/help-tours-trigger';
 
 const ICON_BY_HREF: Record<string, LucideIcon> = {
   '/app': LayoutDashboard,
@@ -289,13 +290,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     enabled: deferSecondaryQueries && !authLoading && !!user,
     staleTime: 60_000,
   });
-  const { data: onboarding } = trpc.onboarding360.state.useQuery(undefined, {
-    enabled: deferSecondaryQueries && !authLoading && !!user,
-    staleTime: 60_000,
-    retry: false,
-  });
-  const showOnboardingBanner =
-    Boolean(onboarding) && !onboarding?.completed && !pathname.startsWith('/onboarding');
 
   const locked = billing?.isLocked ?? false;
   const onSubscriptionPage = pathname.startsWith('/app/settings/subscription');
@@ -520,21 +514,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Menu className="h-5 w-5" />
           </button>
           <SidebarLogo href="/app" imageClassName="h-9" />
-          {mobileOpen && (
-            <button onClick={() => setMobileOpen(false)} className="ml-auto btn-ghost rounded-[var(--radius)] p-2">
-              <X className="h-5 w-5" />
-            </button>
-          )}
+          <div className="ml-auto flex items-center gap-1">
+            <HelpToursTrigger />
+            {mobileOpen ? (
+              <button onClick={() => setMobileOpen(false)} className="btn-ghost rounded-[var(--radius)] p-2">
+                <X className="h-5 w-5" />
+              </button>
+            ) : null}
+          </div>
         </header>
         <main className="flex-1 overflow-auto app-canvas">
-          {showOnboardingBanner ? (
-            <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 sm:px-6 lg:px-8">
-              Finish setting up your workspace —{' '}
-              <Link href="/onboarding" className="font-semibold underline underline-offset-2">
-                continue onboarding
-              </Link>
-            </div>
-          ) : null}
           <nav className="app-topbar layout-navbar sticky top-0 z-20 hidden items-center justify-between gap-3 px-4 sm:px-6 lg:flex lg:px-6">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               {yearFilterVisible ? (
@@ -548,6 +537,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex items-center gap-3">
               {yearFilterVisible ? <AnalyticsYearFilter /> : null}
+              <HelpToursTrigger />
               <div className="hidden items-center gap-2 border-l border-border pl-3 text-sm text-muted-foreground xl:flex">
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                   {(user?.email?.[0] ?? 'U').toUpperCase()}

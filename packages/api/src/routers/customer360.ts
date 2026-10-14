@@ -165,6 +165,7 @@ export const customer360Router = router({
         search: input?.search,
         stages: input?.stages,
         overdueOnly: input?.overdueOnly,
+        assignedTo: input?.assignedTo,
       }),
     ),
 

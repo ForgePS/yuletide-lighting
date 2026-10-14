@@ -397,6 +397,65 @@ export function renderMessageTemplate(
   return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '');
 }
 
+/** Per-customer placeholders filled in automatically for every outbound SMS / email. */
+export const CUSTOMER_MESSAGE_PLACEHOLDERS = [
+  'customerName',
+  'firstName',
+  'lastName',
+  'address',
+  'city',
+  'companyName',
+  'companyPhone',
+] as const;
+
+export function hasMessagePlaceholders(text: string | null | undefined): boolean {
+  return typeof text === 'string' && /\{\{\s*\w+\s*\}\}/.test(text);
+}
+
+/** Like renderMessageTemplate, but leaves unknown placeholders untouched so a later step can fill them. */
+export function fillMessagePlaceholders(
+  template: string | null | undefined,
+  vars: Record<string, string | null | undefined>,
+): string {
+  const text = typeof template === 'string' ? template : '';
+  return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key: string) => {
+    const value = vars[key];
+    return typeof value === 'string' ? value : match;
+  });
+}
+
+/** True when a message body was authored in the rich-text editor (HTML) rather than as plain text. */
+export function looksLikeHtmlMessage(body: string | null | undefined): boolean {
+  return typeof body === 'string' && /<\/?(p|br|strong|b|em|i|u|ul|ol|li|h[1-6]|div|span|a|blockquote)\b[^>]*>/i.test(body);
+}
+
+const HTML_ENTITIES: Record<string, string> = {
+  '&nbsp;': ' ',
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&apos;': "'",
+};
+
+/** Readable plain text for SMS, email text parts, and message previews. */
+export function htmlMessageToPlainText(body: string | null | undefined): string {
+  const html = typeof body === 'string' ? body : '';
+  if (!looksLikeHtmlMessage(html)) return html;
+  return html
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '• ')
+    .replace(/<\/(li|h[1-6])>/gi, '\n')
+    .replace(/<\/(p|div|ul|ol|blockquote)>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&(nbsp|amp|lt|gt|quot|#39|apos);/g, (entity) => HTML_ENTITIES[entity] ?? entity)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function classifyMessage(body: string | null | undefined): AiInboxClassification {
   const lower = (typeof body === 'string' ? body : '').toLowerCase();
   if (/pay|invoice|deposit|balance|bill/.test(lower)) {

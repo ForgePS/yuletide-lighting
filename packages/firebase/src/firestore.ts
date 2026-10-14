@@ -58,6 +58,8 @@ export type OrganizationRecord = {
   slug?: string | null;
   /** Non-production marker (e.g. staging_test) */
   environmentMarker?: string | null;
+  /** Sales/demo tenant — outbound integrations must be simulated (YT-TOUR-S2). */
+  isDemoTenant?: boolean | null;
   /** Portal feature keys enabled for the tenant */
   portalFeatures?: string[] | null;
   twilioPhoneNumber?: string | null;
@@ -65,6 +67,9 @@ export type OrganizationRecord = {
   reviewFacebookUrl?: string | null;
   onboardingCompletedAt?: Date | null;
   onboardingStep?: string | null;
+  onboardingDismissedAt?: Date | null;
+  onboardingStartedAt?: Date | null;
+  onboardingSkippedSteps?: string[] | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -194,9 +199,15 @@ function mapTimestamps<T extends Record<string, unknown>>(data: T): T {
     'removalDate',
     'contractGeneratedAt',
     'onboardingCompletedAt',
+    'onboardingDismissedAt',
+    'onboardingStartedAt',
     'trialEndsAt',
     'lockedAt',
     'currentPeriodEnd',
+    'startAt',
+    'endAt',
+    'routeDate',
+    'eta',
   ]) {
     const val = result[key];
     if (val && typeof val === 'object' && 'toDate' in (val as object)) {

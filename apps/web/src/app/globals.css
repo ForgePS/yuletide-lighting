@@ -288,3 +288,45 @@
     @apply inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary;
   }
 }
+
+/* Yuletide tour (Driver.js) — YT-TOUR-S1 */
+[data-tour] {
+  scroll-margin: 5.5rem 1rem 6rem;
+}
+
+.yuletide-tour-popover {
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+.yuletide-tour-popover .driver-popover-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.yuletide-tour-popover .driver-popover-description {
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Tour control bar must sit above Driver.js overlay and stay clickable.
+   Driver.js sets `.driver-active * { pointer-events: none }` which blocks our bar. */
+.driver-active .tour-control-bar,
+.driver-active .tour-control-bar * {
+  pointer-events: auto !important;
+}
+
+.tour-control-bar {
+  z-index: 1000000001 !important;
+}
+
+.driver-active .tour-missing-target,
+.driver-active .tour-missing-target * {
+  pointer-events: auto !important;
+}
+
+.tour-missing-target {
+  z-index: 1000000002 !important;
+}

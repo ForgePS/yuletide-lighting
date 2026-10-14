@@ -2,6 +2,7 @@
 
 import { TRPCProvider } from '@/lib/trpc';
 import { ToastProvider } from '@/lib/toast';
+import { TourProvider } from '@/features/tours';
 import { useEffect } from 'react';
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
@@ -20,7 +21,9 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   return (
     <TRPCProvider>
-      <ToastProvider>{children}</ToastProvider>
+      <ToastProvider>
+        <TourProvider variant="portal">{children}</TourProvider>
+      </ToastProvider>
     </TRPCProvider>
   );
 }
